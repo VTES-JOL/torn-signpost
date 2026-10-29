@@ -1,0 +1,11 @@
+{
+  "stage": "local",
+  "apiUrl": "https://api.tornsignpost.org",
+  "contentUrl": "https://content.tornsignpost.org",
+  "auth": {
+    "domain": "auth.tornsignpost.org",
+    "userPoolId": "us-east-1_example",
+    "clientId": "example"
+  },
+  "flags": {}
+}

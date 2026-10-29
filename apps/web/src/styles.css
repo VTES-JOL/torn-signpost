@@ -1,0 +1,119 @@
+:root {
+  --bg: #f6f2ee;
+  --surface: #ffffff;
+  --text: #1d1416;
+  --muted: #5f5154;
+  --accent: #8b1a26;
+  --border: #d9cfcb;
+  color-scheme: light;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #120c0e;
+    --surface: #1c1417;
+    --text: #efe6e3;
+    --muted: #a8999c;
+    --accent: #d2404f;
+    --border: #3a2c30;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+a {
+  color: var(--accent);
+}
+
+.page {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top) max(1rem, env(safe-area-inset-right))
+    env(safe-area-inset-bottom) max(1rem, env(safe-area-inset-left));
+}
+
+.hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  max-width: 40rem;
+  margin: 0 auto;
+  padding-block: 3rem;
+}
+
+.hero h1 {
+  font-size: clamp(2.25rem, 7vw, 3.5rem);
+  margin: 0 0 0.75rem;
+  letter-spacing: -0.01em;
+}
+
+.tagline {
+  font-size: 1.15rem;
+  line-height: 1.5;
+  margin: 0 0 1.5rem;
+}
+
+.beta {
+  display: inline-block;
+  align-self: flex-start;
+  margin: 0 0 1rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 0.85rem;
+}
+
+.status {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  border-top: 1px solid var(--border);
+  padding-block: 1rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.site-footer .notices {
+  flex: 1 1 18rem;
+}
+
+.site-footer p {
+  margin: 0 0 0.35rem;
+}
+
+.dark-pack-badge img {
+  display: block;
+  width: 64px;
+  height: 64px;
+}
+
+.dark-pack-fallback {
+  display: inline-block;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+}

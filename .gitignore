@@ -21,3 +21,12 @@ cdk.out/
 DerivedData/
 xcuserdata/
 *.xcuserstate
+
+# CDK context lookups (contain account details)
+cdk.context.json
+
+# Local web config
+apps/web/public/config.json
+
+# World of Darkness material: never committed (LEGAL-08); uploaded to the content bucket
+content-pack/

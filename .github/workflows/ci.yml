@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - name: CDK synth
+        run: pnpm --filter @torn-signpost/infra synth
+
+  deploy:
+    # main deploys straight to the live beta (architecture §9): no staging environment.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN != ''
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: beta
+    concurrency:
+      group: deploy-beta
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: CDK deploy
+        working-directory: infra
+        run: >
+          pnpm exec cdk deploy --all --require-approval never
+          ${{ vars.ALERT_EMAIL && format('-c alertEmail={0}', vars.ALERT_EMAIL) || '' }}
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          curl -fsS https://api.tornsignpost.org/health | tee /dev/stderr | grep -q '"status":"ok"'
+          curl -fsS https://tornsignpost.org/config.json | grep -q '"stage":"beta"'
+          curl -fsS https://tornsignpost.org/ | grep -q '<div id="root">'
