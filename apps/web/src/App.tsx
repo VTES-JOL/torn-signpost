@@ -5,10 +5,12 @@ import { AuthProvider, useAuth } from './auth.tsx';
 import { DarkPackFooter } from './components/DarkPackFooter.tsx';
 import { loadConfig } from './config.ts';
 import { CardsProvider, ConfigProvider, useConfig } from './content.tsx';
+import { GamePage } from './game/GamePage.tsx';
 import { AuthCallback } from './pages/AuthCallback.tsx';
 import { CardsPage } from './pages/CardsPage.tsx';
 import { DeckEditor } from './pages/DeckEditor.tsx';
 import { DecksPage } from './pages/DecksPage.tsx';
+import { GamesPage } from './pages/GamesPage.tsx';
 
 export function App() {
   const [config, setConfig] = useState<ClientConfig>();
@@ -30,6 +32,8 @@ export function App() {
                 <Route path="decks" element={<DecksPage />} />
                 <Route path="decks/new" element={<DeckEditor />} />
                 <Route path="decks/:id" element={<DeckEditor />} />
+                <Route path="games" element={<GamesPage />} />
+                <Route path="games/:id" element={<GamePage />} />
                 <Route path="auth/callback" element={<AuthCallback />} />
                 <Route path="*" element={<p className="notice">Page not found.</p>} />
               </Route>
@@ -63,6 +67,7 @@ function Header() {
         Torn Signpost
       </Link>
       <nav className="nav" aria-label="Main">
+        <NavLink to="/games">Games</NavLink>
         <NavLink to="/cards">Cards</NavLink>
         <NavLink to="/decks">Decks</NavLink>
       </nav>

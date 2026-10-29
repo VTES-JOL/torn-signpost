@@ -167,6 +167,43 @@ describe.skipIf(!available)('game service (DynamoDB Local)', () => {
     });
   });
 
+  describe('leaving and chat', () => {
+    it('lets players leave before the game starts', async () => {
+      const { games } = service(store, recordingGateway().gateway);
+      const g = await games.create(alice, {
+        name: 'x',
+        format: 'standard',
+        visibility: 'public',
+        maxSeats: 3,
+      });
+      await games.join(bob, g.id, { deck });
+      expect((await games.leave(bob, g.id)).players).toEqual([]);
+      await expect(games.leave(bob, g.id)).rejects.toMatchObject({ code: 'not_joined' });
+      expect((await games.list(bob, 'mine')).map((x) => x.id)).not.toContain(g.id);
+      await games.join(bob, g.id, { deck });
+      expect((await games.details(alice, g.id)).game.players.map((p) => p.user)).toEqual(['bob']);
+    });
+
+    it('lets players and judges chat, spectators only read, and pushes messages', async () => {
+      const rec = recordingGateway();
+      const { games, realtime } = service(store, rec.gateway);
+      const { id } = await startedGame(games);
+      await realtime.connect('c-guest', guest);
+      await realtime.message('c-guest', JSON.stringify({ type: 'subscribe', gameId: id }));
+      const msg = await games.chat(bob, id, { text: 'Hello @alice' });
+      expect(msg).toMatchObject({ user: 'bob', text: 'Hello @alice', seq: 1 });
+      await games.chat(judge, id, { text: 'Judge here' });
+      await expect(games.chat(dave, id, { text: 'hi' })).rejects.toMatchObject({
+        code: 'spectator',
+      });
+      expect((await games.chatHistory(guest, id)).map((m) => m.text)).toEqual([
+        'Hello @alice',
+        'Judge here',
+      ]);
+      expect(rec.sent.get('c-guest')?.filter((m) => m.type === 'chat')).toHaveLength(2);
+    });
+  });
+
   describe('commands', () => {
     it('applies commands and answers with the caller’s projection', async () => {
       const { games } = service(store, recordingGateway().gateway);

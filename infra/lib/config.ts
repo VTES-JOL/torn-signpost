@@ -21,7 +21,7 @@ export interface StageConfig {
   alertEmailParameter: string;
   /** Feature flags served to clients; keeps unfinished features dark on the live beta. */
   flags: Record<string, boolean>;
-  /** Server-side switch for the game service (M2); off until the web tabletop (M4) is ready. */
+  /** Server-side switch for the game service (M2) and its WebSocket connections. */
   gamesEnabled: boolean;
 }
 
@@ -35,7 +35,8 @@ export const beta: StageConfig = {
   monthlyBudgetUsd: 50,
   alertEmailParameter: '/torn-signpost/beta/alert-email',
   flags: {},
-  gamesEnabled: false,
+  // On for the internal alpha (M4).
+  gamesEnabled: true,
 };
 
 export const hosts = (c: StageConfig) => ({

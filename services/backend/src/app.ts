@@ -1,6 +1,7 @@
 import { ENGINE_VERSION } from '@torn-signpost/engine';
 import {
   type ApiError as ApiErrorBody,
+  ChatRequest,
   CommandRequest,
   CreateGameRequest,
   DeckFormat,
@@ -101,6 +102,18 @@ export function createApp(config: AppConfig): Hono<Env> {
     c.json(
       await games().command(c.var.identity, c.req.param('id'), await body(c.req, CommandRequest)),
     ),
+  );
+  app.post('/games/:id/leave', async (c) =>
+    c.json(await games().leave(c.var.identity, c.req.param('id'))),
+  );
+  app.post('/games/:id/chat', async (c) =>
+    c.json(
+      await games().chat(c.var.identity, c.req.param('id'), await body(c.req, ChatRequest)),
+      201,
+    ),
+  );
+  app.get('/games/:id/chat', async (c) =>
+    c.json(await games().chatHistory(c.var.identity, c.req.param('id'))),
   );
   app.get('/games/:id/events', async (c) => {
     const after = z.coerce

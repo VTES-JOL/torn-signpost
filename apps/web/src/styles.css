@@ -177,6 +177,11 @@ h1 {
   padding-block: 1rem 2rem;
 }
 
+h2 {
+  font-size: 1.15rem;
+  margin: 1.25rem 0 0.5rem;
+}
+
 .muted {
   color: var(--muted);
 }
@@ -518,4 +523,477 @@ dialog::backdrop {
   .editor-panels.show-search .deck-panel {
     display: none;
   }
+}
+
+/* Game */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.game-title h1 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.game-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 22rem;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.game-side {
+  border-left: 1px solid var(--border);
+  padding-left: 1rem;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 8rem);
+  position: sticky;
+  top: 0.5rem;
+}
+
+@media (max-width: 960px) {
+  .game-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .game-side {
+    border-left: none;
+    padding-left: 0;
+    max-height: 24rem;
+    position: static;
+  }
+}
+
+.turn-bar {
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.zoom-controls {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.table-viewport {
+  overflow: auto;
+  max-height: calc(100dvh - 15rem);
+  min-height: 20rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 70%, #2a1418);
+  touch-action: pan-x pan-y;
+}
+
+.table {
+  padding: 0.75rem;
+  --card-w: 64px;
+}
+
+.seats,
+.opponents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.seats {
+  flex-direction: column;
+}
+
+.seat {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem;
+  background: var(--surface);
+}
+
+.opponents > .seat {
+  flex: 1 1 18rem;
+}
+
+.seat.turn {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.seat.ousted {
+  opacity: 0.5;
+}
+
+.seat.own {
+  --card-w: 76px;
+}
+
+.seat-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  font-size: 0.9rem;
+  margin-bottom: 0.4rem;
+}
+
+.seat-header button {
+  min-height: 1.6rem;
+  width: 1.6rem;
+  padding: 0;
+}
+
+.pool {
+  margin-left: auto;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #7a1420;
+  color: #fff;
+  cursor: grab;
+  touch-action: none;
+}
+
+.seat-zones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.zone {
+  position: relative;
+  min-width: calc(var(--card-w) + 1rem);
+  min-height: calc(var(--card-w) * 1.4 + 1.4rem);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 1.1rem 0.35rem 0.35rem;
+}
+
+.zone-ready {
+  flex: 1 1 14rem;
+}
+
+.zone-label {
+  position: absolute;
+  right: 0.3rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  top: 0.15rem;
+  left: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.zone-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: flex-start;
+}
+
+.card-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.card-stack .attached {
+  margin-top: calc(var(--card-w) * -1.1);
+  margin-left: 0.6rem;
+  z-index: -1;
+  position: relative;
+}
+
+.card-stack .attached:first-of-type {
+  margin-top: calc(var(--card-w) * -1.15);
+}
+
+.card,
+.stack,
+.pool,
+.zone-label {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.card {
+  position: relative;
+  width: var(--card-w);
+  padding: 0;
+  min-height: 0;
+  border: none;
+  background: none;
+  border-radius: 5px;
+  touch-action: none;
+  transition: transform 0.2s ease;
+}
+
+.card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 358 / 500;
+  border-radius: 5px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 40%);
+}
+
+.card.locked {
+  transform: rotate(90deg);
+  margin: 0 calc(var(--card-w) * 0.2);
+}
+
+.counters {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  display: flex;
+  gap: 2px;
+}
+
+.counter {
+  min-width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: #555;
+}
+
+.counter-blood {
+  background: #b01828;
+}
+
+.counter-life {
+  background: #2f7a45;
+}
+
+.stacks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-content: flex-start;
+}
+
+.stack {
+  flex-direction: column;
+  font-size: 0.75rem;
+  min-width: 4.5rem;
+  touch-action: none;
+}
+
+.hand {
+  margin-top: 0.75rem;
+  --card-w: 84px;
+  position: sticky;
+  bottom: 0;
+  background: var(--surface);
+  z-index: 2;
+}
+
+[data-accepts] {
+  outline: 2px dashed color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 2px;
+}
+
+[data-over] {
+  outline: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+body.dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.drag-ghost {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  transform: translate(-50%, -60%) rotate(-4deg);
+  opacity: 0.85;
+}
+
+.drag-ghost img {
+  width: 72px;
+  border-radius: 5px;
+}
+
+.drag-ghost span {
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: #b01828;
+  color: #fff;
+}
+
+.card-menu {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 13rem;
+  max-height: 20rem;
+  overflow: auto;
+  padding: 0.35rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 35%);
+}
+
+.card-menu p {
+  margin: 0.2rem 0.4rem 0.35rem;
+}
+
+.card-menu button {
+  justify-content: flex-start;
+  border: none;
+  min-height: 2rem;
+}
+
+.inspector {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 30;
+  width: 15rem;
+  padding: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 35%);
+  pointer-events: none;
+}
+
+.inspector img {
+  width: 100%;
+  border-radius: 8px;
+}
+
+.picking {
+  color: var(--accent);
+  margin: 0 0 0.5rem;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.5rem;
+  transform: translateX(-50%);
+  z-index: 60;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+}
+
+.log,
+.console {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.log-entries,
+.console-output {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  overflow: auto;
+  flex: 1;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.log-entries li {
+  padding: 0.15rem 0;
+  color: var(--muted);
+}
+
+.log-entries li.chat {
+  color: var(--text);
+}
+
+.log-entries li.mention {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.console-output {
+  font-family: ui-monospace, monospace;
+}
+
+.console-output .error {
+  color: var(--accent);
+}
+
+.console input,
+.log input {
+  width: 100%;
+}
+
+.console input {
+  font-family: ui-monospace, monospace;
+}
+
+.lobby-room ul {
+  padding-left: 1.25rem;
+}
+
+.create-game {
+  margin-bottom: 1rem;
+}
+
+.create-game input {
+  flex: 1 1 14rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .table {
+    --card-w: 52px;
+    padding: 0.4rem;
+  }
+
+  .seat.own {
+    --card-w: 58px;
+  }
+
+  /* One scrolling row, so the hand never covers the table. */
+  .hand {
+    --card-w: 64px;
+  }
+
+  .hand .zone-cards {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+  }
+
+  .hand .card {
+    flex: none;
+  }
+
+  .turn-bar {
+    font-size: 0.8rem;
+  }
+}
+
+.card.face-down img {
+  filter: brightness(0.55) saturate(0.4);
+}
+
+.card.contested img {
+  outline: 2px dashed #e0a030;
 }

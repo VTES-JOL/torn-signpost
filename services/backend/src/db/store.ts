@@ -25,7 +25,12 @@ import {
   type TransactWriteCommandInput,
 } from '@aws-sdk/lib-dynamodb';
 import type { GameEvent, GameState } from '@torn-signpost/engine';
-import type { CreateGameRequest, DeckCards, LobbyStatus } from '@torn-signpost/protocol';
+import type {
+  ChatMessage,
+  CreateGameRequest,
+  DeckCards,
+  LobbyStatus,
+} from '@torn-signpost/protocol';
 import type { Identity } from '../auth.ts';
 
 export interface Player {
@@ -127,6 +132,66 @@ export class GameStore {
       if (e instanceof TransactionCanceledException) return false;
       throw e;
     }
+  }
+
+  /** Removes a player from an open game; false if it changed meanwhile or isn't open. */
+  async removePlayer(meta: GameMeta, user: string): Promise<boolean> {
+    const players = meta.players.filter((p) => p.user !== user);
+    try {
+      await this.db.send(
+        new TransactWriteCommand({
+          TransactItems: [
+            {
+              Update: {
+                TableName: this.table,
+                Key: { PK: gameKey(meta.id), SK: 'META' },
+                UpdateExpression: 'SET players = :players, playerCount = :n DELETE userIds :u',
+                ConditionExpression:
+                  '#status = :open AND playerCount = :before AND contains(userIds, :user)',
+                ExpressionAttributeNames: { '#status': 'status' },
+                ExpressionAttributeValues: {
+                  ':players': players,
+                  ':n': players.length,
+                  ':before': meta.players.length,
+                  ':u': new Set([user]),
+                  ':user': user,
+                  ':open': 'open',
+                },
+              },
+            },
+            {
+              Delete: { TableName: this.table, Key: { PK: `USER#${user}`, SK: gameKey(meta.id) } },
+            },
+          ],
+        }),
+      );
+      return true;
+    } catch (e) {
+      if (e instanceof TransactionCanceledException) return false;
+      throw e;
+    }
+  }
+
+  async putChat(gameId: string, message: ChatMessage): Promise<void> {
+    await this.db.send(
+      new PutCommand({
+        TableName: this.table,
+        Item: { PK: gameKey(gameId), SK: `MSG#${message.at}#${message.id}`, ...message },
+      }),
+    );
+  }
+
+  /** The latest `limit` chat messages, oldest first. */
+  async chat(gameId: string, limit = 200): Promise<ChatMessage[]> {
+    const items = await this.query(
+      {
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+        ExpressionAttributeValues: { ':pk': gameKey(gameId), ':sk': 'MSG#' },
+        ScanIndexForward: false,
+      },
+      limit,
+    );
+    return items.reverse().map(({ PK: _p, SK: _s, ...m }) => m as unknown as ChatMessage);
   }
 
   async listGames(status: LobbyStatus, limit = 50): Promise<GameMeta[]> {

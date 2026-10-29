@@ -502,6 +502,22 @@ use the same stream.
 | PWA | `vite-plugin-pwa`: app shell, content pack and deck builder work offline (PLAT-02); Web Push (NOTIF-03) |
 | Hosting | S3 + CloudFront at `tornsignpost.org`; the Dark Pack footer is part of the app shell (LEGAL-01..03) |
 
+Implementation notes (M4). The first tabletop keeps dependencies small; the libraries above remain
+the plan as each need grows:
+- **Routing and state:** React Router, and a small `GameClient` store read with
+  `useSyncExternalStore`, instead of TanStack Router/Query and Zustand. The client replays its
+  projected event history through `evolve` and `project`, and fills `seq` gaps over HTTP.
+  Optimistic prediction (UX-11) isn't done yet; responses arrive in tens of milliseconds.
+- **Drag and drop:** one pointer-event layer for mouse, pen and touch (`data-drop` targets), instead
+  of dnd-kit. Drop targets are the zones, minions (to attach) and pools (to transfer blood).
+- **Zoom:** CSS `zoom` with Ctrl/⌘ + wheel and two-finger pinch, instead of `@use-gesture`.
+  Panning is native scrolling.
+- **Animation:** other players' changes animate through the View Transitions API. Each card has a
+  `view-transition-name`. This is skipped under `prefers-reduced-motion`.
+- **Menus and dialogs:** native `<dialog>` and a small positioned menu, instead of Radix.
+- **Phone layout:** the phone gets a scrolling single-row hand; dedicated opponent strips and
+  swiping between seats come later.
+
 ## 7. macOS client (`apps/apple`)
 
 | Concern | Choice |

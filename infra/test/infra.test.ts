@@ -130,9 +130,9 @@ describe('api', () => {
     });
   });
 
-  it('keeps games switched off on the beta until the tabletop is ready', () => {
+  it('switches games on for the beta (internal alpha)', () => {
     api.hasResourceProperties('AWS::Lambda::Function', {
-      Environment: { Variables: Match.objectLike({ GAMES_ENABLED: 'false' }) },
+      Environment: { Variables: Match.objectLike({ GAMES_ENABLED: 'true' }) },
     });
   });
 

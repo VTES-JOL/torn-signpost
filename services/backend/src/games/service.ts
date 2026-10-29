@@ -19,6 +19,8 @@ import {
   viewerFor,
 } from '@torn-signpost/engine';
 import type {
+  ChatMessage,
+  ChatRequest,
   CommandRequest,
   CommandResponse,
   CreateGameRequest,
@@ -186,6 +188,50 @@ export class GameService {
     await this.publishSteps(id, steps);
     await this.deps.publisher.publish(id, () => ({ type: 'lobby', game }));
     return game;
+  }
+
+  async leave(identity: Identity, id: string): Promise<GameSummary> {
+    const user = requireUser(identity);
+    const meta = await this.meta(id);
+    if (meta.status !== 'open') throw new ApiError(409, 'not_open', 'The game has already started');
+    if (!meta.players.some((p) => p.user === user.sub)) {
+      throw new ApiError(409, 'not_joined', 'You have not joined this game');
+    }
+    if (!(await this.deps.store.removePlayer(meta, user.sub))) {
+      throw new ApiError(409, 'busy', 'The game changed; try again');
+    }
+    const game = summary(await this.meta(id));
+    await this.deps.publisher.publish(id, () => ({ type: 'lobby', game }));
+    return game;
+  }
+
+  /** Players and judges talk; spectators only read (GAME-16). */
+  async chat(identity: Identity, id: string, req: ChatRequest): Promise<ChatMessage> {
+    const user = requireUser(identity);
+    const meta = await this.meta(id);
+    const state = meta.status === 'open' ? undefined : await this.load(id, meta.seq);
+    const seated = state
+      ? state.seats.some((s) => s.occupant === user.sub)
+      : meta.players.some((p) => p.user === user.sub);
+    if (!seated && !user.groups.includes('judge')) {
+      throw new ApiError(403, 'spectator', 'Spectators cannot chat');
+    }
+    const message: ChatMessage = {
+      id: this.deps.newId(),
+      user: user.sub,
+      name: user.name,
+      text: req.text,
+      at: this.now().toISOString(),
+      seq: meta.seq,
+    };
+    await this.deps.store.putChat(id, message);
+    await this.deps.publisher.publish(id, () => ({ type: 'chat', gameId: id, message }));
+    return message;
+  }
+
+  async chatHistory(identity: Identity, id: string): Promise<ChatMessage[]> {
+    await this.canView(identity, id);
+    return this.deps.store.chat(id);
   }
 
   async details(identity: Identity, id: string): Promise<GameDetails> {

@@ -134,6 +134,20 @@ export interface ApiError {
   message: string;
 }
 
+export const ChatRequest = z.strictObject({ text: z.string().trim().min(1).max(500) });
+export type ChatRequest = z.infer<typeof ChatRequest>;
+
+/** In-game chat (GAME-12, LOBBY-03), shown interleaved with the log by `seq`. */
+export interface ChatMessage {
+  id: string;
+  user: string;
+  name: string;
+  text: string;
+  at: string;
+  /** The game's seq when the message was sent. */
+  seq: number;
+}
+
 /** Client → server WebSocket messages. */
 export const ClientMessage = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('subscribe'), gameId: Id }),
@@ -147,5 +161,6 @@ export type ServerMessage =
   | { type: 'subscribed'; gameId: string; seq: number }
   | { type: 'events'; gameId: string; events: GameEvent[] }
   | { type: 'lobby'; game: GameSummary }
+  | { type: 'chat'; gameId: string; message: ChatMessage }
   | { type: 'pong' }
   | { type: 'error'; message: string };
