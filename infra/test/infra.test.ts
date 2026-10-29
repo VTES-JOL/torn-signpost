@@ -1,6 +1,7 @@
 import { App } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { MAIN_TABLE } from '../../services/backend/src/db/schema.ts';
 import { ApiStack } from '../lib/api-stack.ts';
 import { AuthStack } from '../lib/auth-stack.ts';
 import { beta } from '../lib/config.ts';
@@ -45,6 +46,25 @@ describe('foundation', () => {
           }),
         ],
       }),
+    });
+  });
+
+  it('matches the key schema the local DynamoDB setup uses', () => {
+    foundation.hasResourceProperties('AWS::DynamoDB::GlobalTable', {
+      KeySchema: [
+        { AttributeName: MAIN_TABLE.partitionKey, KeyType: 'HASH' },
+        { AttributeName: MAIN_TABLE.sortKey, KeyType: 'RANGE' },
+      ],
+      TimeToLiveSpecification: { AttributeName: MAIN_TABLE.ttlAttribute, Enabled: true },
+      GlobalSecondaryIndexes: MAIN_TABLE.indexes.map((i) =>
+        Match.objectLike({
+          IndexName: i.name,
+          KeySchema: [
+            { AttributeName: i.partitionKey, KeyType: 'HASH' },
+            { AttributeName: i.sortKey, KeyType: 'RANGE' },
+          ],
+        }),
+      ),
     });
   });
 

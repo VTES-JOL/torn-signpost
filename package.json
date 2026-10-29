@@ -15,7 +15,11 @@
     "format": "biome check --write .",
     "dev:web": "pnpm --filter @torn-signpost/web dev",
     "synth": "pnpm build && pnpm --filter @torn-signpost/infra synth",
-    "deploy": "pnpm build && pnpm --filter @torn-signpost/infra deploy"
+    "deploy": "pnpm build && pnpm --filter @torn-signpost/infra deploy",
+    "sandbox": "pnpm --filter @torn-signpost/sandbox start",
+    "dev": "pnpm db:up && turbo run dev --filter=@torn-signpost/backend --filter=@torn-signpost/web",
+    "db:up": "docker compose -f local-dev/docker-compose.yml up -d && pnpm --filter @torn-signpost/backend db:init",
+    "db:down": "docker compose -f local-dev/docker-compose.yml down"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

@@ -1,0 +1,13 @@
+# Local backing services for `pnpm dev` (architecture §9: local development).
+name: torn-signpost
+services:
+  dynamodb:
+    image: amazon/dynamodb-local:3.3.2
+    command: -jar DynamoDBLocal.jar -sharedDb -dbPath /home/dynamodblocal/data
+    ports:
+      - '127.0.0.1:8000:8000'
+    volumes:
+      - dynamodb:/home/dynamodblocal/data
+    user: root
+volumes:
+  dynamodb:

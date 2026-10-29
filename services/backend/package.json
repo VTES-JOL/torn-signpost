@@ -5,17 +5,22 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
+    "dev": "tsx watch src/local/server.ts",
+    "db:init": "tsx src/local/init-db.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "3.1151.0",
     "@torn-signpost/engine": "workspace:*",
     "@torn-signpost/protocol": "workspace:*",
     "hono": "4.13.13"
   },
   "devDependencies": {
+    "@hono/node-server": "2.1.5",
     "@types/aws-lambda": "8.10.164",
     "@types/node": "26.6.5",
+    "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vitest": "4.1.12"
   }
