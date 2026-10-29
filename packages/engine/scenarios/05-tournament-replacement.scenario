@@ -1,0 +1,8 @@
+# Players can't be replaced in tournament games; organisers withdraw them instead.
+tournament
+seat A alice
+seat B bob
+seat C carol
+start
+reject:forbidden admin> replace B erin
+expect occupant B bob

@@ -1,0 +1,12 @@
+{
+  "_comment": "Invented test cards. Real card data comes from the content pack and is never committed (LEGAL-08).",
+  "cards": [
+    { "id": "t-vera", "name": "Vera Nightfall", "kind": "crypt", "capacity": 7 },
+    { "id": "t-tomas", "name": "Tomas Grey", "kind": "crypt", "capacity": 4 },
+    { "id": "t-ilse", "name": "Ilse Várga", "kind": "crypt", "capacity": 9 },
+    { "id": "t-feed", "name": "Quick Feed", "kind": "library" },
+    { "id": "t-errand", "name": "Night Errand", "kind": "library" },
+    { "id": "t-ward", "name": "Iron Ward", "kind": "library" },
+    { "id": "t-signal", "name": "Signal Fire", "kind": "library" }
+  ]
+}

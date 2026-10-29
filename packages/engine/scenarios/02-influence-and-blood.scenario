@@ -1,0 +1,52 @@
+# Moving blood, bringing a vampire into play, equipment following its host.
+seed 11
+seat A alice
+seat B bob
+seat C carol
+crypt A "Vera Nightfall" *12
+library A "Iron Ward" *40
+crypt B "Tomas Grey" *12
+library B "Quick Feed" *40
+crypt C "Tomas Grey" *12
+library C "Quick Feed" *40
+start
+
+A> draw crypt 4
+A> transfer +3 "Vera Nightfall"
+expect pool A 27
+expect card A:uncontrolled:1 blood 3
+log B A moved 3 blood from A's pool to a card
+A> transfer +4 A:uncontrolled:1
+reject:not-enough A> transfer +50 A:uncontrolled:2
+reject:not-enough A> transfer -1 A:uncontrolled:2
+
+A> move A:uncontrolled:1 ready
+expect card A:ready:1 blood 7
+expect card A:ready:1 controller A
+expect pool A 23
+log B A moved Vera Nightfall from their uncontrolled region to their ready region
+
+A> draw 7
+A> attach "Iron Ward" A:ready:1
+expect count A:hand 6
+expect card A:ready:2 attached Vera Nightfall
+log public A attached Iron Ward to Vera Nightfall
+
+A> lock A:ready:1
+expect card A:ready:1 locked true
+reject:no-change A> lock A:ready:1
+
+# Equipment travels with its host between ready and torpor...
+A> move A:ready:1 torpor
+expect count A:torpor 2
+expect card A:torpor:2 attached Vera Nightfall
+# ...but stays behind, detached, when the host leaves play.
+A> blood -7 A:torpor:1
+A> move A:torpor:1 ash
+expect count A:ashHeap 1
+expect card A:torpor:1 attached none
+
+# Other players may change public things, such as pool (GAME-10).
+B> pool -2 A
+expect pool A 21
+reject:not-enough B> pool -30 A

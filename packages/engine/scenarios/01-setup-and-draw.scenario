@@ -1,0 +1,41 @@
+# Opening a three-player game: starting pool, opening draws and hidden zones.
+seed 7
+seat A alice
+seat B bob
+seat C carol
+crypt A "Vera Nightfall" *6 "Tomas Grey" *6
+library A "Quick Feed" *20 "Night Errand" *20
+crypt B "Tomas Grey" *12
+library B "Quick Feed" *40
+crypt C "Ilse Várga" *12
+library C "Night Errand" *40
+start
+
+expect turn 1 A unlock
+expect pool A 30
+expect count A:crypt 12
+expect count A:library 40
+# Nobody can see a library, not even its owner.
+expect sees A A:library 0
+expect sees judge A:library 0
+
+A> draw crypt 4
+expect count A:uncontrolled 4
+expect count A:crypt 8
+expect sees A A:uncontrolled 4
+expect sees B A:uncontrolled 0
+expect sees public A:uncontrolled 0
+log B A drew 4 cards from their crypt
+
+A> draw 7
+expect count A:hand 7
+expect sees A A:hand 7
+expect sees C A:hand 0
+log C A drew 7 cards from their library
+
+# Other players' hidden zones are off limits.
+reject:hidden A> move B:library:1 ash
+reject:not-enough B> draw 50
+C> draw crypt 4
+log A C drew 4 cards from their crypt
+log C C drew 4 cards from their crypt: Ilse Várga, Ilse Várga, Ilse Várga, Ilse Várga

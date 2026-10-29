@@ -1,0 +1,52 @@
+# Turn order, reversal, Edge, VP and replacing a player.
+seat A alice
+seat B bob
+seat C carol
+seat D dave
+crypt A "Vera Nightfall" *12
+crypt B "Tomas Grey" *12
+crypt C "Tomas Grey" *12
+crypt D "Tomas Grey" *12
+start
+
+A> next
+A> next
+A> next
+A> next
+expect turn 1 A discard
+A> next
+expect turn 2 B unlock
+log public Turn 2: B's unlock phase
+reject:forbidden A> next
+
+# Reversing play order only changes who takes the next turn (GAME-20).
+B> direction predator
+expect direction predator
+B> next
+B> next
+B> next
+B> next
+B> next
+expect turn 3 A unlock
+A> direction prey
+A> next
+A> next
+A> next
+A> next
+A> next
+expect turn 4 B unlock
+
+A> edge me
+expect edge A
+C> vp +1 C
+C> vp +0.5 C
+expect vp C 1.5
+reject C> vp +0.25 C
+
+# An admin can hand a stalled seat to a willing player (GAME-19).
+admin> replace B erin
+expect occupant B erin
+B> draw crypt 1
+expect count B:uncontrolled 1
+reject:forbidden admin> pool +1 A
+reject:invalid admin> replace C erin

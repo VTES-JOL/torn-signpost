@@ -132,6 +132,10 @@ type CardInstance = {
 };
 ```
 
+M1 implements seats, cards, zones, turn and status. `flow`, `windows`, `pending` and `clock` are
+added with the structured flow in M5. Attached cards move with their host between ready and
+torpor; when the host goes anywhere else, they stay where they are and are detached.
+
 #### 4.1.1 Seating, predator/prey and turn direction (GAME-01, GAME-20)
 
 - `seats` is the **physical seating in clockwise order** and never changes during a game. Your
@@ -202,7 +206,8 @@ commands with their own log entries.
 
 **Console (GAME-13).** `packages/engine/console` parses console text (for example `move "Arika" torpor`,
 `blood +2 arika`, `pool -1`) into the same commands. It provides completion data (card names,
-targets) for both web and Mac. Scenario tests are written in console syntax (§11).
+targets) for both web and Mac. Scenario tests are written in console syntax (§11). The syntax
+reference is [console.md](console.md).
 
 ### 4.3 Available actions — what drives the toolbar (UX-03)
 
@@ -284,13 +289,24 @@ the offers that apply to the selected card.
 
 ```ts
 project(state: GameState, viewer: Viewer): PlayerView          // Viewer = player | judge | spectator
-projectEvent(ev: GameEvent, viewer: Viewer): ProjectedEvent | null
+projectEvent(before: GameState, after: GameState, ev: GameEvent, viewer: Viewer): GameEvent
 ```
 
 - Each event has a **public** part and optional **private** parts keyed by player (for example
   `Draw` is public as "Ankha drew 1 card", but private to Ankha with the card ID).
 - Hidden cards (library, hand, crypt, uncontrolled, face-down) are sent without `cardId`.
-- **Instance ID re-keying**: when a card enters a hidden zone or is shuffled, it gets a fresh
+  Visibility: crypt and library are hidden from everyone, including their owner. Hand and
+  uncontrolled region are visible only to their seat. Face-down cards are visible only to their
+  owner.
+- An event names a card only if the viewer could see it before or after the event. A shuffle's
+  old-to-new ID mapping goes only to viewers who can see the zone.
+- A view is the same `GameState` shape with `cardId` missing on hidden cards, so clients follow the
+  game with the same `evolve`, re-projecting after each event:
+  `project(evolve(view, projectEvent(…)), viewer)` always equals `project(evolve(state, ev), viewer)`.
+  The property tests check this.
+- A card entering a hidden zone loses its in-play state (lock, counters, attachments, contested).
+  Shuffles apply to crypt, library and hand only.
+- **Instance ID re-keying**: when a card enters a hidden zone, turns face down or is shuffled, it gets a fresh
   random `InstanceId`. Otherwise a card that was revealed could be tracked through a shuffle.
 - **Shuffles** use `crypto.randomInt` Fisher–Yates on the server. The resulting order is
   recorded in a private event payload, so replay is deterministic.

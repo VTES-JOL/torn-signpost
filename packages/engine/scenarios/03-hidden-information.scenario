@@ -1,0 +1,40 @@
+# Face-down cards, reveals, judge looks and shuffles.
+seed 3
+seat A alice
+seat B bob
+seat C carol
+crypt A "Vera Nightfall" *12
+library A "Signal Fire" *30
+crypt B "Tomas Grey" *12
+library B "Quick Feed" *30
+crypt C "Tomas Grey" *12
+library C "Quick Feed" *30
+start
+
+A> draw 3
+A> move A:hand:1 ready facedown
+expect card A:ready:1 faceDown true
+expect sees A A:ready 1
+expect sees B A:ready 0
+expect sees public A:ready 0
+log B A moved a face-down card from their hand to their ready region
+
+A> flip A:ready:1
+expect sees B A:ready 1
+log B A turned Signal Fire face up
+
+A> reveal A:hand:1
+log B A revealed Signal Fire
+expect sees B A:hand 0
+reject:forbidden B> reveal A:hand:1
+
+# A judge can look at a hidden card; everyone sees that it happened (GAME-03).
+reject:forbidden A> look A:library:1
+judge> look A:library:1
+expect sees judge A:library 1
+expect sees B A:library 0
+log B A judge looked at a hidden card in A's library
+# Shuffling re-keys every card, so the judge loses track of it.
+A> shuffle
+expect sees judge A:library 0
+log B A shuffled their library
