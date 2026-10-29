@@ -1,0 +1,23 @@
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Node / build
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+cdk.out/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Xcode
+DerivedData/
+xcuserdata/
+*.xcuserstate
