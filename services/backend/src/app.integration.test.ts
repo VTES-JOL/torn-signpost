@@ -3,8 +3,8 @@ import type { CommandResponse, GameDetails, GameSummary } from '@torn-signpost/p
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from './app.ts';
 import { devAuthenticator } from './auth.ts';
-import { defaultCatalog } from './games/catalog.ts';
 import { GameService } from './games/service.ts';
+import { testContent, testDeck } from './testing/content.ts';
 import { dynamoAvailable, testStore } from './testing/dynamo.ts';
 
 const available = await dynamoAvailable();
@@ -17,7 +17,7 @@ describe.skipIf(!available)('games over HTTP (DynamoDB Local)', () => {
     cleanup = t.cleanup;
     const games = new GameService({
       store: t.store,
-      catalog: defaultCatalog,
+      content: testContent,
       rng: seededRng(3),
       publisher: { publish: async () => {} },
       newId: () => 'http-game',
@@ -44,7 +44,7 @@ describe.skipIf(!available)('games over HTTP (DynamoDB Local)', () => {
   };
 
   it('plays through create → join → start → command → catch-up', async () => {
-    const deck = { crypt: Array(12).fill('t-tomas'), library: Array(40).fill('t-ward') };
+    const deck = testDeck;
     expect((await call('POST', '/games', undefined, {})).status).toBe(401);
     expect((await call('POST', '/games', 'alice', { name: '' })).status).toBe(400);
     const created = await call('POST', '/games', 'alice', {
@@ -75,13 +75,13 @@ describe.skipIf(!available)('games over HTTP (DynamoDB Local)', () => {
     expect((res.json as CommandResponse).seq).toBe(2);
     const rejected = await call('POST', `/games/${id}/commands`, 'bob', {
       commandId: 'draw-0002',
-      command: { type: 'Draw', count: 50 },
+      command: { type: 'Draw', count: 80 },
     });
     expect(rejected).toMatchObject({ status: 422, json: { error: 'not-enough' } });
 
     const caughtUp = await call('GET', `/games/${id}/events?after=1`);
     expect(caughtUp).toMatchObject({ status: 200, json: { seq: 2, more: false } });
-    expect(JSON.stringify(caughtUp.json)).not.toContain('t-ward');
+    expect(JSON.stringify(caughtUp.json)).not.toMatch(/t-feed|t-ward/);
     expect((await call('GET', '/games?status=active')).json).toEqual([
       expect.objectContaining({ id, status: 'active' }),
     ]);

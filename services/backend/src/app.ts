@@ -3,14 +3,17 @@ import {
   type ApiError as ApiErrorBody,
   CommandRequest,
   CreateGameRequest,
+  DeckFormat,
   type HealthResponse,
   JoinGameRequest,
   LobbyStatus,
+  SaveDeckRequest,
 } from '@torn-signpost/protocol';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
 import { type Authenticator, bearer, GUEST, type Identity } from './auth.ts';
+import type { DeckService } from './decks/service.ts';
 import { ApiError } from './errors.ts';
 import type { GameService } from './games/service.ts';
 
@@ -21,6 +24,7 @@ export interface AppConfig {
   auth?: Authenticator;
   /** Missing while the games feature is switched off for the stage. */
   games?: GameService;
+  decks?: DeckService;
 }
 
 type Env = { Variables: { identity: Identity } };
@@ -105,6 +109,38 @@ export function createApp(config: AppConfig): Hono<Env> {
       .min(0)
       .parse(c.req.query('after') ?? '0');
     return c.json(await games().events(c.var.identity, c.req.param('id'), after));
+  });
+
+  // Decks (DECK-03/07). Public decks are readable by guests.
+  const decks = () => {
+    if (!config.decks) throw new ApiError(503, 'decks_disabled', 'Decks are not available yet');
+    return config.decks;
+  };
+  app.on(['POST', 'PUT', 'DELETE'], '/decks/*', async (c, next) => {
+    if (c.var.identity.kind !== 'user') throw new ApiError(401, 'sign_in', 'Sign in first');
+    await next();
+  });
+  app.get('/decks', async (c) => c.json(await decks().mine(c.var.identity)));
+  app.get('/decks/public', async (c) =>
+    c.json(await decks().listPublic(DeckFormat.parse(c.req.query('format') ?? 'standard'))),
+  );
+  app.post('/decks', async (c) => {
+    if (c.var.identity.kind !== 'user') throw new ApiError(401, 'sign_in', 'Sign in first');
+    return c.json(await decks().create(c.var.identity, await body(c.req, SaveDeckRequest)), 201);
+  });
+  app.get('/decks/:id', async (c) => c.json(await decks().get(c.var.identity, c.req.param('id'))));
+  app.put('/decks/:id', async (c) =>
+    c.json(
+      await decks().update(c.var.identity, c.req.param('id'), await body(c.req, SaveDeckRequest)),
+    ),
+  );
+  app.delete('/decks/:id', async (c) => {
+    await decks().delete(c.var.identity, c.req.param('id'));
+    return c.body(null, 204);
+  });
+  app.get('/decks/:id/versions/:version', async (c) => {
+    const version = z.coerce.number().int().min(1).parse(c.req.param('version'));
+    return c.json(await decks().version(c.var.identity, c.req.param('id'), version));
   });
 
   app.notFound((c) =>

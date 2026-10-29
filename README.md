@@ -24,7 +24,9 @@ play-by-post, from a phone, a browser or a Mac. Live beta at <https://tornsignpo
 | `services/backend` | AWS Lambda handlers, plus a local server for development |
 | `apps/web` | React web client (PWA) |
 | `infra` | AWS CDK app |
+| `packages/cards` | Card records, search, deck import/export, validation and stats |
 | `tools/sandbox` | Terminal sandbox for playing the engine locally |
+| `tools/content-ingest` | Builds and publishes the content pack (card data and images) |
 | `local-dev` | Docker Compose for DynamoDB Local |
 
 ## Development
@@ -36,6 +38,16 @@ pnpm install
 pnpm check        # Biome lint + format check
 pnpm typecheck
 pnpm test
+```
+
+### Card data (admins)
+
+Card data and images are never committed (LEGAL-08). They're built from KRCG and the deckserver
+scans, then published to the content bucket:
+
+```sh
+pnpm content:ingest                     # build card data into content-pack/ (git-ignored)
+pnpm content:ingest --images --publish  # mirror scans and publish (needs AWS credentials)
 ```
 
 ### Running locally

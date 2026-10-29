@@ -12,8 +12,8 @@ import type { Identity } from '../auth.ts';
 import type { GameStore } from '../db/store.ts';
 import type { ConnectionGateway } from '../realtime/gateway.ts';
 import { Fanout, Realtime } from '../realtime/realtime.ts';
+import { testContent, testDeck } from '../testing/content.ts';
 import { dynamoAvailable, testStore } from '../testing/dynamo.ts';
-import { defaultCatalog } from './catalog.ts';
 import { GameService, viewerOf } from './service.ts';
 
 const available = await dynamoAvailable();
@@ -31,7 +31,7 @@ const dave = user('dave');
 const judge = user('jo', ['judge']);
 const admin = user('ada', ['admin']);
 const guest: Identity = { kind: 'guest' };
-const deck = { crypt: Array(12).fill('t-vera'), library: Array(40).fill('t-feed') };
+const deck = testDeck;
 
 /** A gateway that records what each connection was sent. */
 function recordingGateway() {
@@ -51,7 +51,7 @@ let n = 0;
 function service(store: GameStore, gateway: ConnectionGateway, seed = 1) {
   const games = new GameService({
     store,
-    catalog: defaultCatalog,
+    content: testContent,
     rng: seededRng(seed),
     publisher: new Fanout(store, gateway),
     newId: () => `g${++n}-${seed}`,
@@ -125,11 +125,14 @@ describe.skipIf(!available)('game service (DynamoDB Local)', () => {
         maxSeats: 3,
       });
       await expect(
-        games.join(bob, g.id, { deck: { crypt: ['t-feed'], library: [] } }),
-      ).rejects.toMatchObject({ code: 'invalid_deck' });
+        games.join(bob, g.id, { deck: { ...deck, crypt: [{ id: 't-feed', count: 12 }] } }),
+      ).rejects.toMatchObject({
+        code: 'illegal_deck',
+        message: expect.stringContaining('belongs in the library'),
+      });
       await expect(
-        games.join(bob, g.id, { deck: { crypt: ['nope'], library: [] } }),
-      ).rejects.toMatchObject({ code: 'unknown_card' });
+        games.join(bob, g.id, { deck: { ...deck, library: [{ id: 't-feed', count: 30 }] } }),
+      ).rejects.toMatchObject({ code: 'illegal_deck', message: expect.stringContaining('60–90') });
     });
 
     it('keeps private games to their players, judges and admins', async () => {

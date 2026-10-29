@@ -19,7 +19,8 @@
     "sandbox": "pnpm --filter @torn-signpost/sandbox start",
     "dev": "pnpm db:up && turbo run dev --filter=@torn-signpost/backend --filter=@torn-signpost/web",
     "db:up": "docker compose -f local-dev/docker-compose.yml up -d && pnpm --filter @torn-signpost/backend db:init",
-    "db:down": "docker compose -f local-dev/docker-compose.yml down"
+    "db:down": "docker compose -f local-dev/docker-compose.yml down",
+    "content:ingest": "pnpm --filter @torn-signpost/content-ingest start"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

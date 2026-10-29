@@ -116,6 +116,9 @@ export class FoundationStack extends Stack {
         cachePolicy: new cloudfront.CachePolicy(this, 'ContentCache', {
           defaultTtl: Duration.days(1),
           maxTtl: Duration.days(365),
+          // The card data is ~2 MB of JSON; compressed it's a fraction of that.
+          enableAcceptEncodingGzip: true,
+          enableAcceptEncodingBrotli: true,
         }),
         responseHeadersPolicy: new cloudfront.ResponseHeadersPolicy(this, 'ContentCors', {
           corsBehavior: {

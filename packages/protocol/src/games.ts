@@ -4,6 +4,7 @@
  */
 import { type Command, type GameEvent, type GameState, ZONE_NAMES } from '@torn-signpost/engine';
 import { z } from 'zod';
+import { DeckCards } from './decks.ts';
 
 const Id = z.string().min(1).max(64);
 const ZoneId = z.templateLiteral([z.string().min(1).max(64), ':', z.enum(ZONE_NAMES)]);
@@ -70,13 +71,6 @@ export const Visibility = z.enum(['public', 'private']);
 export const LobbyStatus = z.enum(['open', 'active', 'finished']);
 export type LobbyStatus = z.infer<typeof LobbyStatus>;
 
-/** Inline deck list until the deck builder arrives (M3). */
-export const DeckList = z.strictObject({
-  crypt: z.array(Id).max(40),
-  library: z.array(Id).max(120),
-});
-export type DeckList = z.infer<typeof DeckList>;
-
 export const CreateGameRequest = z.strictObject({
   name: z.string().trim().min(1).max(60),
   format: Format,
@@ -85,7 +79,11 @@ export const CreateGameRequest = z.strictObject({
 });
 export type CreateGameRequest = z.infer<typeof CreateGameRequest>;
 
-export const JoinGameRequest = z.strictObject({ deck: DeckList });
+/** Join with a saved deck (optionally a specific version), or an inline list. */
+export const JoinGameRequest = z.union([
+  z.strictObject({ deckId: z.string().min(1).max(64), version: opt(z.number().int().min(1)) }),
+  z.strictObject({ deck: DeckCards }),
+]);
 export type JoinGameRequest = z.infer<typeof JoinGameRequest>;
 
 export const CommandRequest = z.strictObject({

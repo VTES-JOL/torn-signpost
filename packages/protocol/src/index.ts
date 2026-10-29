@@ -30,4 +30,5 @@ export const ClientConfig = z.object({
   flags: FeatureFlags,
 });
 export type ClientConfig = z.infer<typeof ClientConfig>;
+export * from './decks.ts';
 export * from './games.ts';

@@ -27,6 +27,7 @@ const gateway: ConnectionGateway = {
 const services = createServices({
   tableName: local.tableName,
   endpoint: local.dynamodb.endpoint,
+  contentUrl: local.contentUrl,
   gateway,
 });
 
@@ -36,6 +37,7 @@ const app = createApp({
   allowedOrigins: [local.webOrigin],
   auth: devAuthenticator,
   games: services.games,
+  decks: services.decks,
 });
 
 const server = serve({ fetch: app.fetch, port: local.port }, ({ port }) => {

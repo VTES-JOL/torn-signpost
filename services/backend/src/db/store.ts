@@ -25,14 +25,16 @@ import {
   type TransactWriteCommandInput,
 } from '@aws-sdk/lib-dynamodb';
 import type { GameEvent, GameState } from '@torn-signpost/engine';
-import type { CreateGameRequest, DeckList, LobbyStatus } from '@torn-signpost/protocol';
+import type { CreateGameRequest, DeckCards, LobbyStatus } from '@torn-signpost/protocol';
 import type { Identity } from '../auth.ts';
 
 export interface Player {
   user: string;
   name: string;
   /** Kept until the game starts; the deck then lives in the GameStarted event. */
-  deck?: DeckList;
+  deck?: DeckCards;
+  /** The saved deck version joined with, if any (DECK-07). */
+  deckRef?: { id: string; version: number };
 }
 
 export interface GameMeta extends CreateGameRequest {

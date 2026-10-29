@@ -22,7 +22,11 @@ const byCallbackUrl = new Map<string, Services>();
 export function servicesFor(callbackUrl: string): Services {
   let services = byCallbackUrl.get(callbackUrl);
   if (!services) {
-    services = createServices({ tableName: env('TABLE_NAME'), gateway: awsGateway(callbackUrl) });
+    services = createServices({
+      tableName: env('TABLE_NAME'),
+      contentUrl: env('CONTENT_URL'),
+      gateway: awsGateway(callbackUrl),
+    });
     byCallbackUrl.set(callbackUrl, services);
   }
   return services;

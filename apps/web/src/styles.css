@@ -35,6 +35,11 @@ a {
   color: var(--accent);
 }
 
+h1 {
+  font-size: 1.6rem;
+  margin: 0.25rem 0 1rem;
+}
+
 .page {
   min-height: 100dvh;
   display: flex;
@@ -116,4 +121,401 @@ a {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text);
+}
+
+/* App shell */
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  padding-block: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.nav {
+  display: flex;
+  gap: 1rem;
+}
+
+.nav a {
+  color: var(--muted);
+  text-decoration: none;
+  padding-block: 0.25rem;
+}
+
+.nav a.active {
+  color: var(--text);
+  border-bottom: 2px solid var(--accent);
+}
+
+.account {
+  margin-left: auto;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.account form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.main {
+  flex: 1;
+  width: 100%;
+  max-width: 80rem;
+  margin: 0 auto;
+  padding-block: 1rem 2rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+.notice {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+/* Controls */
+
+button,
+.button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.7rem;
+  min-height: 2.25rem;
+}
+
+button,
+.button {
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+button:hover:not(:disabled),
+.button:hover {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.primary,
+.button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.danger {
+  color: var(--accent);
+}
+
+button.link {
+  border: none;
+  background: none;
+  padding: 0;
+  min-height: 0;
+  color: var(--text);
+  text-align: left;
+}
+
+button.link:hover {
+  text-decoration: underline;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.toolbar h1 {
+  margin-right: auto;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  align-items: center;
+}
+
+.tabs [role="tab"][aria-selected="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.badge {
+  display: inline-block;
+  font-size: 0.8rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+
+.badge.ok {
+  border-color: #3c8d5a;
+  color: #3c8d5a;
+}
+
+.issues {
+  margin: 0 0 1rem;
+  padding-left: 1.25rem;
+  color: var(--accent);
+}
+
+/* Card search */
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.capacity {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.capacity input {
+  width: 3.5rem;
+}
+
+.results {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  gap: 0.75rem;
+}
+
+.results li {
+  position: relative;
+}
+
+.thumb {
+  flex-direction: column;
+  width: 100%;
+  padding: 0.25rem;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  line-height: 1.2;
+}
+
+.thumb img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 358 / 500;
+  border-radius: 4px;
+  background: var(--border);
+}
+
+.results .add {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  min-height: 2rem;
+  width: 2rem;
+  padding: 0;
+  font-weight: 700;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.search.compact .results {
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+}
+
+/* Dialogs */
+
+dialog {
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-width: min(46rem, calc(100vw - 2rem));
+  padding: 1rem;
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+
+.card-detail-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.card-detail-body img {
+  max-width: min(358px, 100%);
+  height: auto;
+  border-radius: 8px;
+}
+
+.card-detail-body > div {
+  flex: 1 1 16rem;
+}
+
+.card-detail h2 {
+  margin-top: 0;
+}
+
+.card-text {
+  white-space: pre-line;
+  line-height: 1.45;
+}
+
+.import-dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(40rem, calc(100vw - 2rem));
+  z-index: 10;
+}
+
+.import-dialog textarea {
+  width: 100%;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+}
+
+/* Decks */
+
+.deck-list {
+  list-style: none;
+  padding: 0;
+}
+
+.deck-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: baseline;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.deck-name {
+  flex: 1 1 14rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.editor-panels {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.editor-panels:not(:has(.search-panel)) {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 48rem;
+}
+
+.deck-section h2 {
+  font-size: 1.15rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.deck-section h3 {
+  font-size: 0.95rem;
+  color: var(--muted);
+  margin: 0.75rem 0 0.25rem;
+}
+
+.deck-section ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.deck-section li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.15rem 0;
+}
+
+.deck-section li > button:not(.link) {
+  min-height: 1.75rem;
+  width: 1.75rem;
+  padding: 0;
+}
+
+.deck-section .count {
+  min-width: 1.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats p {
+  margin: 0.35rem 0;
+  font-size: 0.9rem;
+}
+
+.notes {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 1rem;
+}
+
+.narrow-only {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .narrow-only {
+    display: flex;
+  }
+
+  .editor-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .editor-panels.show-deck .search-panel,
+  .editor-panels.show-search .deck-panel {
+    display: none;
+  }
 }

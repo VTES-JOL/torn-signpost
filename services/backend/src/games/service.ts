@@ -2,9 +2,9 @@
  * The game service (architecture §5.2): lobby, start, and the per-game serialised command
  * pipeline. Every response and push is projected for its recipient (§4.5).
  */
+import { expand, validateDeck } from '@torn-signpost/cards';
 import {
   type Actor,
-  type CardCatalog,
   decide,
   ENGINE_VERSION,
   evolve,
@@ -22,7 +22,7 @@ import type {
   CommandRequest,
   CommandResponse,
   CreateGameRequest,
-  DeckList,
+  DeckCards,
   EventsResponse,
   GameDetails,
   GameSummary,
@@ -31,7 +31,9 @@ import type {
   ServerMessage,
 } from '@torn-signpost/protocol';
 import type { Identity } from '../auth.ts';
+import type { Content } from '../content/catalog.ts';
 import type { GameMeta, GameStore } from '../db/store.ts';
+import type { DeckService } from '../decks/service.ts';
 import { ApiError } from '../errors.ts';
 
 /** Delivers a message, built per recipient, to everyone watching a game. */
@@ -41,7 +43,9 @@ export interface Publisher {
 
 export interface GameServiceDeps {
   store: GameStore;
-  catalog: CardCatalog;
+  content: Content;
+  /** For joining with a saved deck. */
+  decks?: DeckService;
   rng: Rng;
   publisher: Publisher;
   newId: () => string;
@@ -100,11 +104,23 @@ export class GameService {
   async join(identity: Identity, id: string, req: JoinGameRequest): Promise<GameSummary> {
     const user = requireUser(identity);
     const meta = await this.meta(id);
-    this.validateDeck(req.deck);
+    let deck: DeckCards;
+    let deckRef: { id: string; version: number } | undefined;
+    if ('deckId' in req) {
+      if (!this.deps.decks)
+        throw new ApiError(422, 'invalid_deck', 'Saved decks are not available');
+      const version = req.version ?? (await this.deps.decks.get(identity, req.deckId)).version;
+      deck = await this.deps.decks.cardsFor(identity, req.deckId, version);
+      deckRef = { id: req.deckId, version };
+    } else {
+      deck = req.deck;
+    }
+    await this.validateDeck(deck, meta.format);
     const ok = await this.deps.store.addPlayer(id, {
       user: user.sub,
       name: user.name,
-      deck: req.deck,
+      deck,
+      ...(deckRef ? { deckRef } : {}),
     });
     if (!ok) {
       if (meta.status !== 'open')
@@ -141,15 +157,14 @@ export class GameService {
         seats: seating.map((p, i) => ({
           id: String(i + 1),
           user: p.user,
-          crypt: p.deck?.crypt ?? [],
-          library: p.deck?.library ?? [],
+          ...expand(p.deck ?? { crypt: [], library: [] }),
         })),
       },
       {
         actor: { kind: 'system' },
         now: this.now().toISOString(),
         rng: this.deps.rng,
-        catalog: this.deps.catalog,
+        catalog: (await this.deps.content()).catalog,
       },
     );
     if (!result.ok) throw new ApiError(422, result.rejection.code, result.rejection.message);
@@ -231,7 +246,7 @@ export class GameService {
         actor,
         now: this.now().toISOString(),
         rng: this.deps.rng,
-        catalog: this.deps.catalog,
+        catalog: (await this.deps.content()).catalog,
       });
       if (!result.ok) throw new ApiError(422, result.rejection.code, result.rejection.message);
       const steps = run(state, result.events);
@@ -333,17 +348,12 @@ export class GameService {
     throw new ApiError(404, 'not_found', 'No such game');
   }
 
-  private validateDeck(deck: DeckList) {
-    for (const [kind, ids] of [
-      ['crypt', deck.crypt],
-      ['library', deck.library],
-    ] as const) {
-      for (const cardId of ids) {
-        const card = this.deps.catalog.get(cardId);
-        if (!card) throw new ApiError(422, 'unknown_card', `Unknown card ${cardId}`);
-        if (card.kind !== kind)
-          throw new ApiError(422, 'invalid_deck', `${card.name} is not a ${kind} card`);
-      }
+  /** Decks must be legal in the game's format (DECK-04). */
+  private async validateDeck(deck: DeckCards, format: GameMeta['format']) {
+    const { index } = await this.deps.content();
+    const errors = validateDeck(deck, index, format).filter((e) => e.level === 'error');
+    if (errors.length) {
+      throw new ApiError(422, 'illegal_deck', errors.map((e) => e.message).join('; '));
     }
   }
 }

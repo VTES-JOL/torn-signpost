@@ -436,7 +436,29 @@ tools/content-ingest  (run by an admin: GitHub Actions manual workflow or POST /
 ```
 
 Clients fetch `content-manifest.json`, then the immutable, hash-named files, which are cached
-indefinitely (offline-capable). Taking the content stack down removes all WoD material at once.
+indefinitely (offline-capable).
+
+Implementation notes (M3):
+- **The ingest tool:** `tools/content-ingest` (`pnpm content:ingest [--images] [--publish]`),
+  run by an admin with AWS credentials. A manual GitHub workflow can wrap it later.
+- **Card data:** published as `data/cards.<hash>.json` (immutable) and `data/manifest.json` (cached
+  5 minutes). Each card is a `CardRecord` from `packages/cards`, normalised from KRCG. Sect is read
+  from the first clause of a vampire's text.
+- **V5 card pool:** cards printed in V5-branded sets. The set list is recorded in the manifest
+  (`formats.v5Sets`).
+- **Images:** the deckserver scans are 358×500, so the ingest makes two WebP sizes,
+  `cards/<id>/thumb.webp` (160 px) and `cards/<id>/full.webp` (358 px), plus the card backs. It
+  copies from the `static.deckserver.net` bucket, skips images already mirrored, and reports scans
+  it can't read; the UI then shows the card back. An upscaled 720 px size wasn't worth making.
+- **Server:** the backend loads the same card data from the CDN, re-checks the manifest every
+  5 minutes and keeps its last good copy if the CDN fails, so card updates need no deploy (DECK-01).
+- **Decks:** stored as `DECK#<id>` / `META` plus immutable `V#<n>` versions. Public decks are
+  listed through GSI1 (`DECKS#<format>`), and "my decks" through `USER#<sub>` / `DECK#<id>` items.
+  Games are joined with `{ deckId, version? }`, and the deck must be legal in the game's format.
+  Duel uses the Standard deck rules for now.
+- **Import and export:** these run in the browser (`packages/cards`). Supported: TWDA, VDB,
+  Amaranth and Lackey text, and KRCG / vtesdecks JSON. Importing from a URL needs a server-side
+  fetch and is still to do. Taking the content stack down removes all WoD material at once.
 Generated card rendering (DECK-09) later adds an `art/` output (artwork extracted from the scans) and
 a rendering component per client.
 

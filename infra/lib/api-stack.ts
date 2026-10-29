@@ -51,6 +51,7 @@ export class ApiStack extends Stack {
       USER_POOL_ID: props.userPoolId,
       USER_POOL_CLIENT_ID: props.userPoolClientId,
       GAMES_ENABLED: String(config.gamesEnabled),
+      CONTENT_URL: `https://${h.content}`,
       NODE_OPTIONS: '--enable-source-maps',
     };
     const fn = (name: string, entry: string, extra: Record<string, string> = {}) => {
