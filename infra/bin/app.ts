@@ -8,7 +8,7 @@ import { OpsStack } from '../lib/ops-stack.ts';
 import { WebDeployStack } from '../lib/web-deploy-stack.ts';
 
 const app = new App();
-const config = { ...beta, alertEmail: app.node.tryGetContext('alertEmail') as string | undefined };
+const config = beta;
 const env = { account: process.env.CDK_DEFAULT_ACCOUNT, region: config.region };
 const version =
   process.env.GITHUB_SHA?.slice(0, 7) ??

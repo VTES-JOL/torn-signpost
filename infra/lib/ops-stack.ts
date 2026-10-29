@@ -7,6 +7,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import type * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as subs from 'aws-cdk-lib/aws-sns-subscriptions';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import type { Construct } from 'constructs';
 import type { StageConfig } from './config.ts';
 
@@ -23,8 +24,13 @@ export class OpsStack extends Stack {
   constructor(scope: Construct, id: string, config: StageConfig, props: OpsStackProps) {
     super(scope, id, props);
 
+    // Budget and alarm notifications both go through this topic to the email held in SSM.
     const alerts = new sns.Topic(this, 'Alerts', { displayName: 'Torn Signpost alerts' });
-    if (config.alertEmail) alerts.addSubscription(new subs.EmailSubscription(config.alertEmail));
+    alerts.addSubscription(
+      new subs.EmailSubscription(
+        ssm.StringParameter.valueForStringParameter(this, config.alertEmailParameter),
+      ),
+    );
 
     const notify = (threshold: number, type: 'ACTUAL' | 'FORECASTED') => ({
       notification: {
@@ -33,9 +39,7 @@ export class OpsStack extends Stack {
         threshold,
         thresholdType: 'PERCENTAGE',
       },
-      subscribers: config.alertEmail
-        ? [{ subscriptionType: 'EMAIL', address: config.alertEmail }]
-        : [{ subscriptionType: 'SNS', address: alerts.topicArn }],
+      subscribers: [{ subscriptionType: 'SNS', address: alerts.topicArn }],
     });
     alerts.addToResourcePolicy(
       new iam.PolicyStatement({
@@ -46,7 +50,6 @@ export class OpsStack extends Stack {
     );
     new budgets.CfnBudget(this, 'MonthlyBudget', {
       budget: {
-        budgetName: `torn-signpost-${config.stage}-monthly`,
         budgetType: 'COST',
         timeUnit: 'MONTHLY',
         budgetLimit: { amount: config.monthlyBudgetUsd, unit: 'USD' },

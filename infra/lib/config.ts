@@ -9,8 +9,11 @@ export interface StageConfig {
   hostedZoneId: string;
   githubRepo: string;
   monthlyBudgetUsd: number;
-  /** Budget and alarm notifications. Supplied at deploy time (`-c alertEmail=...`), never committed. */
-  alertEmail?: string | undefined;
+  /**
+   * SSM parameter holding the budget/alarm email. Resolved by CloudFormation at deploy time, so the
+   * address never appears in the public repo or CI logs.
+   */
+  alertEmailParameter: string;
   /** Feature flags served to clients; keeps unfinished features dark on the live beta. */
   flags: Record<string, boolean>;
 }
@@ -22,6 +25,7 @@ export const beta: StageConfig = {
   hostedZoneId: 'Z05649391VI7WDPTZYFVB',
   githubRepo: 'VTES-JOL/torn-signpost',
   monthlyBudgetUsd: 50,
+  alertEmailParameter: '/torn-signpost/beta/alert-email',
   flags: {},
 };
 

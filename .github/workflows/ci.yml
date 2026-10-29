@@ -57,9 +57,7 @@ jobs:
           aws-region: us-east-1
       - name: CDK deploy
         working-directory: infra
-        run: >
-          pnpm exec cdk deploy --all --require-approval never
-          ${{ vars.ALERT_EMAIL && format('-c alertEmail={0}', vars.ALERT_EMAIL) || '' }}
+        run: pnpm exec cdk deploy --all --require-approval never
       - name: Smoke test
         run: |
           set -euo pipefail
