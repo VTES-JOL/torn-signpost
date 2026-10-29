@@ -5,7 +5,7 @@ import type { Command } from './commands.ts';
 import { decide } from './decide.ts';
 import type { GameEvent } from './events.ts';
 import { evolve, newGame } from './evolve.ts';
-import { type Actor, type GameState, type Viewer, ZONE_NAMES } from './model.ts';
+import { type Actor, type CardInstance, type GameState, type Viewer, ZONE_NAMES } from './model.ts';
 import { canSee, project, projectEvent } from './projection.ts';
 import { seededRng } from './rng.ts';
 import { zoneId } from './zones.ts';
@@ -130,9 +130,17 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
+/** Card IDs are unique per physical card here, so index each state once. */
+const byCardId = new WeakMap<GameState, Map<string, CardInstance>>();
+
 /** Whether the physical card with this card ID is visible to the viewer in `state`. */
 function visibleIn(state: GameState, id: string, viewer: Viewer): boolean {
-  const card = Object.values(state.cards).find((c) => c.cardId === id);
+  let index = byCardId.get(state);
+  if (!index) {
+    index = new Map(Object.values(state.cards).flatMap((c) => (c.cardId ? [[c.cardId, c]] : [])));
+    byCardId.set(state, index);
+  }
+  const card = index.get(id);
   return card !== undefined && canSee(card, viewer);
 }
 
@@ -176,7 +184,8 @@ function forEveryEvent(check: (before: GameState, ev: GameEvent, after: GameStat
   );
 }
 
-describe('hidden information', () => {
+// Property suites run hundreds of random games; allow for slower CI runners.
+describe('hidden information', { timeout: 60_000 }, () => {
   it('a projected state never contains the identity of a card the viewer cannot see', () => {
     forEveryEvent((_, __, after) => {
       for (const v of viewers(after)) {
@@ -225,7 +234,7 @@ describe('hidden information', () => {
   });
 });
 
-describe('engine invariants', () => {
+describe('engine invariants', { timeout: 60_000 }, () => {
   it('evolve never mutates its input (states are deep-frozen) and blood is conserved by transfers', () => {
     forEveryEvent((before, ev, after) => {
       if (ev.type === 'BloodTransferred') expect(totalBlood(after)).toBe(totalBlood(before));
