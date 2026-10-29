@@ -89,7 +89,7 @@ export class OpsStack extends Stack {
       assumedBy: new iam.OpenIdConnectPrincipal(provider, {
         StringEquals: {
           'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
-          'token.actions.githubusercontent.com:sub': `repo:${config.githubRepo}:environment:${config.stage}`,
+          'token.actions.githubusercontent.com:sub': `${config.githubOidcSubject}:environment:${config.stage}`,
         },
       }),
     });

@@ -108,7 +108,7 @@ describe('ops', () => {
               StringEquals: {
                 'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
                 'token.actions.githubusercontent.com:sub':
-                  'repo:VTES-JOL/torn-signpost:environment:beta',
+                  'repo:VTES-JOL@200019109/torn-signpost@1438320358:environment:beta',
               },
             },
           }),

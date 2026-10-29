@@ -8,6 +8,11 @@ export interface StageConfig {
   domainName: string;
   hostedZoneId: string;
   githubRepo: string;
+  /**
+   * GitHub OIDC immutable subject prefix (owner and repo IDs), so a renamed or re-created repo
+   * can't assume the deploy role.
+   */
+  githubOidcSubject: string;
   monthlyBudgetUsd: number;
   /**
    * SSM parameter holding the budget/alarm email. Resolved by CloudFormation at deploy time, so the
@@ -24,6 +29,7 @@ export const beta: StageConfig = {
   domainName: 'tornsignpost.org',
   hostedZoneId: 'Z05649391VI7WDPTZYFVB',
   githubRepo: 'VTES-JOL/torn-signpost',
+  githubOidcSubject: 'repo:VTES-JOL@200019109/torn-signpost@1438320358',
   monthlyBudgetUsd: 50,
   alertEmailParameter: '/torn-signpost/beta/alert-email',
   flags: {},
