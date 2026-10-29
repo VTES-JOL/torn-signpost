@@ -18,6 +18,8 @@ export type HealthResponse = z.infer<typeof HealthResponse>;
 export const ClientConfig = z.object({
   stage: z.string(),
   apiUrl: z.url(),
+  /** WebSocket endpoint for live game updates (architecture §5.4). */
+  wsUrl: z.url(),
   /** Content pack origin (WoD material, LEGAL-08). */
   contentUrl: z.url(),
   auth: z.object({
@@ -28,3 +30,4 @@ export const ClientConfig = z.object({
   flags: FeatureFlags,
 });
 export type ClientConfig = z.infer<typeof ClientConfig>;
+export * from './games.ts';

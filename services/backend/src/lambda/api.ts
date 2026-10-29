@@ -1,10 +1,15 @@
 import { handle } from 'hono/aws-lambda';
 import { createApp } from '../app.ts';
+import { allowedOrigins, auth, gamesEnabled, servicesFor, stage, version } from './env.ts';
+
+const services = servicesFor(process.env.WS_CALLBACK_URL ?? '');
 
 const app = createApp({
-  stage: process.env.STAGE ?? 'local',
-  version: process.env.APP_VERSION ?? 'dev',
-  allowedOrigins: (process.env.ALLOWED_ORIGINS ?? '').split(',').filter(Boolean),
+  stage,
+  version,
+  allowedOrigins,
+  auth,
+  ...(gamesEnabled ? { games: services.games } : {}),
 });
 
 export const handler = handle(app);

@@ -13,6 +13,7 @@ import type { StageConfig } from './config.ts';
 
 export interface OpsStackProps extends StackProps {
   apiFunction: lambda.IFunction;
+  wsFunction: lambda.IFunction;
   httpApi: apigw.HttpApi;
 }
 
@@ -66,6 +67,13 @@ export class OpsStack extends Stack {
     new cloudwatch.Alarm(this, 'ApiErrors', {
       alarmDescription: 'API Lambda errors',
       metric: props.apiFunction.metricErrors({ period: Duration.minutes(5) }),
+      threshold: 5,
+      evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    }).addAlarmAction(action);
+    new cloudwatch.Alarm(this, 'WsErrors', {
+      alarmDescription: 'WebSocket Lambda errors',
+      metric: props.wsFunction.metricErrors({ period: Duration.minutes(5) }),
       threshold: 5,
       evaluationPeriods: 1,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,

@@ -326,7 +326,7 @@ projectEvent(before: GameState, after: GameState, ev: GameEvent, viewer: Viewer)
 
 ## 5. Backend
 
-### 5.1 API surface (HTTP API, JWT authorizer; public routes allow guests)
+### 5.1 API surface (HTTP API; public routes allow guests)
 
 | Area | Routes (abridged) | Auth |
 |---|---|---|
@@ -340,6 +340,18 @@ projectEvent(before: GameState, after: GameState, ev: GameEvent, viewer: Viewer)
 
 WebSocket routes: `$connect` (optional JWT in the query string, verified with `aws-jwt-verify`;
 no token = guest/spectator), `subscribe {game|chat channel}`, `unsubscribe`, `ping`, `$disconnect`.
+
+Implementation notes (M2):
+- **Tokens are checked by the Lambda, not by an API Gateway authorizer.** The Lambda verifies the
+  Cognito ID token with `aws-jwt-verify`, so routes that allow guests still recognise signed-in
+  players. Judges and admins come from the `judge` and `admin` Cognito groups.
+- **Starting a game:** the creator calls `POST /games/{id}/start` once enough players have joined.
+  Seating is random, and seats are numbered `1`…`n` clockwise.
+- **Decks:** until the deck builder exists (M3), `join` takes an inline deck list, checked against
+  the catalog.
+- **Local runs:** the local server accepts `dev:<user>[:<groups>]` tokens.
+- **`GAMES_ENABLED`:** a per-stage switch for the game routes and WebSocket connections. It is off on
+  the beta until the tabletop is ready (M4).
 
 ### 5.2 Command pipeline (per game, serialised)
 
@@ -380,7 +392,8 @@ sequenceDiagram
 | Command dedupe | `GAME#<id>` | `CMD#<commandId>` | TTL 24 h |
 | In-game chat | `GAME#<id>` | `MSG#<ts>#<id>` | interleaved with the log on the client (GAME-12) |
 | Membership | `USER#<sub>` | `GAME#<id>` | "my games", seat, deck version |
-| Connection | `CONN#<connId>` | `META` | user, subscriptions, TTL 3 h. GSI2 `SUB#<game\|channel>` / `<connId>` for fan-out |
+| Connection | `CONN#<connId>` | `META` | identity, subscribed games, TTL 3 h |
+| Subscription | `SUB#<game\|channel>` | `CONN#<connId>` | identity, TTL 3 h; one Query per fan-out, so no GSI is needed |
 | Profile | `USER#<sub>` | `PROFILE` | display name, avatar, prefs. Unique handles via `HANDLE#<lower>` items (AUTH-05) |
 | Stats | `USER#<sub>` | `STATS#<season>` | aggregates (STATS-02). GSI3 `LB#<season>#<metric>` / zero-padded score (STATS-03) |
 | Deck | `DECK#<id>` | `META`, `V#<n>` | versions immutable (DECK-07). GSI1 `OWNER#<sub>` for my decks; GSI4 `PUBLIC#<format>` / `<updatedAt>` for public listings |
@@ -395,9 +408,12 @@ implementation.
 
 ### 5.4 Realtime, presence & notifications
 
-- **Fan-out**: the command Lambda queries GSI2 `SUB#<gameId>` (players plus spectators, normally fewer
+- **Fan-out**: the command Lambda queries the `SUB#<gameId>` partition (players plus spectators, normally fewer
   than 20 connections) and posts each connection its own projection. Stale connections (`410 Gone`)
   are deleted.
+- **Callback URLs:** the WebSocket Lambda builds its callback URL from each request. The API can't
+  be passed to its own integration's environment without a circular dependency. The HTTP Lambda
+  gets the URL as configuration.
 - **Presence** (TEMPO-06): `$connect`, `$disconnect` and `subscribe` update connection items; a
   `presence` message goes to the game's subscribers.
 - **Offline notification flow** (TEMPO-01, NOTIF-01..03): DynamoDB Streams → `stream` Lambda finds

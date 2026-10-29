@@ -51,6 +51,10 @@ pnpm sandbox      # play the engine in the terminal as any seat, judge or admin
 - `pnpm dev` runs the same Hono app that Lambda runs, as a local Node server with auto-reload,
   against a `ts-local-main` table in DynamoDB Local. The local DynamoDB client always uses the
   local endpoint and dummy credentials, so it can't reach the real account.
+- Locally, use `Authorization: Bearer dev:<user>` (e.g. `dev:alice`, or `dev:jo:judge` for a
+  judge) instead of signing in. WebSockets connect to `ws://localhost:3001/ws?token=dev:alice`.
+- Backend integration tests run against DynamoDB Local in throwaway tables. Start it with
+  `pnpm db:up`; without it they're skipped locally (CI always runs them).
 - To point the local web client at the live beta API instead:
   `TS_API_URL=https://api.tornsignpost.org pnpm dev:web`.
 - The sandbox starts a three-player table with invented test cards. Type `.help` for commands,

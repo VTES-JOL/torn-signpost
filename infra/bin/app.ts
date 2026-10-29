@@ -35,6 +35,8 @@ const api = new ApiStack(app, stackName(config, 'Api'), config, {
   zone: foundation.zone,
   certificate: foundation.certificate,
   table: foundation.table,
+  userPoolId: auth.userPool.userPoolId,
+  userPoolClientId: auth.webClient.userPoolClientId,
   version,
 });
 
@@ -45,6 +47,7 @@ new WebDeployStack(app, stackName(config, 'WebDeploy'), {
   clientConfig: {
     stage: config.stage,
     apiUrl: api.url,
+    wsUrl: api.wsUrl,
     contentUrl: `https://${hosts(config).content}`,
     auth: {
       domain: auth.domainName,
@@ -58,6 +61,7 @@ new WebDeployStack(app, stackName(config, 'WebDeploy'), {
 new OpsStack(app, stackName(config, 'Ops'), config, {
   env,
   apiFunction: api.apiFunction,
+  wsFunction: api.wsFunction,
   httpApi: api.httpApi,
 });
 

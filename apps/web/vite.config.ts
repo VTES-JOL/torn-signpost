@@ -18,6 +18,7 @@ function localConfig(): Plugin {
         ...example,
         stage: 'local',
         apiUrl: process.env.TS_API_URL ?? 'http://localhost:3001',
+        wsUrl: process.env.TS_WS_URL ?? 'ws://localhost:3001/ws',
       };
       server.middlewares.use('/config.json', (_req, res) => {
         res.setHeader('Content-Type', 'application/json');

@@ -15,6 +15,14 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      # Backend integration tests (architecture §11) run against DynamoDB Local.
+      dynamodb:
+        image: amazon/dynamodb-local:3.3.2
+        ports:
+          - 8000:8000
+    env:
+      DYNAMODB_ENDPOINT: http://localhost:8000
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -63,4 +71,5 @@ jobs:
           set -euo pipefail
           curl -fsS https://api.tornsignpost.org/health | tee /dev/stderr | grep -q '"status":"ok"'
           curl -fsS https://tornsignpost.org/config.json | grep -q '"stage":"beta"'
+          curl -fsS https://tornsignpost.org/config.json | grep -q '"wsUrl":"wss://ws.tornsignpost.org"'
           curl -fsS https://tornsignpost.org/ | grep -q '<div id="root">'

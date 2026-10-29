@@ -1,6 +1,7 @@
 {
   "stage": "local",
   "apiUrl": "https://api.tornsignpost.org",
+  "wsUrl": "wss://ws.tornsignpost.org",
   "contentUrl": "https://content.tornsignpost.org",
   "auth": {
     "domain": "auth.tornsignpost.org",

@@ -23,9 +23,16 @@ beforeAll(() => {
     zone: f.zone,
     certificate: f.certificate,
     table: f.table,
+    userPoolId: a.userPool.userPoolId,
+    userPoolClientId: a.webClient.userPoolClientId,
     version: 'test',
   });
-  const o = new OpsStack(app, 'O', beta, { env, apiFunction: p.apiFunction, httpApi: p.httpApi });
+  const o = new OpsStack(app, 'O', beta, {
+    env,
+    apiFunction: p.apiFunction,
+    wsFunction: p.wsFunction,
+    httpApi: p.httpApi,
+  });
   foundation = Template.fromStack(f);
   auth = Template.fromStack(a);
   api = Template.fromStack(p);
@@ -109,6 +116,24 @@ describe('api', () => {
       Architectures: ['arm64'],
     });
     api.hasResourceProperties('AWS::Logs::LogGroup', { RetentionInDays: 30 });
+  });
+
+  it('serves live updates from a throttled WebSocket API on ws.<domain>', () => {
+    api.resourceCountIs('AWS::Lambda::Function', 2);
+    api.hasResourceProperties('AWS::ApiGatewayV2::Api', { ProtocolType: 'WEBSOCKET' });
+    api.hasResourceProperties('AWS::ApiGatewayV2::Stage', {
+      StageName: 'live',
+      DefaultRouteSettings: { ThrottlingRateLimit: 50, ThrottlingBurstLimit: 100 },
+    });
+    api.hasResourceProperties('AWS::ApiGatewayV2::DomainName', {
+      DomainName: 'ws.tornsignpost.org',
+    });
+  });
+
+  it('keeps games switched off on the beta until the tabletop is ready', () => {
+    api.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: { Variables: Match.objectLike({ GAMES_ENABLED: 'false' }) },
+    });
   });
 
   it('throttles the default stage', () => {

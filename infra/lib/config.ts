@@ -21,6 +21,8 @@ export interface StageConfig {
   alertEmailParameter: string;
   /** Feature flags served to clients; keeps unfinished features dark on the live beta. */
   flags: Record<string, boolean>;
+  /** Server-side switch for the game service (M2); off until the web tabletop (M4) is ready. */
+  gamesEnabled: boolean;
 }
 
 export const beta: StageConfig = {
@@ -33,11 +35,13 @@ export const beta: StageConfig = {
   monthlyBudgetUsd: 50,
   alertEmailParameter: '/torn-signpost/beta/alert-email',
   flags: {},
+  gamesEnabled: false,
 };
 
 export const hosts = (c: StageConfig) => ({
   web: c.domainName,
   api: `api.${c.domainName}`,
+  ws: `ws.${c.domainName}`,
   auth: `auth.${c.domainName}`,
   content: `content.${c.domainName}`,
 });

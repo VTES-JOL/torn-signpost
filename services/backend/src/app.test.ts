@@ -1,6 +1,7 @@
 import { HealthResponse } from '@torn-signpost/protocol';
 import { describe, expect, it } from 'vitest';
 import { createApp } from './app.ts';
+import { devAuthenticator } from './auth.ts';
 
 const app = createApp({ stage: 'test', version: '1.2.3', allowedOrigins: ['https://example.org'] });
 
@@ -23,6 +24,26 @@ describe('api', () => {
   it('returns JSON 404 for unknown routes', async () => {
     const res = await app.request('/nope');
     expect(res.status).toBe(404);
-    expect(await res.json()).toEqual({ error: 'not_found' });
+    expect(await res.json()).toEqual({ error: 'not_found', message: 'Not found' });
+  });
+});
+
+describe('games routes', () => {
+  const disabled = createApp({
+    stage: 'test',
+    version: '1',
+    allowedOrigins: [],
+    auth: devAuthenticator,
+  });
+
+  it('answer 503 while games are switched off for the stage', async () => {
+    const res = await disabled.request('/games');
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ error: 'games_disabled' });
+  });
+
+  it('reject bad tokens with 401', async () => {
+    const res = await disabled.request('/games', { headers: { Authorization: 'Bearer nonsense' } });
+    expect(res.status).toBe(401);
   });
 });

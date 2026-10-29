@@ -6,7 +6,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./console": "./src/console/index.ts"
+    "./console": "./src/console/index.ts",
+    "./test-catalog.json": "./scenarios/catalog.json"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

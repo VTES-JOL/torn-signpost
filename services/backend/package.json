@@ -11,17 +11,23 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "3.1151.0",
     "@aws-sdk/client-dynamodb": "3.1151.0",
+    "@aws-sdk/lib-dynamodb": "3.1151.0",
     "@torn-signpost/engine": "workspace:*",
     "@torn-signpost/protocol": "workspace:*",
-    "hono": "4.13.13"
+    "aws-jwt-verify": "5.2.1",
+    "hono": "4.13.13",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@hono/node-server": "2.1.5",
     "@types/aws-lambda": "8.10.164",
     "@types/node": "26.6.5",
+    "@types/ws": "8.18.2",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
-    "vitest": "4.1.12"
+    "vitest": "4.1.12",
+    "ws": "8.22.0"
   }
 }

@@ -40,6 +40,11 @@ export class AuthStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
+    new cognito.CfnUserPoolGroup(this, 'JudgeGroup', {
+      userPoolId: this.userPool.userPoolId,
+      groupName: 'judge',
+      description: 'Judges: rule on judge calls and may look at hidden cards (GAME-03, GAME-18)',
+    });
     new cognito.CfnUserPoolGroup(this, 'AdminGroup', {
       userPoolId: this.userPool.userPoolId,
       groupName: 'admin',
