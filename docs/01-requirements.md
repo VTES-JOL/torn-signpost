@@ -1,7 +1,7 @@
 # Torn Signpost — Requirements
 
 Status: **APPROVED** (Phase 1 signed off 2026-10-29)
-Last updated: 2026-10-29
+Last updated: 2026-10-29 (amended during Phase 2: timers, judge calls, player replacement, seating)
 
 ## 1. Vision
 
@@ -61,7 +61,7 @@ Priority: **M** = must have for MVP, **S** = should have for MVP, **C** = could 
 
 | ID      | Requirement                                                                                                                                                                                                                                                                                                                                                                                                       | Pri |
 |---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----|
-| GAME-01 | Table size max 5 with predator/prey seating and ousting. Public Standard games seat 5; 4-player tables only in private games and tournament rounds; 2-player games only in the Duel format                                                                                                                                                                                                                        | M   |
+| GAME-01 | Table size max 5. Public Standard games seat 5; 4-player tables only in private games and tournament rounds; 2-player games only in the Duel format. Predator/prey relationships always follow the **physical seating** (prey to the left, predator to the right) and are recalculated as players are ousted | M |
 | GAME-02 | Full zone model per player: crypt, library, hand, uncontrolled region, ready region (controlled), torpor, ash heap, removed from game, research/out-of-play areas                                                                                                                                                                                                                                                 | M   |
 | GAME-03 | Card state: locked/unlocked, contested, counters (blood, life, generic), attached cards, capacity, controller vs owner, **face-down** (identity hidden from everyone except the owning player; a judge can reveal on demand, audited)                                                                                                                                                                             | M   |
 | GAME-04 | Pool (start 30), Edge, victory points, game wins, transfers per turn                                                                                                                                                                                                                                                                                                                                              | M   |
@@ -78,6 +78,10 @@ Priority: **M** = must have for MVP, **S** = should have for MVP, **C** = could 
 | GAME-15 | Hidden information is enforced by the server: players only receive their own hand/library contents; shuffles use a server-side cryptographic RNG                                                                                                                                                                                                                                                                  | M   |
 | GAME-16 | Spectating: anyone, including guests, can view public games, seeing public information only (no hands, libraries or face-down identities). Spectators cannot chat or interact                                                                                                                                                                                                                                     | M   |
 | GAME-17 | Replay of completed games from the event log                                                                                                                                                                                                                                                                                                                                                                      | C   |
+| GAME-18 | **Judge call**: any player at the table can call a judge (e.g. slow play, rules dispute). A judge call **pauses the table timer** until the judge resolves it. Judges can rule, correct state (audited) and apply the outcome of a slow-play ruling | M |
+| GAME-19 | **Player replacement**: in a non-tournament game an admin (not necessarily a judge) can replace a seat's player with a willing player. The new player takes ownership of every card the previous player owned, plus the seat's hand, library, crypt, pool and VP, so a game isn't stalled by a player who doesn't return | M |
+| GAME-20 | **Turn direction**: play normally passes to your prey when your turn ends; some cards reverse the play order. The only effect of a reversal is which player takes the next turn; predator/prey (left = prey, right = predator) and impulse order always follow the physical seating | M |
+| GAME-21 | **Ousted on your own turn**: the turn ends, the ousted player can take no further part, and play passes to the next player from the ousted seat's position after the effect that ousted them finishes resolving: any combat involving them ends and the current action ends (architecture DQ9, following zero-vtes's VEKN-ruling-based rules) | M |
 
 ### 4.2 Tempo (TEMPO)
 
@@ -86,8 +90,8 @@ Priority: **M** = must have for MVP, **S** = should have for MVP, **C** = could 
 | TEMPO-01 | When the engine is waiting on a player, that player is notified (in-app, email/push per preferences) and can respond whenever convenient                                                              | M   |
 | TEMPO-02 | Live mode: all connected clients see changes in under 500 ms (p95)                                                                                                                                    | M   |
 | TEMPO-03 | Games default to real time. When the engine needs input from an offline player, the game halts on that decision only and resumes in real time once the player responds. No explicit async/live switch | M   |
-| TEMPO-04 | Async turn deadlines with reminders, plus a configurable auto-pass/timeout policy                                                                                                                     | M   |
-| TEMPO-05 | Live mode table timer (e.g. 2h tournament round)                                                                                                                                                      | S   |
+| TEMPO-04 | **Async response deadline**: a game is *async* whenever not all players are present at the table. A decision owned by an absent player gets a response deadline (default **24 h**) with a reminder. When the deadline passes, nothing is decided automatically: a judge call is raised and a judge rules. The table timer is paused while a game is async. Game creators can change the default; tournament organisers can override it for a whole tournament or for specific date ranges (e.g. holidays) | M |
+| TEMPO-05 | **Real-time table timer**: while all players are present there are **no per-decision deadlines**. The table runs a global timer (default **2 h**, e.g. a tournament round). Anyone at the table can call a judge if they think a player is taking too long | M |
 | TEMPO-06 | Presence: who is currently viewing the game                                                                                                                                                           | S   |
 | TEMPO-07 | Vacation/away status that pauses async deadlines                                                                                                                                                      | C   |
 
@@ -129,14 +133,14 @@ Priority: **M** = must have for MVP, **S** = should have for MVP, **C** = could 
 
 | ID       | Requirement                                                                                              | Pri |
 |----------|----------------------------------------------------------------------------------------------------------|-----|
-| TOURN-01 | Create a tournament: format, rounds, final, round time limit and response deadlines, registration window | M   |
+| TOURN-01 | Create a tournament: format, rounds, final, table time limit, registration window, async response deadline with date-range overrides (TEMPO-04) | M |
 | TOURN-02 | Registration with decklist submission and deck lock                                                      | M   |
 | TOURN-03 | Seating per round that follows VEKN seating rules (port of the existing solver)                          | M   |
 | TOURN-04 | Automatic creation of round games from the seating                                                       | M   |
 | TOURN-05 | Result recording: GW, VP, TP, standings and tie-breaks; organiser can correct results                    | M   |
 | TOURN-06 | Finals seating by standings, with seat choice                                                            | S   |
 | TOURN-07 | VEKN-compatible results export (archon format)                                                           | S   |
-| TOURN-08 | Judge call from inside a tournament game                                                                 | S   |
+| TOURN-08 | **Judge call** from inside any game (GAME-18); in tournaments it goes to the tournament's judges | S |
 
 ### 4.7 Stats (STATS)
 
