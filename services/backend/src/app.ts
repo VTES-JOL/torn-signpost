@@ -166,7 +166,13 @@ export function createApp(config: AppConfig): Hono<Env> {
   app.get('/me', async (c) => c.json(await profiles().me(c.var.identity)));
   app.put('/me', async (c) => {
     if (c.var.identity.kind !== 'user') throw new ApiError(401, 'sign_in', 'Sign in first');
-    return c.json(await profiles().rename(c.var.identity, await body(c.req, UpdateProfileRequest)));
+    return c.json(await profiles().choose(c.var.identity, await body(c.req, UpdateProfileRequest)));
+  });
+  app.put('/users/:name/name', async (c) => {
+    if (c.var.identity.kind !== 'user') throw new ApiError(401, 'sign_in', 'Sign in first');
+    const req = await body(c.req, UpdateProfileRequest);
+    await profiles().adminRename(c.var.identity, c.req.param('name'), req);
+    return c.body(null, 204);
   });
 
   app.notFound((c) =>

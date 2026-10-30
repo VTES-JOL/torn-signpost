@@ -1,6 +1,7 @@
 /**
  * Profiles (architecture §5.3, AUTH-05). A name is claimed by a `HANDLE#` item so two users can't
- * hold it at once, whatever its case.
+ * hold it at once, whatever its case. Claims are never released, so a name can't be reused to
+ * impersonate its former holder.
  *
  * | Item | PK | SK |
  * |---|---|---|
@@ -36,9 +37,17 @@ export class ProfileStore {
     return Item ? { name: Item.name as string, updatedAt: Item.updatedAt as string } : undefined;
   }
 
+  /** The user who claimed `name` (now or in the past). */
+  async ownerOf(name: string): Promise<string | undefined> {
+    const { Item } = await this.db.send(
+      new GetCommand({ TableName: this.table, Key: handleKey(name) }),
+    );
+    return Item?.owner as string | undefined;
+  }
+
   /**
-   * Claim `name` and release `previous`. Conditional on the profile still holding `previous`, so
-   * concurrent renames can't leave a name claimed by nobody.
+   * Claim `name`; the user keeps their claim on `previous`. Conditional on the profile still
+   * holding `previous`, so concurrent renames can't both win.
    */
   async rename(
     sub: string,
@@ -70,17 +79,6 @@ export class ProfileStore {
         },
       },
     ];
-    if (previous && previous.toLowerCase() !== name.toLowerCase()) {
-      items.push({
-        Delete: {
-          TableName: this.table,
-          Key: handleKey(previous),
-          ConditionExpression: '#owner = :sub',
-          ExpressionAttributeNames: { '#owner': 'owner' },
-          ExpressionAttributeValues: { ':sub': sub },
-        },
-      });
-    }
     try {
       await this.db.send(new TransactWriteCommand({ TransactItems: items }));
       return 'ok';

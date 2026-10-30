@@ -2,6 +2,9 @@
  * Display names (AUTH-05). Every request's identity carries the user's chosen name, so games,
  * chat and decks record it without looking it up themselves. Names already recorded in games and
  * decks keep the name used at the time.
+ *
+ * To prevent impersonation, players choose a name once; after that only admins can rename them,
+ * and no name is ever given to a second user.
  */
 import type { Profile, UpdateProfileRequest } from '@torn-signpost/protocol';
 import type { Identity } from '../auth.ts';
@@ -60,24 +63,41 @@ export class ProfileService {
     };
   }
 
-  async rename(identity: Identity, req: UpdateProfileRequest): Promise<Profile> {
+  /** Choose a display name; only possible while the user has none. */
+  async choose(identity: Identity, req: UpdateProfileRequest): Promise<Profile> {
     const user = requireUser(identity);
-    if (RESERVED.has(req.name.toLowerCase())) {
-      throw new ApiError(409, 'name_taken', `“${req.name}” is reserved`);
-    }
     const current = await this.deps.store.get(user.sub);
-    if (current?.name !== req.name) {
-      const result = await this.deps.store.rename(
-        user.sub,
-        req.name,
-        current?.name,
-        this.now().toISOString(),
+    if (current && current.name !== req.name) {
+      throw new ApiError(
+        409,
+        'name_locked',
+        'Display names are permanent; ask an admin to change it',
       );
-      if (result === 'taken') throw new ApiError(409, 'name_taken', `“${req.name}” is taken`);
-      if (result === 'stale') throw new ApiError(409, 'stale', 'Your name just changed; try again');
     }
-    this.remember(user.sub, req.name);
+    if (!current) await this.claim(user.sub, req.name, undefined);
     return { sub: user.sub, name: req.name, chosen: true, groups: user.groups };
+  }
+
+  /** Admins only: rename the user who holds `name`. */
+  async adminRename(identity: Identity, name: string, req: UpdateProfileRequest): Promise<void> {
+    const admin = requireUser(identity);
+    if (!admin.groups.includes('admin')) throw new ApiError(403, 'admin_only', 'Admins only');
+    const sub = await this.deps.store.ownerOf(name);
+    const current = sub ? await this.deps.store.get(sub) : undefined;
+    if (!sub || current?.name.toLowerCase() !== name.toLowerCase()) {
+      throw new ApiError(404, 'not_found', `Nobody is called “${name}”`);
+    }
+    if (current.name !== req.name) await this.claim(sub, req.name, current.name);
+  }
+
+  private async claim(sub: string, name: string, previous: string | undefined) {
+    if (RESERVED.has(name.toLowerCase())) {
+      throw new ApiError(409, 'name_taken', `“${name}” is reserved`);
+    }
+    const result = await this.deps.store.rename(sub, name, previous, this.now().toISOString());
+    if (result === 'taken') throw new ApiError(409, 'name_taken', `“${name}” is taken`);
+    if (result === 'stale') throw new ApiError(409, 'stale', 'The name just changed; try again');
+    this.remember(sub, name);
   }
 
   private async chosenName(sub: string): Promise<string | undefined> {

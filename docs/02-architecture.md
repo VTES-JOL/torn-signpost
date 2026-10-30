@@ -474,13 +474,15 @@ a rendering component per client.
   pseudonymises the player in completed game logs ("Former player #8f3a") so other players'
   history and stats survive.
 
-Implementation notes (display names). `GET/PUT /me` read and set the display name: 3–24 letters,
-digits, `_` or `-` (so it works as an `@mention`), unique ignoring case, with a few reserved names.
-A rename claims `HANDLE#<lower>` and releases the old claim in one transaction, conditional on the
-profile still holding the old name. The API resolves the name for every signed-in request (cached
-for 60 s per Lambda), so games, chat and decks record it without extra lookups; names already
-recorded keep the name used at the time. Until a name is chosen the user shows as "Player 1a2b" and
-the web app asks for one.
+Implementation notes (display names). `GET/PUT /me` read and choose the display name: 3–24
+letters, digits, `_` or `-` (so it works as an `@mention`), unique ignoring case, with a few
+reserved names. To prevent impersonation a player chooses a name once; afterwards only an admin can
+rename them (`PUT /users/{name}/name`), and a name is never released: each is claimed for good by a
+`HANDLE#<lower>` item owned by its user, written in the same transaction as the profile and
+conditional on the profile still holding the old name. The API resolves the name for every
+signed-in request (cached for 60 s per Lambda), so games, chat and decks record it without extra
+lookups; names already recorded keep the name used at the time. Until a name is chosen the user
+shows as "Player 1a2b" and the web app asks for one.
 
 ### 5.7 Tournaments & seating (TOURN-*)
 

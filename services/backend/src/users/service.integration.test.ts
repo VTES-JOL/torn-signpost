@@ -44,7 +44,8 @@ describe.skipIf(!available)('display names (DynamoDB Local)', () => {
       headers,
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-    return { status: res.status, json: (await res.json()) as Record<string, unknown> };
+    const json = res.status === 204 ? {} : ((await res.json()) as Record<string, unknown>);
+    return { status: res.status, json };
   };
 
   it('starts with a placeholder name and needs a signed-in user', async () => {
@@ -54,20 +55,34 @@ describe.skipIf(!available)('display names (DynamoDB Local)', () => {
     expect(me.json).toMatchObject({ sub: 'alice', name: 'alice', chosen: false });
   });
 
-  it('claims unique names, ignoring case, and frees the old one on a change', async () => {
+  it('claims unique names, ignoring case, once per user', async () => {
     const set = (user: string, name: string) => call('PUT', '/me', user, { name });
     expect((await set('alice', 'Nocturne')).json).toMatchObject({ name: 'Nocturne', chosen: true });
     expect((await call('GET', '/me', 'alice')).json).toMatchObject({ name: 'Nocturne' });
+    // Choosing the same name again is harmless; anything else is locked.
+    expect((await set('alice', 'Nocturne')).status).toBe(200);
+    const locked = await set('alice', 'Methuselah');
+    expect(locked.status).toBe(409);
+    expect(locked.json.error).toBe('name_locked');
 
     const clash = await set('bob', 'NOCTURNE');
     expect(clash.status).toBe(409);
     expect(clash.json.error).toBe('name_taken');
+  });
 
-    // Changing case keeps the claim; changing name releases it.
-    expect((await set('alice', 'nocturne')).status).toBe(200);
-    expect((await set('alice', 'Methuselah')).status).toBe(200);
-    expect((await set('bob', 'Nocturne')).status).toBe(200);
-    expect((await set('carol', 'methuselah')).status).toBe(409);
+  it('lets only admins rename, and never frees the old name', async () => {
+    await call('PUT', '/me', 'gina', { name: 'Gina' });
+    const rename = (by: string, name: string, to: string) =>
+      call('PUT', `/users/${name}/name`, by, { name: to });
+    expect((await rename('gina', 'Gina', 'Gina2')).status).toBe(403);
+    expect((await rename('root:admin', 'nobody-here', 'X_x')).status).toBe(404);
+    expect((await rename('root:admin', 'gina', 'Gina_V')).status).toBe(204);
+    expect((await call('GET', '/me', 'gina')).json).toMatchObject({ name: 'Gina_V' });
+    // The old name now refers to nobody, and can't be taken by someone else.
+    expect((await rename('root:admin', 'Gina', 'Gina3')).status).toBe(404);
+    expect((await call('PUT', '/me', 'hank', { name: 'gina' })).status).toBe(409);
+    // An admin can give the user their old name back.
+    expect((await rename('root:admin', 'Gina_V', 'Gina')).status).toBe(204);
   });
 
   it('rejects malformed and reserved names', async () => {

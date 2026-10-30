@@ -56,8 +56,8 @@ export function NameForm(props: {
   onDone?: () => void;
   children?: ReactNode;
 }) {
-  const { profile, rename } = useProfile();
-  const [name, setName] = useState(profile?.chosen ? profile.name : '');
+  const { rename } = useProfile();
+  const [name, setName] = useState('');
   const [message, setMessage] = useState<string>();
   const [busy, setBusy] = useState(false);
   return (
@@ -99,7 +99,8 @@ export function NameForm(props: {
       </button>
       {props.children}
       <p className="muted small" role="status">
-        {message ?? '3–24 letters, digits, _ or -. Shown to other players; must be unique.'}
+        {message ??
+          '3–24 letters, digits, _ or -. Shown to other players and permanent: choose carefully.'}
       </p>
     </form>
   );
