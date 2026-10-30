@@ -9,6 +9,8 @@ export interface CardInfo {
   name: string;
   kind: 'crypt' | 'library';
   capacity?: number;
+  /** Library card types as printed, e.g. `Master`, `Action`, `Reaction`. Used to filter offers. */
+  types?: readonly string[];
 }
 
 export interface CardCatalog {

@@ -1,9 +1,11 @@
 import type { GameEvent } from './events.ts';
 import {
+  type ActionState,
   type CardId,
   type CardInstance,
   type GameId,
   type GameState,
+  type ImpulseWindow,
   type InstanceId,
   type Seat,
   ZONE_NAMES,
@@ -12,7 +14,7 @@ import {
 import type { SeatId } from './seating.ts';
 import { HIDDEN_ZONES, IN_PLAY_ZONES, parseZoneId, zoneId } from './zones.ts';
 
-export const ENGINE_VERSION = '0.1.0';
+export const ENGINE_VERSION = '0.2.0';
 
 export function newGame(id: GameId): GameState {
   return {
@@ -185,6 +187,59 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
     case 'PhaseAdvanced':
       d.turn = { ...ev.turn };
       break;
+    case 'AutoPassSet': {
+      const phases = ev.phases;
+      if (phases) patchSeat(d, ev.seat, () => ({ autoPass: [...phases] }));
+      break;
+    }
+    case 'WindowOpened':
+      d.window = { ...ev.window, order: [...ev.window.order] };
+      break;
+    case 'Passed': {
+      const w = windowOf(d);
+      d.window = { ...w, cursor: (w.cursor + 1) % w.order.length, passes: w.passes + 1 };
+      const a = d.action;
+      if (
+        w.kind === 'blocks' &&
+        a &&
+        !a.blockAttempt &&
+        a.eligible.includes(ev.seat) &&
+        !a.declined.includes(ev.seat)
+      ) {
+        d.action = { ...a, declined: [...a.declined, ev.seat] };
+      }
+      break;
+    }
+    case 'ImpulseReset':
+      d.window = { ...windowOf(d), cursor: 0, passes: 0 };
+      break;
+    case 'WindowClosed':
+      delete d.window;
+      break;
+    case 'ActionDeclared':
+      d.action = { ...ev.action, eligible: [...ev.action.eligible], declined: [] };
+      break;
+    case 'BlockAttempted':
+      d.action = { ...actionOf(d), blockAttempt: { seat: ev.seat, minion: ev.minion } };
+      d.window = { ...windowOf(d), cursor: 0, passes: 0 };
+      break;
+    case 'BlockWithdrawn': {
+      const { blockAttempt: _, ...a } = actionOf(d);
+      d.action = { ...a, declined: [...a.declined, ev.seat] };
+      break;
+    }
+    case 'ActionBlocked': {
+      const { blockAttempt: _, ...a } = actionOf(d);
+      d.action = { ...a, stage: 'combat', blocker: ev.blocker };
+      break;
+    }
+    case 'ActionResolving':
+      d.action = { ...actionOf(d), stage: 'resolution' };
+      break;
+    case 'ActionEnded':
+      delete d.action;
+      delete d.window;
+      break;
     case 'PlayerReplaced':
       patchSeat(d, ev.seat, (s) => ({
         occupant: ev.user,
@@ -230,6 +285,16 @@ function blankCard(id: InstanceId, owner: SeatId, zone: ZoneId): CardInstance {
 function withCardId(card: CardInstance, cardId: CardId | undefined): CardInstance {
   if (cardId !== undefined) card.cardId = cardId;
   return card;
+}
+
+function windowOf(d: GameState): ImpulseWindow {
+  if (!d.window) throw new Error('No impulse window open');
+  return d.window;
+}
+
+function actionOf(d: GameState): ActionState {
+  if (!d.action) throw new Error('No action in progress');
+  return d.action;
 }
 
 function cardOf(d: GameState, id: InstanceId): CardInstance {

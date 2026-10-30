@@ -27,7 +27,20 @@ player. The parser lives in `packages/engine/src/console` and is shared by every
 | `reveal <card>` | Show one of your hidden cards to everyone |
 | `edge <seat\|none>` | Give the Edge to a seat, or to nobody |
 | `direction prey\|predator` | Which way play passes when a turn ends (GAME-20) |
-| `next` | Advance to the next phase, or end the turn after discard |
+| `next` | End the current phase (or the turn, after discard). Opens the end-of-phase pass round unless every other player auto-passes it |
+| `autopass all\|none\|<phase>,…` | Which end-of-phase pass rounds you pass automatically (default: all) |
+| `bleed <minion> [seat] [with <card>]` | Declare a bleed; the target defaults to your prey. Locks the minion and opens the block window |
+| `hunt <minion> [with <card>]` | Declare a hunt |
+| `political <minion> [with <card>]` | Declare a political action |
+| `equip\|recruit\|employ <minion> with <card>` | Declare an equip, recruit or employ action with a card from your hand. On success the card goes into play (equipment attached to the minion) |
+| `action <minion> [seat] [with <card>]` | Declare any other action, directed at a seat or not |
+| `block <minion>` | Try to block the current action (needs the impulse; you must be the target, or prey or predator for undirected actions) |
+| `unblock` | Withdraw your block attempt |
+| `pass` | Pass the impulse. With no block attempt pending, an eligible blocker's pass declines to block |
+| `play <card> [ready] [on <host>] [noreplace]` | Play a card from your hand: to the ash heap, into your ready region, or attached to a minion. It is replaced from your library unless `noreplace`. In a window it needs the impulse and returns it to the acting player |
+| `resolve success\|failure [n] [edge]` | Resolve your unblocked action. A successful bleed takes `n` (default 1) pool from the target and, with `edge`, gives you the Edge; a successful hunt adds `n` blood, up to capacity |
+| `endcombat` | End the combat from a block; the action counts as blocked |
+| `cancel` | Cancel your action (an override; nothing else happens) |
 | `look <card>` | **Judges**: look at a hidden card. Every player sees that it happened |
 | `replace <seat> <user>` | **Admins**, non-tournament games: hand a seat to another player (GAME-19) |
 
@@ -77,6 +90,10 @@ expect turn 2 B unlock
 expect occupant B erin
 expect count A:hand 7          # cards in a zone
 expect sees B A:hand 0         # how many cards in a zone the viewer can identify (seat, judge, public)
+expect impulse B               # who holds the impulse, or none
+expect action bleed A blocks   # kind, acting seat, stage (blocks, combat, resolution), or none
+expect window phase master     # open window kind and phase, or none
+expect autopass B none         # phases a seat auto-passes, comma-separated, or none
 expect card A:ready:1 blood 7  # zone, controller, owner, locked, faceDown, contested,
                                # blood, life, generic, attached
 log B A drew 7 cards from their library   # a log line, as the given viewer reads it

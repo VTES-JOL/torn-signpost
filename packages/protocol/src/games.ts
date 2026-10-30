@@ -2,7 +2,14 @@
  * Game API and WebSocket messages (architecture §5.1, §5.2). Commands from clients are validated
  * here before they reach the engine.
  */
-import { type Command, type GameEvent, type GameState, ZONE_NAMES } from '@torn-signpost/engine';
+import {
+  ACTION_KINDS,
+  type Command,
+  type GameEvent,
+  type GameState,
+  PHASES,
+  ZONE_NAMES,
+} from '@torn-signpost/engine';
 import { z } from 'zod';
 import { DeckCards } from './decks.ts';
 
@@ -54,6 +61,32 @@ export const PlayerCommand = z.discriminatedUnion('type', [
     direction: z.enum(['toPrey', 'toPredator']),
   }),
   z.strictObject({ type: z.literal('AdvancePhase') }),
+  z.strictObject({ type: z.literal('SetAutoPass'), phases: z.array(z.enum(PHASES)).max(5) }),
+  z.strictObject({
+    type: z.literal('DeclareAction'),
+    minion: Id,
+    kind: z.enum(ACTION_KINDS),
+    target: opt(Id),
+    card: opt(Id),
+  }),
+  z.strictObject({ type: z.literal('Pass') }),
+  z.strictObject({ type: z.literal('Block'), minion: Id }),
+  z.strictObject({ type: z.literal('WithdrawBlock') }),
+  z.strictObject({
+    type: z.literal('PlayCard'),
+    card: Id,
+    to: opt(z.enum(['ashHeap', 'ready'])),
+    attachTo: opt(Id),
+    replace: opt(z.boolean()),
+  }),
+  z.strictObject({
+    type: z.literal('ResolveAction'),
+    outcome: z.enum(['success', 'failure']),
+    amount: opt(z.number().int().min(0).max(30)),
+    edge: opt(z.boolean()),
+  }),
+  z.strictObject({ type: z.literal('EndCombat') }),
+  z.strictObject({ type: z.literal('CancelAction') }),
   z.strictObject({ type: z.literal('ReplacePlayer'), seat: Id, user: Id }),
 ]);
 export type PlayerCommand = Exclude<Command, { type: 'StartGame' }>;

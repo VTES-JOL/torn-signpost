@@ -1,15 +1,17 @@
 /**
  * Commands (architecture §4.2). Every input method (drag-and-drop, context menu, toolbar, console)
- * produces these same objects. M1 covers game setup, the primitives and player replacement; the
- * structured flow (actions, windows, decisions) arrives in M5.
+ * produces these same objects: game setup, the primitives, the structured flow (M5: phases, actions,
+ * impulse windows) and player replacement.
  */
 import type {
+  ActionKind,
   CardId,
   Counter,
   Format,
   GameId,
   GameSettings,
   InstanceId,
+  Phase,
   UserId,
   ZoneId,
 } from './model.ts';
@@ -58,8 +60,49 @@ export type Command =
   | { type: 'JudgeReveal'; card: InstanceId }
   | { type: 'SetEdge'; seat?: SeatId }
   | { type: 'SetTurnDirection'; direction: TurnDirection }
+  /** End the current phase; opens the end-of-phase pass round unless everyone auto-passes. */
   | { type: 'AdvancePhase' }
+  /** Which end-of-phase pass rounds to pass automatically. */
+  | { type: 'SetAutoPass'; phases: Phase[] }
+  /** Declare a minion action; `card` is an action card from the hand. */
+  | {
+      type: 'DeclareAction';
+      minion: InstanceId;
+      kind: ActionKind;
+      target?: SeatId;
+      card?: InstanceId;
+    }
+  /** Pass the impulse. An eligible blocker's pass with no block attempt pending declines to block. */
+  | { type: 'Pass' }
+  | { type: 'Block'; minion: InstanceId }
+  /** Give up a block attempt (e.g. not enough intercept). */
+  | { type: 'WithdrawBlock' }
+  /**
+   * Play a card from the hand (GAME-06): to the ash heap by default, or into play, optionally
+   * attached. Replaces it from the library unless `replace` is false. In a window it needs the
+   * impulse, and returns the impulse to the acting Methuselah.
+   */
+  | {
+      type: 'PlayCard';
+      card: InstanceId;
+      to?: 'ashHeap' | 'ready';
+      attachTo?: InstanceId;
+      replace?: boolean;
+    }
+  /** The acting Methuselah resolves an unblocked action; bleeds and hunts apply their amount. */
+  | {
+      type: 'ResolveAction';
+      outcome: 'success' | 'failure';
+      amount?: number;
+      /** Take the Edge after a successful bleed. */
+      edge?: boolean;
+    }
+  | { type: 'EndCombat' }
+  | { type: 'CancelAction' }
   /** Admin only, non-tournament games only (GAME-19). */
   | { type: 'ReplacePlayer'; seat: SeatId; user: UserId };
 
 export type CommandType = Command['type'];
+
+/** Commands players, judges and admins send; only the server starts games. */
+export type ClientCommand = Exclude<Command, { type: 'StartGame' }>;

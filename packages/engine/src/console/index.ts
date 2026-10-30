@@ -5,7 +5,14 @@
  */
 import { type CardCatalog, normalizeName } from '../catalog.ts';
 import type { Command } from '../commands.ts';
-import type { CardInstance, Counter, GameState, ZoneId, ZoneName } from '../model.ts';
+import {
+  type CardInstance,
+  type Counter,
+  type GameState,
+  PHASES,
+  type ZoneId,
+  type ZoneName,
+} from '../model.ts';
 import { predator, prey, type SeatId } from '../seating.ts';
 import { HIDDEN_ZONES, parseZoneId, zoneCards, zoneId } from '../zones.ts';
 
@@ -28,7 +35,9 @@ type Arg =
   | 'source'
   | 'options'
   | 'direction'
-  | 'user';
+  | 'user'
+  | 'outcome'
+  | 'phases';
 
 interface Syntax {
   args: Arg[];
@@ -58,6 +67,27 @@ export const CONSOLE_COMMANDS: Record<string, Syntax> = {
   edge: { args: ['seat'], usage: 'edge <seat|none>' },
   direction: { args: ['direction'], usage: 'direction prey|predator' },
   next: { args: [], usage: 'next' },
+  bleed: { args: ['card', 'seat', 'options'], usage: 'bleed <minion> [seat] [with <card>]' },
+  hunt: { args: ['card', 'options'], usage: 'hunt <minion> [with <card>]' },
+  political: { args: ['card', 'options'], usage: 'political <minion> [with <card>]' },
+  equip: { args: ['card', 'options'], usage: 'equip <minion> with <card>' },
+  recruit: { args: ['card', 'options'], usage: 'recruit <minion> with <card>' },
+  employ: { args: ['card', 'options'], usage: 'employ <minion> with <card>' },
+  action: { args: ['card', 'seat', 'options'], usage: 'action <minion> [seat] [with <card>]' },
+  block: { args: ['card'], usage: 'block <minion>' },
+  unblock: { args: [], usage: 'unblock  (withdraw your block attempt)' },
+  pass: { args: [], usage: 'pass' },
+  play: {
+    args: ['card', 'options'],
+    usage: 'play <card> [ready] [on <host>] [noreplace]',
+  },
+  resolve: { args: ['outcome', 'count', 'options'], usage: 'resolve success|failure [n] [edge]' },
+  endcombat: { args: [], usage: 'endcombat' },
+  cancel: { args: [], usage: 'cancel  (cancel your action)' },
+  autopass: {
+    args: ['phases'],
+    usage: 'autopass all|none|<phase>,...  (phase-end rounds you pass automatically)',
+  },
   replace: { args: ['seat', 'user'], usage: 'replace <seat> <user>  (admins)' },
 };
 
@@ -203,6 +233,74 @@ function parse(tokens: string[], ctx: ConsoleContext): Command {
     case 'replace':
       extra(2);
       return { type: 'ReplacePlayer', seat: resolveSeat(arg(0), ctx), user: arg(1) };
+    case 'bleed':
+    case 'hunt':
+    case 'political':
+    case 'equip':
+    case 'recruit':
+    case 'employ':
+    case 'action': {
+      const kind = verb === 'action' ? 'other' : verb;
+      const withAt = args.findIndex((a) => a.toLowerCase() === 'with');
+      const before = withAt < 0 ? args : args.slice(0, withAt);
+      if (withAt >= 0 && args.length !== withAt + 2) usage();
+      const directed = verb === 'bleed' || verb === 'action';
+      if (before.length < 1 || before.length > (directed ? 2 : 1)) usage();
+      const cmd: Command = { type: 'DeclareAction', kind, minion: card(0).id };
+      if (before[1] !== undefined) cmd.target = resolveSeat(before[1], ctx);
+      if (withAt >= 0) cmd.card = card(withAt + 1).id;
+      else if (['equip', 'recruit', 'employ'].includes(verb)) usage();
+      return cmd;
+    }
+    case 'block':
+      extra(1);
+      return { type: 'Block', minion: card(0).id };
+    case 'unblock':
+      extra(0);
+      return { type: 'WithdrawBlock' };
+    case 'pass':
+      extra(0);
+      return { type: 'Pass' };
+    case 'play': {
+      const cmd: Command = { type: 'PlayCard', card: card(0).id };
+      for (let i = 1; i < args.length; i++) {
+        const opt = args[i]?.toLowerCase();
+        if (opt === 'ready') cmd.to = 'ready';
+        else if (opt === 'noreplace') cmd.replace = false;
+        else if (opt === 'on') cmd.attachTo = card(++i).id;
+        else usage();
+      }
+      return cmd;
+    }
+    case 'resolve': {
+      const outcome = arg(0).toLowerCase();
+      if (outcome !== 'success' && outcome !== 'failure') usage();
+      const cmd: Extract<Command, { type: 'ResolveAction' }> = {
+        type: 'ResolveAction',
+        outcome: outcome === 'success' ? 'success' : 'failure',
+      };
+      for (const opt of args.slice(1)) {
+        if (opt.toLowerCase() === 'edge') cmd.edge = true;
+        else cmd.amount = integer(opt);
+      }
+      return cmd;
+    }
+    case 'endcombat':
+      extra(0);
+      return { type: 'EndCombat' };
+    case 'cancel':
+      extra(0);
+      return { type: 'CancelAction' };
+    case 'autopass': {
+      extra(1);
+      const t = arg(0).toLowerCase();
+      if (t === 'all') return { type: 'SetAutoPass', phases: [...PHASES] };
+      if (t === 'none') return { type: 'SetAutoPass', phases: [] };
+      const phases = t
+        .split(',')
+        .map((p) => PHASES.find((x) => x === p) ?? fail(`No phase "${p}" (${PHASES.join(', ')})`));
+      return { type: 'SetAutoPass', phases };
+    }
     default:
       return fail(`Unknown command "${name}"`);
   }
@@ -329,8 +427,17 @@ export function completeConsole(input: string, ctx: ConsoleContext): string[] {
       return match(tokens[0]?.toLowerCase() === 'edge' ? [...seats(), 'none'] : seats());
     case 'source':
       return match(['crypt']);
-    case 'options':
-      return match(['top', 'bottom', 'facedown', 'faceup']);
+    case 'options': {
+      const verb = tokens[0]?.toLowerCase() ?? '';
+      if (verb === 'play') return match(['ready', 'on', 'noreplace']);
+      if (verb === 'resolve') return match(['edge']);
+      if (verb === 'move') return match(['top', 'bottom', 'facedown', 'faceup']);
+      return match(['with']);
+    }
+    case 'outcome':
+      return match(['success', 'failure']);
+    case 'phases':
+      return match(['all', 'none', ...PHASES]);
     case 'direction':
       return match(['prey', 'predator']);
     default:

@@ -1025,3 +1025,73 @@ body.dragging {
   flex-basis: 100%;
   margin: 0;
 }
+
+/* Action toolbar and prompts (UX-03, UX-09) */
+
+.flow-bar {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+  background: var(--surface);
+}
+
+.flow-bar.yours {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.flow-status {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+}
+
+.flow-bar.yours .flow-status strong {
+  color: var(--accent);
+}
+
+.flow-offers,
+.flow-choose {
+  font-size: 0.9rem;
+}
+
+.autopass {
+  position: relative;
+  margin-left: auto;
+}
+
+.autopass summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.autopass-menu {
+  position: absolute;
+  right: 0;
+  z-index: 30;
+  width: 16rem;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 35%);
+}
+
+.autopass-menu p {
+  margin: 0 0 0.25rem;
+}
+
+.choosing .card:not(.candidate) {
+  opacity: 0.4;
+}
+
+.card.candidate {
+  outline: 3px solid var(--accent);
+  outline-offset: 1px;
+}

@@ -126,7 +126,13 @@ function GameView({
       )}
       <div className="game-layout">
         <div className="game-table">
-          <Table client={client} snapshot={snapshot} judge={judge} onError={setError} />
+          <Table
+            client={client}
+            snapshot={snapshot}
+            catalog={catalog}
+            judge={judge}
+            onError={setError}
+          />
         </div>
         <aside className="game-side">
           <div className="tabs" role="tablist">

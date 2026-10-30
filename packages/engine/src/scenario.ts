@@ -15,6 +15,7 @@ import { decide } from './decide.ts';
 import { describeEvent } from './describe.ts';
 import type { GameEvent } from './events.ts';
 import { evolve, newGame } from './evolve.ts';
+import { autoPassPhases, impulseHolder } from './flow.ts';
 import type { Actor, CardId, Format, GameState, Viewer } from './model.ts';
 import { project, projectEvent } from './projection.ts';
 import { seededRng } from './rng.ts';
@@ -215,6 +216,24 @@ function check(state: GameState, args: string[], catalog: CardCatalog): string |
     case 'turn': {
       const t = state.turn;
       return same('turn', t ? `${t.number} ${t.seat} ${t.phase}` : 'none', rest.join(' '));
+    }
+    case 'impulse':
+      return same('impulse', impulseHolder(state) ?? 'none', rest[0] ?? '');
+    case 'action': {
+      const a = state.action;
+      return same('action', a ? `${a.kind} ${a.seat} ${a.stage}` : 'none', rest.join(' '));
+    }
+    case 'window': {
+      const w = state.window;
+      return same('window', w ? `${w.kind} ${w.phase}` : 'none', rest.join(' '));
+    }
+    case 'autopass': {
+      const s = seat(rest[0]);
+      return same(
+        `${rest[0]} auto-pass`,
+        s ? autoPassPhases(s).join(',') || 'none' : '',
+        rest[1] ?? '',
+      );
     }
     case 'count':
       return same(`${rest[0]} count`, zoneCards(state, rest[0] as never).length, rest[1] ?? '');

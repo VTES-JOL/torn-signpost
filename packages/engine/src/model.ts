@@ -70,6 +70,11 @@ export interface Seat {
   hasEdge: boolean;
   ousted?: { atSeq: number; by?: SeatId };
   withdrawn?: boolean;
+  /**
+   * Phases whose end-of-phase pass round this seat passes automatically. Missing means every
+   * phase (the default). Private: other viewers' views don't carry it.
+   */
+  autoPass?: Phase[];
 }
 
 export interface GameSettings {
@@ -81,6 +86,52 @@ export interface Turn {
   number: number;
   seat: SeatId;
   phase: Phase;
+}
+
+export const ACTION_KINDS = [
+  'bleed',
+  'hunt',
+  'political',
+  'equip',
+  'recruit',
+  'employ',
+  'other',
+] as const;
+export type ActionKind = (typeof ACTION_KINDS)[number];
+
+/** A minion action in progress (GAME-06): declared → block window → combat or resolution. */
+export interface ActionState {
+  seat: SeatId;
+  minion: InstanceId;
+  kind: ActionKind;
+  /** The seat the action is directed at; undirected actions have none. Bleeds always have one. */
+  target?: SeatId;
+  /** The action card played with it, still in the hand until the action ends. Public. */
+  card?: InstanceId;
+  cardId?: CardId;
+  /** Seats that may block. */
+  eligible: SeatId[];
+  /** Eligible seats that passed with no block attempt pending; they can't block this action. */
+  declined: SeatId[];
+  blockAttempt?: { seat: SeatId; minion: InstanceId };
+  stage: 'blocks' | 'combat' | 'resolution';
+  blocker?: InstanceId;
+}
+
+/**
+ * An ordered impulse window (architecture §4.4): the impulse moves through `order`; a card play
+ * returns it to `order[0]` (the acting Methuselah) and voids the passes; the window closes when
+ * every seat has passed in a row.
+ */
+export interface ImpulseWindow {
+  kind: 'phase' | 'blocks';
+  /** The phase this window belongs to (an end-of-phase round, or an action in the minion phase). */
+  phase: Phase;
+  order: SeatId[];
+  /** Index into `order` of the seat holding the impulse. */
+  cursor: number;
+  /** Consecutive passes so far. */
+  passes: number;
 }
 
 export interface GameState {
@@ -95,6 +146,8 @@ export interface GameState {
   cards: Record<InstanceId, CardInstance>;
   zones: Record<ZoneId, InstanceId[]>;
   turn?: Turn;
+  action?: ActionState;
+  window?: ImpulseWindow;
   settings: GameSettings;
   status: 'setup' | 'active' | 'finished';
 }

@@ -176,15 +176,13 @@ export class GameClient {
       const next = evolve(view, ev);
       // Names come from the state after the event, so "Game started" can name its players.
       const seatName = (seat: string) => this.nameIn(next, seat);
-      added.push({
-        seq: ev.seq,
-        at: ev.at,
-        text: describeEvent(ev, view, { catalog: this.opts.catalog, seatName }),
-      });
+      const text = describeEvent(ev, view, { catalog: this.opts.catalog, seatName });
+      // Bookkeeping events (automatic passes, for one) have nothing to show.
+      if (text) added.push({ seq: ev.seq, at: ev.at, text });
       viewer = this.viewerFor(next);
       view = project(next, viewer);
     }
-    if (added.length) {
+    if (view !== this.snapshot.view) {
       log = [...log, ...added];
       const seat = viewer.kind === 'player' ? viewer.seat : undefined;
       const patch: Partial<GameSnapshot> = { view, viewer, log };

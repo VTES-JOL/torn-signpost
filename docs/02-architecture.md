@@ -528,6 +528,34 @@ the plan as each need grows:
 - **Phone layout:** the phone gets a scrolling single-row hand; dedicated opponent strips and
   swiping between seats come later.
 
+Implementation notes (M5a, structured flow). The engine records the flow (`GameState.action`,
+`GameState.window`) but doesn't enforce card rules: players can always fall back on the
+primitives, and corrections are new commands.
+- **Phases** end with an ordered pass round over the other seats (§4.4). Each player chooses which
+  phases they auto-pass (`SetAutoPass`; every phase by default; private to the seat). A round where
+  every other seat auto-passes is skipped outright, so by default phases advance at once. Automatic
+  passes are recorded as `Passed{auto}` events, which the log doesn't show. The same setting for the
+  minion phase covers action windows in which a seat can't block.
+- **Actions**: `DeclareAction` locks the minion (which must be unlocked) and opens the block window.
+  Declaring counts as the acting Methuselah's first pass. Eligible blockers are the target, or prey
+  and predator for undirected actions; they always decide by hand. `Block` makes a block *attempt*:
+  the impulse returns to the acting Methuselah (stealth), and the attempt succeeds when everyone
+  passes in a row (`WithdrawBlock` gives up, e.g. for lack of intercept). A pass with no attempt
+  pending declines. A blocked action goes to combat, which the players play out with the primitives
+  until `EndCombat` (M6 adds combat steps). An unblocked one is resolved with `ResolveAction`,
+  which applies bleed pool loss (and optionally the Edge) or hunt blood up to capacity, and moves
+  the action card (into play on a successful equip, recruit or employ, else to the ash heap).
+- **Card plays**: `PlayCard` plays from the hand and draws a replacement. In a window it needs the
+  impulse and returns it to the acting Methuselah, voiding the passes.
+- **Turns** start by unlocking the new Methuselah's ready and torpor cards.
+- **Toolbar**: `availableActions(view, seat, catalog)` returns offers whose steps the web toolbar
+  walks, highlighting candidate cards on the table, with a confirm step for anything that reveals
+  information or affects other players (GAME-11). The tab title shows ● while the table waits on
+  you (UX-09). The property tests drive random games through windows, blocks and resolutions with
+  a guided policy and check they reach every flow event.
+- Not yet: referendums and combat steps (M6); presence, the table timer, async deadlines, judge
+  calls and notifications (M5b); structural window elision beyond auto-pass.
+
 ## 7. macOS client (`apps/apple`)
 
 | Concern | Choice |

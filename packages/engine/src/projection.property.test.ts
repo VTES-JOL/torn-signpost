@@ -5,7 +5,16 @@ import type { Command } from './commands.ts';
 import { decide } from './decide.ts';
 import type { GameEvent } from './events.ts';
 import { evolve, newGame } from './evolve.ts';
-import { type Actor, type CardInstance, type GameState, type Viewer, ZONE_NAMES } from './model.ts';
+import { impulseHolder } from './flow.ts';
+import {
+  ACTION_KINDS,
+  type Actor,
+  type CardInstance,
+  type GameState,
+  PHASES,
+  type Viewer,
+  ZONE_NAMES,
+} from './model.ts';
 import { canSee, project, projectEvent } from './projection.ts';
 import { seededRng } from './rng.ts';
 import { zoneId } from './zones.ts';
@@ -71,8 +80,18 @@ function start(seatCount: number, seed: number): GameState {
   return state;
 }
 
+/** The seat a flow command most plausibly comes from: the impulse holder, else the acting seat. */
+function flowSeat(state: GameState): string {
+  return impulseHolder(state) ?? state.turn?.seat ?? 'A';
+}
+
 /** Turn random numbers into a plausible command; many are rejected, which is fine. */
 function commandFor(state: GameState, [, kind, a, b, c, d]: Step): Command {
+  const fs = flowSeat(state);
+  const pick = (zone: 'ready' | 'hand', n: number) => {
+    const ids = state.zones[zoneId(fs, zone)] ?? [];
+    return ids[n % Math.max(ids.length, 1)] ?? 'none';
+  };
   const seats = state.seats.map((s) => s.id);
   const seat = seats[b % seats.length] ?? 'A';
   // Mostly cards outside crypts and libraries, where most commands apply.
@@ -100,11 +119,85 @@ function commandFor(state: GameState, [, kind, a, b, c, d]: Step): Command {
     { type: 'JudgeReveal', card },
     { type: 'Shuffle', zone },
     { type: 'AdvancePhase' },
+    { type: 'AdvancePhase' },
     { type: 'SetEdge', seat },
     { type: 'SetTurnDirection', direction: c % 2 ? 'toPrey' : 'toPredator' },
     { type: 'ReplacePlayer', seat, user: `new${a % 3}` },
   ];
-  return commands[kind % commands.length] as Command;
+  const flow: Command[] = [
+    { type: 'SetAutoPass', phases: PHASES.filter((_, i) => (c >> i) & 1) },
+    {
+      type: 'DeclareAction',
+      minion: pick('ready', a),
+      kind: ACTION_KINDS[c % ACTION_KINDS.length] ?? 'bleed',
+      ...(d % 3 === 0 ? { target: seat } : {}),
+      ...(d % 2 === 0 ? { card: pick('hand', d) } : {}),
+    },
+    ...Array.from({ length: 6 }, (): Command => ({ type: 'Pass' })),
+    { type: 'Block', minion: pick('ready', a) },
+    { type: 'WithdrawBlock' },
+    { type: 'PlayCard', card: pick('hand', a), ...(c % 2 ? { to: 'ready' as const } : {}) },
+    { type: 'PlayCard', card: pick('hand', a), attachTo: other, replace: d % 2 === 0 },
+    { type: 'SetLocked', card: pick('ready', a), locked: false },
+    { type: 'ResolveAction', outcome: c % 2 ? 'success' : 'failure', amount: d % 4, edge: true },
+    { type: 'EndCombat' },
+    { type: 'CancelAction' },
+  ];
+  const pool = [...commands, ...flow];
+  return pool[kind % pool.length] as Command;
+}
+
+/**
+ * A plausible move by whoever the flow waits on, so random games walk through windows, blocks
+ * and resolutions instead of mostly being rejected.
+ */
+function guidedStep(state: GameState, [, kind, a, , c, d]: Step): [Command, Actor] {
+  const fs = flowSeat(state);
+  const seat = state.seats.find((s) => s.id === fs);
+  const actor: Actor = { kind: 'player', user: seat?.occupant ?? '' };
+  const ready = state.zones[zoneId(fs, 'ready')] ?? [];
+  const hand = state.zones[zoneId(fs, 'hand')] ?? [];
+  const minion = ready[a % Math.max(ready.length, 1)] ?? 'none';
+  const card = hand[d % Math.max(hand.length, 1)] ?? 'none';
+  const n = kind % 10;
+  const act = state.action;
+  if (state.window) {
+    if (act?.blockAttempt?.seat === fs && n === 0) return [{ type: 'WithdrawBlock' }, actor];
+    if (state.window.kind === 'blocks' && n < 3) return [{ type: 'Block', minion }, actor];
+    if (n < 5) return [{ type: 'PlayCard', card, replace: c % 2 === 0 }, actor];
+    if (n === 5) return [{ type: 'SetAutoPass', phases: [...PHASES] }, actor];
+    return [{ type: 'Pass' }, actor];
+  }
+  if (act?.stage === 'combat') return [{ type: 'EndCombat' }, actor];
+  if (act?.stage === 'resolution') {
+    if (n === 0) return [{ type: 'CancelAction' }, actor];
+    const outcome = c % 3 ? 'success' : 'failure';
+    return [{ type: 'ResolveAction', outcome, amount: d % 4, edge: c % 2 === 0 }, actor];
+  }
+  if (n < 2) {
+    const phases = PHASES.filter((_, i) => (c >> i) & 1);
+    const other = state.seats[c % state.seats.length];
+    return [
+      { type: 'SetAutoPass', phases },
+      { kind: 'player', user: other?.occupant ?? '' },
+    ];
+  }
+  if (state.turn?.phase === 'minion' && n < 8) {
+    const target = state.seats[d % state.seats.length]?.id;
+    const locked = state.cards[minion]?.locked;
+    if (locked) return [{ type: 'SetLocked', card: minion, locked: false }, actor];
+    return [
+      {
+        type: 'DeclareAction',
+        minion,
+        kind: ACTION_KINDS[c % ACTION_KINDS.length] ?? 'bleed',
+        ...(d % 3 === 0 && target ? { target } : {}),
+        ...(d % 2 === 0 ? { card } : {}),
+      },
+      actor,
+    ];
+  }
+  return [{ type: 'AdvancePhase' }, actor];
 }
 
 function actorFor(state: GameState, [actor]: Step): Actor {
@@ -133,8 +226,12 @@ function deepFreeze<T>(value: T): T {
 /** Card IDs are unique per physical card here, so index each state once. */
 const byCardId = new WeakMap<GameState, Map<string, CardInstance>>();
 
-/** Whether the physical card with this card ID is visible to the viewer in `state`. */
+/**
+ * Whether the physical card with this card ID is visible to the viewer in `state`. The card of an
+ * action in progress was revealed when it was declared.
+ */
 function visibleIn(state: GameState, id: string, viewer: Viewer): boolean {
+  if (state.action?.cardId === id) return true;
   let index = byCardId.get(state);
   if (!index) {
     index = new Map(Object.values(state.cards).flatMap((c) => (c.cardId ? [[c.cardId, c]] : [])));
@@ -165,8 +262,12 @@ function forEveryEvent(check: (before: GameState, ev: GameEvent, after: GameStat
         let state = deepFreeze(start(seatCount, seed));
         const rng = seededRng(seed + 1);
         for (const step of steps) {
-          const result = decide(state, commandFor(state, step), {
-            actor: actorFor(state, step),
+          const [command, actor] =
+            step[0] % 5 < 3
+              ? guidedStep(state, step)
+              : [commandFor(state, step), actorFor(state, step)];
+          const result = decide(state, command, {
+            actor,
             now: 't',
             rng,
             catalog,
@@ -198,7 +299,7 @@ describe('hidden information', { timeout: 60_000 }, () => {
 
   it('a projected event only names cards the viewer could see before or after it', () => {
     forEveryEvent((before, ev, after) => {
-      if (ev.type === 'CardRevealed') return;
+      if (ev.type === 'CardRevealed' || ev.type === 'ActionDeclared') return;
       for (const v of viewers(after)) {
         for (const id of JSON.stringify(projectEvent(before, after, ev, v)).match(CARD_ID) ?? []) {
           const ok = visibleIn(before, id, v) || visibleIn(after, id, v);
@@ -222,6 +323,27 @@ describe('hidden information', { timeout: 60_000 }, () => {
       }
       for (const id of ev.ids) expect(oldIds).not.toContain(id);
     });
+  });
+
+  it('random games reach the structured flow', () => {
+    const seen = new Set<string>();
+    forEveryEvent((_, ev) => {
+      seen.add(ev.type === 'Passed' && ev.auto ? 'Passed(auto)' : ev.type);
+    });
+    for (const type of [
+      'WindowOpened',
+      'Passed',
+      'Passed(auto)',
+      'ImpulseReset',
+      'ActionDeclared',
+      'BlockAttempted',
+      'ActionBlocked',
+      'ActionResolving',
+      'ActionEnded',
+      'AutoPassSet',
+    ]) {
+      expect(seen, type).toContain(type);
+    }
   });
 
   it('clients can follow the game from projected events alone', () => {

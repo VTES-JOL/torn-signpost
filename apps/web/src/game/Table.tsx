@@ -1,9 +1,12 @@
 /**
- * The tabletop (M4): seats in physical order around your own region, cards you can click for
- * actions, drag between zones or onto minions, zoom and inspect (UX-01/02/05/06).
+ * The tabletop: seats in physical order around your own region, cards you can click for actions,
+ * drag between zones or onto minions, zoom and inspect (UX-01/02/05/06), with the action toolbar
+ * on top (UX-03).
  */
 import type { CardRecord } from '@torn-signpost/cards';
 import {
+  availableActions,
+  type CardCatalog,
   type CardInstance,
   type GameState,
   parseZoneId,
@@ -14,12 +17,21 @@ import {
   zoneId,
 } from '@torn-signpost/engine';
 import type { PlayerCommand } from '@torn-signpost/protocol';
-import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from 'react';
+import {
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { ApiError } from '../api.ts';
 import { useCards } from '../content.tsx';
 import { cardActions, type MenuItem } from './actions.ts';
 import type { GameClient, GameSnapshot } from './client.ts';
 import { DragProvider, type DragSource, type DropTarget, useDrag } from './drag.tsx';
+import { type Choosing, currentStep, FlowBar } from './FlowBar.tsx';
 
 interface TableContextValue {
   snapshot: GameSnapshot;
@@ -32,6 +44,9 @@ interface TableContextValue {
   picking: CardInstance | undefined;
   pick(host: CardInstance): void;
   showZone(zone: ZoneId): void;
+  /** Cards that answer the current toolbar step, if it asks for a card. */
+  candidates: ReadonlySet<string> | undefined;
+  choose(id: string): void;
 }
 
 const TableContext = createContext<TableContextValue | undefined>(undefined);
@@ -46,10 +61,11 @@ const IN_PLAY: ZoneName[] = ['ready', 'torpor'];
 export function Table(props: {
   client: GameClient;
   snapshot: GameSnapshot;
+  catalog: CardCatalog;
   judge: boolean;
   onError: (m: string) => void;
 }) {
-  const { client, snapshot, judge, onError } = props;
+  const { client, snapshot, catalog, judge, onError } = props;
   const seat = snapshot.seat;
   const view = snapshot.view;
   const [menu, setMenu] = useState<{ card: CardInstance; anchor: DOMRect }>();
@@ -57,6 +73,18 @@ export function Table(props: {
   const [picking, setPicking] = useState<CardInstance>();
   const [zoneDialog, setZoneDialog] = useState<ZoneId>();
   const [zoom, setZoom] = useState(1);
+  const [choosing, setChoosing] = useState<Choosing>();
+  const offers = useMemo(
+    () => (seat ? availableActions(view, seat, catalog) : []),
+    [view, seat, catalog],
+  );
+  // Drop a half-made choice when the game moves on and its offer is gone.
+  const offerIds = offers.map((o) => o.id).join();
+  useEffect(() => {
+    setChoosing((c) => (c && offerIds.split(',').includes(c.offer.id) ? c : undefined));
+  }, [offerIds]);
+  const step = currentStep(choosing);
+  const candidates = step?.kind === 'card' ? new Set(step.candidates) : undefined;
 
   const send = (command: PlayerCommand) => {
     client.send(command).catch((e) => onError(e instanceof ApiError ? e.message : String(e)));
@@ -67,6 +95,7 @@ export function Table(props: {
       if (e.key === 'Escape') {
         setPicking(undefined);
         setMenu(undefined);
+        setChoosing(undefined);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -88,6 +117,15 @@ export function Table(props: {
       setPicking(undefined);
     },
     showZone: setZoneDialog,
+    candidates,
+    choose: (id) => {
+      if (!choosing || !candidates?.has(id)) return;
+      const values = [...choosing.values, id];
+      if (values.length === choosing.offer.steps.length && !choosing.offer.confirm) {
+        send(choosing.offer.build(values));
+        setChoosing(undefined);
+      } else setChoosing({ offer: choosing.offer, values });
+    },
   };
 
   // Drag and drop (UX-02): what each drop means.
@@ -135,16 +173,28 @@ export function Table(props: {
           if (command) send(command);
         }}
       >
+        <FlowBar
+          view={view}
+          seat={seat}
+          client={client}
+          catalog={catalog}
+          offers={offers}
+          choosing={choosing}
+          setChoosing={setChoosing}
+          send={send}
+        />
         <TurnBar zoom={zoom} setZoom={setZoom} />
         {picking && (
           <p className="picking" role="status">
             Choose a minion to attach to, or press Escape.
           </p>
         )}
-        <ZoomViewport zoom={zoom} setZoom={setZoom}>
-          <Seats view={view} />
-        </ZoomViewport>
-        {seat && <Hand seat={seat} />}
+        <div className={candidates ? 'choosing' : undefined}>
+          <ZoomViewport zoom={zoom} setZoom={setZoom}>
+            <Seats view={view} />
+          </ZoomViewport>
+          {seat && <Hand seat={seat} />}
+        </div>
         {menu && (
           <CardMenu
             card={menu.card}
@@ -314,7 +364,8 @@ function CardStack({ id }: { id: string }) {
 }
 
 function CardView({ id }: { id: string }) {
-  const { snapshot, openMenu, inspect, picking, pick, seat, judge } = useTable();
+  const { snapshot, openMenu, inspect, picking, pick, seat, judge, candidates, choose } =
+    useTable();
   const cards = useCards();
   const { begin } = useDrag();
   const card = snapshot.view.cards[id];
@@ -338,12 +389,14 @@ function CardView({ id }: { id: string }) {
         card.locked ? 'locked' : '',
         card.faceDown ? 'face-down' : '',
         card.contested ? 'contested' : '',
+        candidates?.has(card.id) ? 'candidate' : '',
       ].join(' ')}
       style={{ viewTransitionName: `c-${card.id}` }}
       data-drop={`card:${card.id}`}
       aria-label={`${record?.name ?? 'Hidden card'}${card.locked ? ', locked' : ''}`}
       onClick={(e) => {
-        if (picking) pick(card);
+        if (candidates) choose(card.id);
+        else if (picking) pick(card);
         else openMenu(card, e.currentTarget.getBoundingClientRect());
       }}
       onPointerDown={(e) => {
@@ -553,21 +606,13 @@ function ZoneDialog({ zone, onClose }: { zone: ZoneId; onClose: () => void }) {
 }
 
 function TurnBar({ zoom, setZoom }: { zoom: number; setZoom: (z: number) => void }) {
-  const { snapshot, client, seat, judge, send } = useTable();
+  const { snapshot, seat, judge, send } = useTable();
   const view = snapshot.view;
-  const turn = view.turn;
-  const myTurn = turn?.seat === seat;
   return (
     <div className="turn-bar toolbar">
-      <span>
-        {turn
-          ? `Turn ${turn.number} · ${client.seatName(turn.seat)} · ${turn.phase}`
-          : 'Waiting to start'}
-        {view.turnDirection === 'toPredator' && ' · play passes to the predator'}
-      </span>
-      {(myTurn || judge) && (
-        <button type="button" className="primary" onClick={() => send({ type: 'AdvancePhase' })}>
-          {turn?.phase === 'discard' ? 'End turn' : 'Next phase'}
+      {judge && !seat && (
+        <button type="button" onClick={() => send({ type: 'AdvancePhase' })}>
+          Next phase (judge)
         </button>
       )}
       {seat && (

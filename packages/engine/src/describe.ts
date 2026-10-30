@@ -1,11 +1,20 @@
 /**
  * Human-readable game log lines (GAME-12), rendered from a projected event and the viewer's view
- * before it, so each viewer reads only what they're allowed to see.
+ * before it, so each viewer reads only what they're allowed to see. Bookkeeping events with
+ * nothing to tell (automatic passes, for one) describe as an empty string.
  */
 import type { CardCatalog } from './catalog.ts';
 import type { BloodHolder } from './commands.ts';
 import type { GameEvent } from './events.ts';
-import type { ActorRef, CardId, GameState, InstanceId, ZoneId, ZoneName } from './model.ts';
+import type {
+  ActionKind,
+  ActorRef,
+  CardId,
+  GameState,
+  InstanceId,
+  ZoneId,
+  ZoneName,
+} from './model.ts';
 import type { SeatId } from './seating.ts';
 import { parseZoneId } from './zones.ts';
 
@@ -48,6 +57,10 @@ export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOp
       return `Game started with ${ev.seats.map((s) => seatName(s.id)).join(', ')}`;
     case 'CardMoved': {
       const name = ev.faceDown ? 'a face-down card' : cardName(ev.card, ev.cardId);
+      if (ev.played) {
+        const into = parseZoneId(ev.to).name === 'ashHeap' ? '' : ` into ${zone(ev.to)}`;
+        return `${who} played ${name}${into}`;
+      }
       const toName = parseZoneId(ev.to).name;
       const where =
         ev.position === 'top' && (toName === 'crypt' || toName === 'library') ? 'top of ' : '';
@@ -98,8 +111,65 @@ export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOp
         : `${seatName(ev.turn.seat)}'s ${ev.turn.phase} phase`;
     case 'PlayerReplaced':
       return `${who} replaced the player in seat ${seatName(ev.seat)}`;
+    // Bookkeeping with nothing to tell (auto-pass settings are private): no log line.
+    case 'AutoPassSet':
+    case 'ImpulseReset':
+    case 'WindowClosed':
+      return '';
+    case 'WindowOpened':
+      return ev.window.kind === 'phase' && before.turn
+        ? `End of ${seatName(before.turn.seat)}'s ${ev.window.phase} phase: waiting for the other players`
+        : '';
+    case 'Passed': {
+      if (ev.auto) return '';
+      const a = before.action;
+      const declines =
+        before.window?.kind === 'blocks' &&
+        a &&
+        !a.blockAttempt &&
+        a.eligible.includes(ev.seat) &&
+        !a.declined.includes(ev.seat);
+      return `${seatName(ev.seat)} ${declines ? 'declined to block' : 'passed'}`;
+    }
+    case 'ActionDeclared': {
+      const a = ev.action;
+      const verb = ACTION_VERBS[a.kind];
+      const target =
+        a.target === undefined
+          ? ''
+          : a.kind === 'bleed'
+            ? ` ${seatName(a.target)}`
+            : ` against ${seatName(a.target)}`;
+      const card = a.card === undefined ? '' : ` with ${cardName(a.card, a.cardId)}`;
+      return `${who}: ${cardName(a.minion)} ${verb}${target}${card}`;
+    }
+    case 'BlockAttempted':
+      return `${seatName(ev.seat)} tries to block with ${cardName(ev.minion)}`;
+    case 'BlockWithdrawn':
+      return `${seatName(ev.seat)} withdrew the block`;
+    case 'ActionBlocked':
+      return `${cardName(ev.blocker)} blocks: combat`;
+    case 'ActionResolving':
+      return 'The action was not blocked';
+    case 'ActionEnded':
+      return {
+        success: 'The action succeeded',
+        failure: 'The action failed',
+        blocked: 'Combat is over; the action was blocked',
+        cancelled: `${who} cancelled the action`,
+      }[ev.outcome];
   }
 }
+
+const ACTION_VERBS: Record<ActionKind, string> = {
+  bleed: 'bleeds',
+  hunt: 'hunts',
+  political: 'calls a political action',
+  equip: 'equips',
+  recruit: 'recruits an ally',
+  employ: 'employs a retainer',
+  other: 'takes an action',
+};
 
 function actorName(by: ActorRef, seatName: (s: SeatId) => string): string {
   switch (by.kind) {
