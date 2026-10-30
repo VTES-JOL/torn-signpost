@@ -10,6 +10,7 @@ const app = createApp({
   allowedOrigins,
   auth,
   decks: services.decks,
+  profiles: services.profiles,
   ...(gamesEnabled ? { games: services.games } : {}),
 });
 

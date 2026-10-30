@@ -997,3 +997,31 @@ body.dragging {
 .card.contested img {
   outline: 2px dashed #e0a030;
 }
+
+/* Account (AUTH-05) */
+
+.choose-name {
+  margin-bottom: 1rem;
+}
+
+.choose-name p {
+  margin-top: 0;
+}
+
+.name-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: end;
+}
+
+.name-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.name-form p {
+  flex-basis: 100%;
+  margin: 0;
+}

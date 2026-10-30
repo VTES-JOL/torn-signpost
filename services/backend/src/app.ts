@@ -9,6 +9,7 @@ import {
   JoinGameRequest,
   LobbyStatus,
   SaveDeckRequest,
+  UpdateProfileRequest,
 } from '@torn-signpost/protocol';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -17,6 +18,7 @@ import { type Authenticator, bearer, GUEST, type Identity } from './auth.ts';
 import type { DeckService } from './decks/service.ts';
 import { ApiError } from './errors.ts';
 import type { GameService } from './games/service.ts';
+import type { ProfileService } from './users/service.ts';
 
 export interface AppConfig {
   stage: string;
@@ -26,6 +28,7 @@ export interface AppConfig {
   /** Missing while the games feature is switched off for the stage. */
   games?: GameService;
   decks?: DeckService;
+  profiles?: ProfileService;
 }
 
 type Env = { Variables: { identity: Identity } };
@@ -37,10 +40,8 @@ export function createApp(config: AppConfig): Hono<Env> {
   app.use('*', cors({ origin: config.allowedOrigins, maxAge: 600 }));
 
   app.use('*', async (c, next) => {
-    c.set(
-      'identity',
-      config.auth ? await config.auth(bearer(c.req.header('Authorization'))) : GUEST,
-    );
+    const identity = config.auth ? await config.auth(bearer(c.req.header('Authorization'))) : GUEST;
+    c.set('identity', config.profiles ? await config.profiles.resolve(identity) : identity);
     await next();
   });
 
@@ -154,6 +155,18 @@ export function createApp(config: AppConfig): Hono<Env> {
   app.get('/decks/:id/versions/:version', async (c) => {
     const version = z.coerce.number().int().min(1).parse(c.req.param('version'));
     return c.json(await decks().version(c.var.identity, c.req.param('id'), version));
+  });
+
+  // Profiles (AUTH-05).
+  const profiles = () => {
+    if (!config.profiles)
+      throw new ApiError(503, 'profiles_disabled', 'Profiles are not available');
+    return config.profiles;
+  };
+  app.get('/me', async (c) => c.json(await profiles().me(c.var.identity)));
+  app.put('/me', async (c) => {
+    if (c.var.identity.kind !== 'user') throw new ApiError(401, 'sign_in', 'Sign in first');
+    return c.json(await profiles().rename(c.var.identity, await body(c.req, UpdateProfileRequest)));
   });
 
   app.notFound((c) =>

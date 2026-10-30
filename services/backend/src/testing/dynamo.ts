@@ -4,6 +4,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { DynamoDBClient, ListTablesCommand } from '@aws-sdk/client-dynamodb';
+import type { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { documentClient } from '../db/client.ts';
 import { deleteTable, ensureTable } from '../db/schema-setup.ts';
 import { GameStore } from '../db/store.ts';
@@ -26,11 +27,19 @@ export async function dynamoAvailable(): Promise<boolean> {
   }
 }
 
-export async function testStore(): Promise<{ store: GameStore; cleanup: () => Promise<void> }> {
+export async function testStore(): Promise<{
+  store: GameStore;
+  db: DynamoDBDocumentClient;
+  tableName: string;
+  cleanup: () => Promise<void>;
+}> {
   const tableName = `ts-test-${randomUUID()}`;
   await ensureTable(raw, tableName);
+  const db = documentClient({ tableName, endpoint });
   return {
-    store: new GameStore(documentClient({ tableName, endpoint }), tableName),
+    store: new GameStore(db, tableName),
+    db,
+    tableName,
     cleanup: () => deleteTable(raw, tableName),
   };
 }

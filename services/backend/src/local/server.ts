@@ -38,6 +38,7 @@ const app = createApp({
   auth: devAuthenticator,
   games: services.games,
   decks: services.decks,
+  profiles: services.profiles,
 });
 
 const server = serve({ fetch: app.fetch, port: local.port }, ({ port }) => {

@@ -2,17 +2,20 @@ import { randomBytes } from 'node:crypto';
 import { type Content, cdnContent } from './content/catalog.ts';
 import { documentClient } from './db/client.ts';
 import { DeckStore } from './db/decks.ts';
+import { ProfileStore } from './db/profiles.ts';
 import { GameStore } from './db/store.ts';
 import { DeckService } from './decks/service.ts';
 import { cryptoRng } from './games/rng.ts';
 import { GameService } from './games/service.ts';
 import type { ConnectionGateway } from './realtime/gateway.ts';
 import { Fanout, Realtime } from './realtime/realtime.ts';
+import { ProfileService } from './users/service.ts';
 
 export interface Services {
   store: GameStore;
   games: GameService;
   decks: DeckService;
+  profiles: ProfileService;
   realtime: Realtime;
 }
 
@@ -45,5 +48,6 @@ export function createServices(opts: {
     publisher: new Fanout(store, opts.gateway),
     newId,
   });
-  return { store, games, decks, realtime: new Realtime(store, opts.gateway, games) };
+  const profiles = new ProfileService({ store: new ProfileStore(db, opts.tableName) });
+  return { store, games, decks, profiles, realtime: new Realtime(store, opts.gateway, games) };
 }

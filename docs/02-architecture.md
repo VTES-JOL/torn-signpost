@@ -474,6 +474,14 @@ a rendering component per client.
   pseudonymises the player in completed game logs ("Former player #8f3a") so other players'
   history and stats survive.
 
+Implementation notes (display names). `GET/PUT /me` read and set the display name: 3–24 letters,
+digits, `_` or `-` (so it works as an `@mention`), unique ignoring case, with a few reserved names.
+A rename claims `HANDLE#<lower>` and releases the old claim in one transaction, conditional on the
+profile still holding the old name. The API resolves the name for every signed-in request (cached
+for 60 s per Lambda), so games, chat and decks record it without extra lookups; names already
+recorded keep the name used at the time. Until a name is chosen the user shows as "Player 1a2b" and
+the web app asks for one.
+
 ### 5.7 Tournaments & seating (TOURN-*)
 
 - The seating solver is ported from `tournament-seating` to TypeScript (`packages/seating`):

@@ -1,16 +1,18 @@
 import type { ClientConfig, HealthResponse } from '@torn-signpost/protocol';
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Link, NavLink, Outlet, Route, Routes } from 'react-router';
+import { BrowserRouter, Link, NavLink, Outlet, Route, Routes, useLocation } from 'react-router';
 import { AuthProvider, useAuth } from './auth.tsx';
 import { DarkPackFooter } from './components/DarkPackFooter.tsx';
 import { loadConfig } from './config.ts';
 import { CardsProvider, ConfigProvider, useConfig } from './content.tsx';
 import { GamePage } from './game/GamePage.tsx';
+import { AccountPage } from './pages/AccountPage.tsx';
 import { AuthCallback } from './pages/AuthCallback.tsx';
 import { CardsPage } from './pages/CardsPage.tsx';
 import { DeckEditor } from './pages/DeckEditor.tsx';
 import { DecksPage } from './pages/DecksPage.tsx';
 import { GamesPage } from './pages/GamesPage.tsx';
+import { NameForm, ProfileProvider, useProfile } from './profile.tsx';
 
 export function App() {
   const [config, setConfig] = useState<ClientConfig>();
@@ -23,23 +25,26 @@ export function App() {
   return (
     <ConfigProvider config={config}>
       <AuthProvider config={config}>
-        <CardsProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route element={<Layout />}>
-                <Route index element={<Home />} />
-                <Route path="cards" element={<CardsPage />} />
-                <Route path="decks" element={<DecksPage />} />
-                <Route path="decks/new" element={<DeckEditor />} />
-                <Route path="decks/:id" element={<DeckEditor />} />
-                <Route path="games" element={<GamesPage />} />
-                <Route path="games/:id" element={<GamePage />} />
-                <Route path="auth/callback" element={<AuthCallback />} />
-                <Route path="*" element={<p className="notice">Page not found.</p>} />
-              </Route>
-            </Routes>
-          </BrowserRouter>
-        </CardsProvider>
+        <ProfileProvider>
+          <CardsProvider>
+            <BrowserRouter>
+              <Routes>
+                <Route element={<Layout />}>
+                  <Route index element={<Home />} />
+                  <Route path="cards" element={<CardsPage />} />
+                  <Route path="decks" element={<DecksPage />} />
+                  <Route path="decks/new" element={<DeckEditor />} />
+                  <Route path="decks/:id" element={<DeckEditor />} />
+                  <Route path="games" element={<GamesPage />} />
+                  <Route path="games/:id" element={<GamePage />} />
+                  <Route path="account" element={<AccountPage />} />
+                  <Route path="auth/callback" element={<AuthCallback />} />
+                  <Route path="*" element={<p className="notice">Page not found.</p>} />
+                </Route>
+              </Routes>
+            </BrowserRouter>
+          </CardsProvider>
+        </ProfileProvider>
       </AuthProvider>
     </ConfigProvider>
   );
@@ -51,6 +56,7 @@ function Layout() {
     <div className="page">
       <Header />
       <main className="main">
+        <ChooseName />
         <Outlet />
       </main>
       <DarkPackFooter contentUrl={contentUrl} />
@@ -58,8 +64,30 @@ function Layout() {
   );
 }
 
+/** Asks a newly signed-in user for a display name (AUTH-05) until they pick one or put it off. */
+function ChooseName() {
+  const { profile } = useProfile();
+  const { pathname } = useLocation();
+  const [later, setLater] = useState(false);
+  if (!profile || profile.chosen || later || pathname === '/account') return null;
+  return (
+    <section className="notice choose-name" aria-label="Choose a display name">
+      <p>
+        <strong>Choose a display name.</strong> Other players see you as “{profile.name}” until you
+        do.
+      </p>
+      <NameForm submitLabel="Use this name">
+        <button type="button" onClick={() => setLater(true)}>
+          Later
+        </button>
+      </NameForm>
+    </section>
+  );
+}
+
 function Header() {
   const auth = useAuth();
+  const { profile } = useProfile();
   const [devName, setDevName] = useState('');
   return (
     <header className="header">
@@ -74,7 +102,9 @@ function Header() {
       <div className="account">
         {auth.user ? (
           <>
-            <span className="muted">{auth.user.name}</span>
+            <NavLink to="/account" className="muted" title="Account">
+              {profile?.name ?? auth.user.name}
+            </NavLink>
             <button type="button" onClick={() => auth.signOut()}>
               Sign out
             </button>

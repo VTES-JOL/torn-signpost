@@ -32,3 +32,4 @@ export const ClientConfig = z.object({
 export type ClientConfig = z.infer<typeof ClientConfig>;
 export * from './decks.ts';
 export * from './games.ts';
+export * from './users.ts';
