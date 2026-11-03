@@ -7,6 +7,27 @@
     { "id": "t-feed", "name": "Quick Feed", "kind": "library" },
     { "id": "t-errand", "name": "Night Errand", "kind": "library" },
     { "id": "t-ward", "name": "Iron Ward", "kind": "library" },
-    { "id": "t-signal", "name": "Signal Fire", "kind": "library" }
+    { "id": "t-signal", "name": "Signal Fire", "kind": "library" },
+    {
+      "id": "t-gaze",
+      "name": "Wide Gaze",
+      "kind": "crypt",
+      "capacity": 5,
+      "grants": ["bleed-any"]
+    },
+    {
+      "id": "t-reach",
+      "name": "Long Reach",
+      "kind": "library",
+      "types": ["Action"],
+      "grants": ["bleed-any"]
+    },
+    {
+      "id": "t-hawk",
+      "name": "Hawk Watch",
+      "kind": "library",
+      "types": ["Reaction"],
+      "grants": ["block-any"]
+    }
   ]
 }

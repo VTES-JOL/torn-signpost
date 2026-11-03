@@ -39,12 +39,13 @@ export function project(state: GameState, viewer: Viewer): GameState {
   for (const [id, card] of Object.entries(state.cards)) {
     cards[id] = card.cardId === undefined || canSee(card, viewer) ? card : omitCardId(card);
   }
-  // Auto-pass settings are private to their seat.
+  // Auto-pass settings and stops are private to their seat.
   const own = viewer.kind === 'player' ? viewer.seat : undefined;
-  const seats = state.seats.some((s) => s.autoPass && s.id !== own)
+  const hasPrivate = (s: (typeof state.seats)[number]) => s.autoPass || s.stops;
+  const seats = state.seats.some((s) => hasPrivate(s) && s.id !== own)
     ? state.seats.map((s) => {
-        if (!s.autoPass || s.id === own) return s;
-        const { autoPass: _, ...rest } = s;
+        if (!hasPrivate(s) || s.id === own) return s;
+        const { autoPass: _, stops: __, ...rest } = s;
         return rest;
       })
     : state.seats;
@@ -98,6 +99,11 @@ export function projectEvent(
     case 'AutoPassSet': {
       if (viewer.kind === 'player' && viewer.seat === ev.seat) return ev;
       const { phases: _, ...rest } = ev;
+      return rest;
+    }
+    case 'StopsSet': {
+      if (viewer.kind === 'player' && viewer.seat === ev.seat) return ev;
+      const { stops: _, ...rest } = ev;
       return rest;
     }
     default:

@@ -6,7 +6,7 @@
  */
 import type { CardCatalog } from './catalog.ts';
 import type { ClientCommand } from './commands.ts';
-import { impulseHolder, seatRefs } from './flow.ts';
+import { impulseHolder, isHolding, seatRefs } from './flow.ts';
 import type { ActionKind, CardId, GameState, InstanceId, PHASES } from './model.ts';
 import { prey, type SeatId } from './seating.ts';
 import { zoneCards, zoneId } from './zones.ts';
@@ -39,7 +39,7 @@ const ACTION_OFFERS: {
   cardTypes?: string[];
   needsCard?: boolean;
 }[] = [
-  { kind: 'bleed', label: 'Bleed' },
+  { kind: 'bleed', label: 'Bleed', cardTypes: ['Action'] },
   { kind: 'hunt', label: 'Hunt' },
   { kind: 'political', label: 'Political action', cardTypes: ['Political Action'] },
   { kind: 'equip', label: 'Equip', cardTypes: ['Equipment'], needsCard: true },
@@ -70,6 +70,16 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
     (id) => view.cards[id]?.attachedTo === undefined,
   );
   const unlocked = ready.filter((id) => !view.cards[id]?.locked);
+  // Public override sources: my face-up cards in play (docs/flow.md, "Overrides").
+  const inPlay = (['ready', 'torpor'] as const)
+    .flatMap((z) => zoneCards(view, zoneId(seat, z)))
+    .filter((id) => {
+      const c = view.cards[id];
+      return c && c.controller === seat && !c.faceDown;
+    });
+  const sourceLabel = view.settings.tournament
+    ? 'Card that allows it (required unless it is the action card)'
+    : 'Card that allows it';
   const ofType = (types: string[] | undefined) =>
     types ? hand.filter((id) => hasType(view.cards[id]?.cardId, types, catalog)) : hand;
   const v = (values: StepValue[], i: number) => values[i];
@@ -85,7 +95,20 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
   });
 
   if (window) {
-    if (impulseHolder(view) !== seat) return [];
+    if (impulseHolder(view) !== seat) {
+      // Ask the table to wait, so the engine doesn't pass for you when the impulse arrives.
+      const canHold = window.order.includes(seat) && window.order[0] !== seat;
+      if (!canHold || isHolding(view, seat)) return [];
+      return [
+        {
+          id: 'hold',
+          label: 'Hold',
+          confirm: false,
+          steps: [],
+          build: () => ({ type: 'Hold' }),
+        },
+      ];
+    }
     const canBlock =
       window.kind === 'blocks' &&
       action &&
@@ -100,6 +123,38 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
         confirm: true,
         steps: [{ kind: 'card', label: 'Blocking minion', candidates: unlocked }],
         build: (values) => ({ type: 'Block', minion: id(values, 0) }),
+      });
+    }
+    // Not an eligible blocker: a card effect may still allow a block attempt.
+    const canOverride =
+      window.kind === 'blocks' &&
+      action &&
+      !action.blockAttempt &&
+      action.seat !== seat &&
+      !action.eligible.includes(seat) &&
+      !action.declined.includes(seat);
+    if (canOverride && unlocked.length) {
+      offers.push({
+        id: 'block-override',
+        label: 'Block (card effect)…',
+        confirm: true,
+        steps: [
+          {
+            kind: 'card',
+            label: sourceLabel,
+            candidates: [...ofType(['Reaction']), ...inPlay],
+            optional: !view.settings.tournament,
+          },
+          { kind: 'card', label: 'Blocking minion', candidates: unlocked },
+        ],
+        build: (values) => {
+          const source = v(values, 0);
+          return {
+            type: 'Block',
+            minion: id(values, 1),
+            override: typeof source === 'string' ? { source } : {},
+          };
+        },
       });
     }
     if (action?.blockAttempt?.seat === seat) {
@@ -186,17 +241,9 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
     for (const a of ACTION_OFFERS) {
       const cards = ofType(a.cardTypes);
       if (a.needsCard && !cards.length) continue;
+      if (a.kind === 'bleed' && !others.length) continue;
       const steps: OfferStep[] = [{ kind: 'card', label: 'Acting minion', candidates: unlocked }];
-      if (a.kind === 'bleed' && others.length) {
-        const def = prey(seatRefs(view), seat);
-        steps.push({
-          kind: 'seat',
-          label: 'Bleed whom?',
-          candidates: others.map((s) => s.id),
-          ...(def ? { default: def } : {}),
-        });
-      }
-      if (a.cardTypes) {
+      if (a.cardTypes && (a.needsCard || cards.length)) {
         steps.push({
           kind: 'card',
           label: a.needsCard ? 'Card' : 'Action card (optional)',
@@ -216,10 +263,53 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
             kind: a.kind,
             minion: id(values, 0),
           };
-          let i = 1;
-          if (a.kind === 'bleed' && others.length) cmd.target = v(values, i++) as SeatId;
-          const card = a.cardTypes ? v(values, i) : undefined;
+          const card = v(values, 1);
           if (typeof card === 'string') cmd.card = card;
+          return cmd;
+        },
+      });
+    }
+    // Bleeding anyone but your prey needs a card effect: the action card, or one in play.
+    const myPrey = prey(seatRefs(view), seat);
+    const elsewhere = others.filter((s) => s.id !== myPrey).map((s) => s.id);
+    if (elsewhere.length) {
+      const actionCards = ofType(['Action']);
+      const steps: OfferStep[] = [{ kind: 'card', label: 'Acting minion', candidates: unlocked }];
+      if (actionCards.length) {
+        steps.push({
+          kind: 'card',
+          label: 'Action card (optional)',
+          candidates: actionCards,
+          optional: true,
+        });
+      }
+      steps.push(
+        {
+          kind: 'card',
+          label: actionCards.length ? `${sourceLabel}, if not the action card` : sourceLabel,
+          candidates: inPlay,
+          optional: true,
+        },
+        { kind: 'seat', label: 'Bleed whom?', candidates: elsewhere },
+      );
+      offers.push({
+        id: 'action:bleed-other',
+        label: 'Bleed another Methuselah…',
+        confirm: true,
+        steps,
+        build: (values) => {
+          let i = 0;
+          const cmd: Extract<ClientCommand, { type: 'DeclareAction' }> = {
+            type: 'DeclareAction',
+            kind: 'bleed',
+            minion: id(values, i++),
+            override: {},
+          };
+          const card = actionCards.length ? v(values, i++) : undefined;
+          if (typeof card === 'string') cmd.card = card;
+          const source = v(values, i++);
+          if (typeof source === 'string') cmd.override = { source };
+          cmd.target = v(values, i) as SeatId;
           return cmd;
         },
       });

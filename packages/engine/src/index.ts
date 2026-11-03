@@ -5,6 +5,7 @@ export * from './describe.ts';
 export * from './events.ts';
 export * from './evolve.ts';
 export * from './flow.ts';
+export * from './grants.ts';
 export * from './model.ts';
 export * from './offers.ts';
 export * from './projection.ts';

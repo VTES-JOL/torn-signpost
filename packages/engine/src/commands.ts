@@ -12,6 +12,7 @@ import type {
   GameSettings,
   InstanceId,
   Phase,
+  StopRule,
   UserId,
   ZoneId,
 } from './model.ts';
@@ -25,6 +26,11 @@ export interface SeatSetup {
   user: UserId;
   crypt: CardId[];
   library: CardId[];
+}
+
+/** A claimed card effect; tournament games require the source. */
+export interface OverrideClaim {
+  source?: InstanceId;
 }
 
 export type Command =
@@ -64,6 +70,13 @@ export type Command =
   | { type: 'AdvancePhase' }
   /** Which end-of-phase pass rounds to pass automatically. */
   | { type: 'SetAutoPass'; phases: Phase[] }
+  /** Replace your standing stops: situations in which you never pass automatically. */
+  | { type: 'SetStops'; stops: StopRule[] }
+  /**
+   * Ask the open window to wait for you: you won't pass automatically until you pass by hand. If
+   * your automatic pass already counted towards closing it, that pass is voided.
+   */
+  | { type: 'Hold' }
   /** Declare a minion action; `card` is an action card from the hand. */
   | {
       type: 'DeclareAction';
@@ -71,10 +84,20 @@ export type Command =
       kind: ActionKind;
       target?: SeatId;
       card?: InstanceId;
+      /**
+       * Claim a card effect that lifts the default targeting rule (bleeding someone other than
+       * your prey). `source` is the card that allows it: one of your face-up cards in play, or the
+       * action card (the default). An action card the catalog tags needs no claim.
+       */
+      override?: OverrideClaim;
     }
   /** Pass the impulse. An eligible blocker's pass with no block attempt pending declines to block. */
   | { type: 'Pass' }
-  | { type: 'Block'; minion: InstanceId }
+  /**
+   * Attempt to block. A seat that isn't an eligible blocker claims a card effect with `override`:
+   * `source` is a card from the hand, played with the attempt, or one of its face-up cards in play.
+   */
+  | { type: 'Block'; minion: InstanceId; override?: OverrideClaim }
   /** Give up a block attempt (e.g. not enough intercept). */
   | { type: 'WithdrawBlock' }
   /**

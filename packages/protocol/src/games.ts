@@ -8,6 +8,7 @@ import {
   type GameEvent,
   type GameState,
   PHASES,
+  STOP_ACTORS,
   ZONE_NAMES,
 } from '@torn-signpost/engine';
 import { z } from 'zod';
@@ -17,6 +18,7 @@ const Id = z.string().min(1).max(64);
 const ZoneId = z.templateLiteral([z.string().min(1).max(64), ':', z.enum(ZONE_NAMES)]);
 const opt = <T extends z.ZodType>(t: T) => t.exactOptional();
 const Delta = z.number().int().min(-1000).max(1000);
+const OverrideClaim = z.strictObject({ source: opt(Id) });
 const BloodHolder = z.union([z.strictObject({ pool: Id }), z.strictObject({ card: Id })]);
 
 /** Every command a client may send. `StartGame` is issued by the server, never by clients. */
@@ -63,14 +65,26 @@ export const PlayerCommand = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('AdvancePhase') }),
   z.strictObject({ type: z.literal('SetAutoPass'), phases: z.array(z.enum(PHASES)).max(5) }),
   z.strictObject({
+    type: z.literal('SetStops'),
+    stops: z
+      .array(
+        z.discriminatedUnion('on', [
+          z.strictObject({ on: z.literal('block-window'), actors: z.enum(STOP_ACTORS) }),
+        ]),
+      )
+      .max(20),
+  }),
+  z.strictObject({ type: z.literal('Hold') }),
+  z.strictObject({
     type: z.literal('DeclareAction'),
     minion: Id,
     kind: z.enum(ACTION_KINDS),
     target: opt(Id),
     card: opt(Id),
+    override: opt(OverrideClaim),
   }),
   z.strictObject({ type: z.literal('Pass') }),
-  z.strictObject({ type: z.literal('Block'), minion: Id }),
+  z.strictObject({ type: z.literal('Block'), minion: Id, override: opt(OverrideClaim) }),
   z.strictObject({ type: z.literal('WithdrawBlock') }),
   z.strictObject({
     type: z.literal('PlayCard'),

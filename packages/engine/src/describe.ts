@@ -12,6 +12,7 @@ import type {
   CardId,
   GameState,
   InstanceId,
+  Override,
   ZoneId,
   ZoneName,
 } from './model.ts';
@@ -51,6 +52,13 @@ export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOp
   const holder = (h: BloodHolder) =>
     'pool' in h ? `${seatName(h.pool)}'s pool` : cardName(h.card);
   const signed = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+  /** ", ignoring the prey restriction (<card>, unverified)" for a claimed card effect. */
+  const overrideNote = (o: Override | undefined) => {
+    if (!o) return '';
+    const rule = o.grant === 'bleed-any' ? 'the prey restriction' : 'the blocking restrictions';
+    const source = o.source === undefined ? 'no card named' : cardName(o.source, o.sourceCardId);
+    return `, ignoring ${rule} (${source}${o.verified ? '' : ', unverified'})`;
+  };
 
   switch (ev.type) {
     case 'GameStarted':
@@ -111,8 +119,9 @@ export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOp
         : `${seatName(ev.turn.seat)}'s ${ev.turn.phase} phase`;
     case 'PlayerReplaced':
       return `${who} replaced the player in seat ${seatName(ev.seat)}`;
-    // Bookkeeping with nothing to tell (auto-pass settings are private): no log line.
+    // Bookkeeping with nothing to tell (auto-pass settings and stops are private): no log line.
     case 'AutoPassSet':
+    case 'StopsSet':
     case 'ImpulseReset':
     case 'WindowClosed':
       return '';
@@ -120,6 +129,8 @@ export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOp
       return ev.window.kind === 'phase' && before.turn
         ? `End of ${seatName(before.turn.seat)}'s ${ev.window.phase} phase: waiting for the other players`
         : '';
+    case 'Held':
+      return `${seatName(ev.seat)} asks the table to wait`;
     case 'Passed': {
       if (ev.auto) return '';
       const a = before.action;
@@ -141,10 +152,10 @@ export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOp
             ? ` ${seatName(a.target)}`
             : ` against ${seatName(a.target)}`;
       const card = a.card === undefined ? '' : ` with ${cardName(a.card, a.cardId)}`;
-      return `${who}: ${cardName(a.minion)} ${verb}${target}${card}`;
+      return `${who}: ${cardName(a.minion)} ${verb}${target}${card}${overrideNote(a.override)}`;
     }
     case 'BlockAttempted':
-      return `${seatName(ev.seat)} tries to block with ${cardName(ev.minion)}`;
+      return `${seatName(ev.seat)} tries to block with ${cardName(ev.minion)}${overrideNote(ev.override)}`;
     case 'BlockWithdrawn':
       return `${seatName(ev.seat)} withdrew the block`;
     case 'ActionBlocked':

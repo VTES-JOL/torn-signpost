@@ -223,6 +223,8 @@ on the **redacted view**, it works on clients (they know their own hand) and on 
 Drag-and-drop asks the same function for valid drop targets (UX-02). Context menus (UX-04) list
 the offers that apply to the selected card.
 
+The offers and the checks behind them, phase by phase, are listed in [flow.md](flow.md).
+
 ### 4.4 Decisions, impulses and "halt when waiting" (TEMPO-01/03/04)
 
 - **Decision requests**: the engine runs every deterministic step itself and stops only when a
@@ -535,7 +537,15 @@ primitives, and corrections are new commands.
   phases they auto-pass (`SetAutoPass`; every phase by default; private to the seat). A round where
   every other seat auto-passes is skipped outright, so by default phases advance at once. Automatic
   passes are recorded as `Passed{auto}` events, which the log doesn't show. The same setting for the
-  minion phase covers action windows in which a seat can't block.
+  minion phase covers action windows in which a seat can't block. Two ways to keep the impulse
+  anyway: standing **stops** (`SetStops`; private; e.g. stop in block windows of your prey's and
+  predator's actions), and a public, one-off **Hold** for the open window, which voids the seat's
+  automatic pass if one already counted. Stops are a list of `StopRule`s so player-defined
+  triggers (cards played, action kinds) can be added later (see `docs/flow.md`).
+- **Overrides**: the flow applies the default targeting and blocking rules, and a player claims
+  a card effect to lift them (`override` on `DeclareAction` and `Block`). The claim names a public
+  source card; a catalog `grants` tag (from a table of VEKN IDs) marks it verified, otherwise it is
+  accepted and flagged unverified. Tournament games require a source. See `docs/flow.md`.
 - **Actions**: `DeclareAction` locks the minion (which must be unlocked) and opens the block window.
   Declaring counts as the acting Methuselah's first pass. Eligible blockers are the target, or prey
   and predator for undirected actions; they always decide by hand. `Block` makes a block *attempt*:

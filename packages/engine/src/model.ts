@@ -4,6 +4,7 @@
  * server state and as a redacted per-viewer view (`cardId` is missing on cards the viewer can't
  * see), so `evolve` runs unchanged on both.
  */
+import type { Grant } from './catalog.ts';
 import type { SeatId, TurnDirection } from './seating.ts';
 
 export type GameId = string;
@@ -75,7 +76,29 @@ export interface Seat {
    * phase (the default). Private: other viewers' views don't carry it.
    */
   autoPass?: Phase[];
+  /**
+   * Standing stops: situations in which this seat never passes automatically, whatever its
+   * auto-pass setting. Missing means none. Private, like `autoPass`.
+   */
+  stops?: StopRule[];
 }
+
+/**
+ * When a seat wants the impulse to wait for it instead of passing automatically. A stop fires
+ * whatever is in the hand, so it gives nothing away. Rules are matched by `stopApplies` in
+ * `flow.ts`, the one place a new trigger needs code.
+ *
+ * Kept open for player-defined stops: new triggers are new `on` variants, e.g. a card being played
+ * (`{ on: 'card-played'; cards?: CardId[]; types?: string[]; by?: StopActors }`) or an action kind
+ * (`{ on: 'action'; kinds: ActionKind[]; actors: StopActors }`).
+ */
+export type StopRule = { on: 'block-window'; actors: StopActors };
+
+/** Whose actions a stop covers: those of your prey and predator, or anyone's. */
+export type StopActors = 'neighbours' | 'anyone';
+
+export const STOP_TRIGGERS = ['block-window'] as const satisfies readonly StopRule['on'][];
+export const STOP_ACTORS = ['neighbours', 'anyone'] as const satisfies readonly StopActors[];
 
 export interface GameSettings {
   tournament: boolean;
@@ -113,9 +136,24 @@ export interface ActionState {
   eligible: SeatId[];
   /** Eligible seats that passed with no block attempt pending; they can't block this action. */
   declined: SeatId[];
-  blockAttempt?: { seat: SeatId; minion: InstanceId };
+  /** Set when the action breaks the default targeting rule (a bleed on someone else's prey…). */
+  override?: Override;
+  blockAttempt?: { seat: SeatId; minion: InstanceId; override?: Override };
   stage: 'blocks' | 'combat' | 'resolution';
   blocker?: InstanceId;
+}
+
+/**
+ * A default flow rule set aside by a card effect the player claims (docs/flow.md, "Overrides").
+ * Public: the source is a card in play, the action card, or a card played with the command.
+ */
+export interface Override {
+  grant: Grant;
+  /** The card that allows it; missing for a claim without one (casual games only). */
+  source?: InstanceId;
+  sourceCardId?: CardId;
+  /** The catalog confirms the source lifts this rule. Unverified overrides are flagged. */
+  verified: boolean;
 }
 
 /**
@@ -132,6 +170,11 @@ export interface ImpulseWindow {
   cursor: number;
   /** Consecutive passes so far. */
   passes: number;
+  /**
+   * Seats that asked to hold this window (`Hold`): none of them passes automatically until it
+   * passes by hand. Public, like asking the table to wait. Cleared when the window closes.
+   */
+  holds?: SeatId[];
 }
 
 export interface GameState {

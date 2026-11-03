@@ -29,12 +29,14 @@ player. The parser lives in `packages/engine/src/console` and is shared by every
 | `direction prey\|predator` | Which way play passes when a turn ends (GAME-20) |
 | `next` | End the current phase (or the turn, after discard). Opens the end-of-phase pass round unless every other player auto-passes it |
 | `autopass all\|none\|<phase>,…` | Which end-of-phase pass rounds you pass automatically (default: all) |
-| `bleed <minion> [seat] [with <card>]` | Declare a bleed; the target defaults to your prey. Locks the minion and opens the block window |
+| `stop none\|neighbours\|anyone` | Block windows you never pass automatically, even when you can't block: none (default), actions by your prey or predator, or every action |
+| `hold` | Ask the open window to wait for you; you won't pass automatically until you pass |
+| `bleed <minion> [seat] [with <card>] [via <card>\|override]` | Declare a bleed; the target defaults to your prey. Locks the minion and opens the block window. Bleeding anyone else needs a card effect: an action card tagged for it, `via` the card in play that allows it, or `override` to claim one without naming it (casual games; with `with`, the action card is the source) |
 | `hunt <minion> [with <card>]` | Declare a hunt |
 | `political <minion> [with <card>]` | Declare a political action |
 | `equip\|recruit\|employ <minion> with <card>` | Declare an equip, recruit or employ action with a card from your hand. On success the card goes into play (equipment attached to the minion) |
 | `action <minion> [seat] [with <card>]` | Declare any other action, directed at a seat or not |
-| `block <minion>` | Try to block the current action (needs the impulse; you must be the target, or prey or predator for undirected actions) |
+| `block <minion> [via <card>\|override]` | Try to block the current action (needs the impulse; you must be the target, or prey or predator for undirected actions). Otherwise name the card effect that allows it: `via` a card in your hand (played with the attempt) or in play, or `override` without a card (casual games) |
 | `unblock` | Withdraw your block attempt |
 | `pass` | Pass the impulse. With no block attempt pending, an eligible blocker's pass declines to block |
 | `play <card> [ready] [on <host>] [noreplace]` | Play a card from your hand: to the ash heap, into your ready region, or attached to a minion. It is replaced from your library unless `noreplace`. In a window it needs the impulse and returns it to the acting player |
@@ -94,6 +96,7 @@ expect impulse B               # who holds the impulse, or none
 expect action bleed A blocks   # kind, acting seat, stage (blocks, combat, resolution), or none
 expect window phase master     # open window kind and phase, or none
 expect autopass B none         # phases a seat auto-passes, comma-separated, or none
+expect holds C                 # seats holding the open window, comma-separated, or none
 expect card A:ready:1 blood 7  # zone, controller, owner, locked, faceDown, contested,
                                # blood, life, generic, attached
 log B A drew 7 cards from their library   # a log line, as the given viewer reads it

@@ -7,6 +7,7 @@ import {
   type GameState,
   type ImpulseWindow,
   type InstanceId,
+  type Override,
   type Seat,
   ZONE_NAMES,
   type ZoneId,
@@ -192,12 +193,31 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
       if (phases) patchSeat(d, ev.seat, () => ({ autoPass: [...phases] }));
       break;
     }
+    case 'StopsSet': {
+      const stops = ev.stops;
+      if (stops) patchSeat(d, ev.seat, () => ({ stops: stops.map((r) => ({ ...r })) }));
+      break;
+    }
+    case 'Held': {
+      const w = windowOf(d);
+      const n = w.order.length;
+      const back = (w.cursor - w.order.indexOf(ev.seat) + n) % n;
+      // A pass already in the run is voided: the run restarts just after the holding seat.
+      const passes = back >= 1 && back <= w.passes ? back - 1 : w.passes;
+      d.window = { ...w, passes, holds: [...(w.holds ?? []), ev.seat] };
+      break;
+    }
     case 'WindowOpened':
       d.window = { ...ev.window, order: [...ev.window.order] };
       break;
     case 'Passed': {
       const w = windowOf(d);
       d.window = { ...w, cursor: (w.cursor + 1) % w.order.length, passes: w.passes + 1 };
+      if (!ev.auto && w.holds?.includes(ev.seat)) {
+        const holds = w.holds.filter((s) => s !== ev.seat);
+        if (holds.length) d.window.holds = holds;
+        else delete d.window.holds;
+      }
       const a = d.action;
       if (
         w.kind === 'blocks' &&
@@ -217,10 +237,19 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
       delete d.window;
       break;
     case 'ActionDeclared':
-      d.action = { ...ev.action, eligible: [...ev.action.eligible], declined: [] };
+      d.action = withOverride(
+        { ...ev.action, eligible: [...ev.action.eligible], declined: [] },
+        ev.action.override,
+      );
       break;
     case 'BlockAttempted':
-      d.action = { ...actionOf(d), blockAttempt: { seat: ev.seat, minion: ev.minion } };
+      d.action = {
+        ...actionOf(d),
+        blockAttempt: withOverride<NonNullable<ActionState['blockAttempt']>>(
+          { seat: ev.seat, minion: ev.minion },
+          ev.override,
+        ),
+      };
       d.window = { ...windowOf(d), cursor: 0, passes: 0 };
       break;
     case 'BlockWithdrawn': {
@@ -348,4 +377,12 @@ function rekeyInPlace(d: GameState, old: CardInstance, next: CardInstance) {
   for (const c of Object.values(d.cards)) {
     if (c.attachedTo === old.id) d.cards[c.id] = { ...c, attachedTo: next.id };
   }
+}
+
+function withOverride<T extends { override?: Override }>(
+  value: T,
+  override: Override | undefined,
+): T {
+  if (!override) return value;
+  return { ...value, override: { ...override } };
 }

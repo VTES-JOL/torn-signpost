@@ -10,6 +10,7 @@ import {
   type Counter,
   type GameState,
   PHASES,
+  STOP_ACTORS,
   type ZoneId,
   type ZoneName,
 } from '../model.ts';
@@ -37,7 +38,8 @@ type Arg =
   | 'direction'
   | 'user'
   | 'outcome'
-  | 'phases';
+  | 'phases'
+  | 'stops';
 
 interface Syntax {
   args: Arg[];
@@ -67,16 +69,20 @@ export const CONSOLE_COMMANDS: Record<string, Syntax> = {
   edge: { args: ['seat'], usage: 'edge <seat|none>' },
   direction: { args: ['direction'], usage: 'direction prey|predator' },
   next: { args: [], usage: 'next' },
-  bleed: { args: ['card', 'seat', 'options'], usage: 'bleed <minion> [seat] [with <card>]' },
+  bleed: {
+    args: ['card', 'seat', 'options'],
+    usage: 'bleed <minion> [seat] [with <card>] [via <card>|override]',
+  },
   hunt: { args: ['card', 'options'], usage: 'hunt <minion> [with <card>]' },
   political: { args: ['card', 'options'], usage: 'political <minion> [with <card>]' },
   equip: { args: ['card', 'options'], usage: 'equip <minion> with <card>' },
   recruit: { args: ['card', 'options'], usage: 'recruit <minion> with <card>' },
   employ: { args: ['card', 'options'], usage: 'employ <minion> with <card>' },
   action: { args: ['card', 'seat', 'options'], usage: 'action <minion> [seat] [with <card>]' },
-  block: { args: ['card'], usage: 'block <minion>' },
+  block: { args: ['card', 'options'], usage: 'block <minion> [via <card>|override]' },
   unblock: { args: [], usage: 'unblock  (withdraw your block attempt)' },
   pass: { args: [], usage: 'pass' },
+  hold: { args: [], usage: 'hold  (ask the open window to wait for you)' },
   play: {
     args: ['card', 'options'],
     usage: 'play <card> [ready] [on <host>] [noreplace]',
@@ -87,6 +93,10 @@ export const CONSOLE_COMMANDS: Record<string, Syntax> = {
   autopass: {
     args: ['phases'],
     usage: 'autopass all|none|<phase>,...  (phase-end rounds you pass automatically)',
+  },
+  stop: {
+    args: ['stops'],
+    usage: 'stop none|neighbours|anyone  (block windows you never pass automatically)',
   },
   replace: { args: ['seat', 'user'], usage: 'replace <seat> <user>  (admins)' },
 };
@@ -133,6 +143,34 @@ function parse(tokens: string[], ctx: ConsoleContext): Command {
   const arg = (i: number) => args[i] ?? usage();
   const me = () => ctx.seat ?? fail('You have no seat at this table');
   const card = (i: number) => resolveCard(arg(i), ctx);
+  /**
+   * Splits `args` into leading positional tokens and keyword options: `with`/`via` take the next
+   * token (its index is recorded), `override` takes none.
+   */
+  const options = (keywords: string[]) => {
+    const at = new Map<string, number>();
+    let positional = args.length;
+    for (let i = 0; i < args.length; i++) {
+      const k = (args[i] ?? '').toLowerCase();
+      if (!keywords.includes(k)) {
+        if (at.size) usage();
+        continue;
+      }
+      if (positional === args.length) positional = i;
+      if (at.has(k)) usage();
+      if (k === 'override') at.set(k, i);
+      else {
+        if (i + 1 >= args.length) usage();
+        at.set(k, ++i);
+      }
+    }
+    return { positional, at };
+  };
+  const overrideClaim = (at: Map<string, number>) => {
+    const via = at.get('via');
+    if (via !== undefined) return { source: card(via).id };
+    return at.has('override') ? {} : undefined;
+  };
   const seatArg = (i: number) => (args[i] === undefined ? me() : resolveSeat(arg(i), ctx));
   const extra = (n: number) => {
     if (args.length > n) usage();
@@ -241,26 +279,43 @@ function parse(tokens: string[], ctx: ConsoleContext): Command {
     case 'employ':
     case 'action': {
       const kind = verb === 'action' ? 'other' : verb;
-      const withAt = args.findIndex((a) => a.toLowerCase() === 'with');
-      const before = withAt < 0 ? args : args.slice(0, withAt);
-      if (withAt >= 0 && args.length !== withAt + 2) usage();
+      const opts = options(verb === 'bleed' ? ['with', 'via', 'override'] : ['with']);
       const directed = verb === 'bleed' || verb === 'action';
-      if (before.length < 1 || before.length > (directed ? 2 : 1)) usage();
+      if (opts.positional < 1 || opts.positional > (directed ? 2 : 1)) usage();
       const cmd: Command = { type: 'DeclareAction', kind, minion: card(0).id };
-      if (before[1] !== undefined) cmd.target = resolveSeat(before[1], ctx);
-      if (withAt >= 0) cmd.card = card(withAt + 1).id;
+      if (opts.positional > 1) cmd.target = resolveSeat(arg(1), ctx);
+      const withAt = opts.at.get('with');
+      if (withAt !== undefined) cmd.card = card(withAt).id;
       else if (['equip', 'recruit', 'employ'].includes(verb)) usage();
+      const override = overrideClaim(opts.at);
+      if (override) cmd.override = override;
       return cmd;
     }
-    case 'block':
-      extra(1);
-      return { type: 'Block', minion: card(0).id };
+    case 'block': {
+      const opts = options(['via', 'override']);
+      if (opts.positional !== 1) usage();
+      const cmd: Command = { type: 'Block', minion: card(0).id };
+      const override = overrideClaim(opts.at);
+      if (override) cmd.override = override;
+      return cmd;
+    }
     case 'unblock':
       extra(0);
       return { type: 'WithdrawBlock' };
     case 'pass':
       extra(0);
       return { type: 'Pass' };
+    case 'hold':
+      extra(0);
+      return { type: 'Hold' };
+    case 'stop': {
+      extra(1);
+      const t = arg(0).toLowerCase();
+      if (t === 'none') return { type: 'SetStops', stops: [] };
+      const actors =
+        STOP_ACTORS.find((x) => x === t) ?? fail(`Use none, ${STOP_ACTORS.join(' or ')}`);
+      return { type: 'SetStops', stops: [{ on: 'block-window', actors }] };
+    }
     case 'play': {
       const cmd: Command = { type: 'PlayCard', card: card(0).id };
       for (let i = 1; i < args.length; i++) {
@@ -432,12 +487,16 @@ export function completeConsole(input: string, ctx: ConsoleContext): string[] {
       if (verb === 'play') return match(['ready', 'on', 'noreplace']);
       if (verb === 'resolve') return match(['edge']);
       if (verb === 'move') return match(['top', 'bottom', 'facedown', 'faceup']);
+      if (verb === 'bleed') return match(['with', 'via', 'override']);
+      if (verb === 'block') return match(['via', 'override']);
       return match(['with']);
     }
     case 'outcome':
       return match(['success', 'failure']);
     case 'phases':
       return match(['all', 'none', ...PHASES]);
+    case 'stops':
+      return match(['none', ...STOP_ACTORS]);
     case 'direction':
       return match(['prey', 'predator']);
     default:

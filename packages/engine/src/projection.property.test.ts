@@ -127,6 +127,11 @@ function commandFor(state: GameState, [, kind, a, b, c, d]: Step): Command {
   const flow: Command[] = [
     { type: 'SetAutoPass', phases: PHASES.filter((_, i) => (c >> i) & 1) },
     {
+      type: 'SetStops',
+      stops: c % 3 ? [{ on: 'block-window', actors: c % 2 ? 'anyone' : 'neighbours' }] : [],
+    },
+    { type: 'Hold' },
+    {
       type: 'DeclareAction',
       minion: pick('ready', a),
       kind: ACTION_KINDS[c % ACTION_KINDS.length] ?? 'bleed',
@@ -135,6 +140,7 @@ function commandFor(state: GameState, [, kind, a, b, c, d]: Step): Command {
     },
     ...Array.from({ length: 6 }, (): Command => ({ type: 'Pass' })),
     { type: 'Block', minion: pick('ready', a) },
+    { type: 'Block', minion: pick('ready', a), override: { source: pick('hand', d) } },
     { type: 'WithdrawBlock' },
     { type: 'PlayCard', card: pick('hand', a), ...(c % 2 ? { to: 'ready' as const } : {}) },
     { type: 'PlayCard', card: pick('hand', a), attachTo: other, replace: d % 2 === 0 },
@@ -163,9 +169,18 @@ function guidedStep(state: GameState, [, kind, a, , c, d]: Step): [Command, Acto
   const act = state.action;
   if (state.window) {
     if (act?.blockAttempt?.seat === fs && n === 0) return [{ type: 'WithdrawBlock' }, actor];
-    if (state.window.kind === 'blocks' && n < 3) return [{ type: 'Block', minion }, actor];
+    if (state.window.kind === 'blocks' && n < 3) {
+      // Sometimes claim a card effect, played from the hand or not.
+      const override = c % 3 === 0 ? { override: d % 2 ? { source: card } : {} } : {};
+      return [{ type: 'Block', minion, ...override }, actor];
+    }
     if (n < 5) return [{ type: 'PlayCard', card, replace: c % 2 === 0 }, actor];
     if (n === 5) return [{ type: 'SetAutoPass', phases: [...PHASES] }, actor];
+    if (n === 6) {
+      // Someone else asks the window to wait.
+      const other = state.seats[c % state.seats.length];
+      return [{ type: 'Hold' }, { kind: 'player', user: other?.occupant ?? '' }];
+    }
     return [{ type: 'Pass' }, actor];
   }
   if (act?.stage === 'combat') return [{ type: 'EndCombat' }, actor];
@@ -177,10 +192,12 @@ function guidedStep(state: GameState, [, kind, a, , c, d]: Step): [Command, Acto
   if (n < 2) {
     const phases = PHASES.filter((_, i) => (c >> i) & 1);
     const other = state.seats[c % state.seats.length];
-    return [
-      { type: 'SetAutoPass', phases },
-      { kind: 'player', user: other?.occupant ?? '' },
-    ];
+    const by: Actor = { kind: 'player', user: other?.occupant ?? '' };
+    if (d % 3 === 0) {
+      const actors = d % 2 ? 'anyone' : 'neighbours';
+      return [{ type: 'SetStops', stops: [{ on: 'block-window', actors }] }, by];
+    }
+    return [{ type: 'SetAutoPass', phases }, by];
   }
   if (state.turn?.phase === 'minion' && n < 8) {
     const target = state.seats[d % state.seats.length]?.id;
@@ -193,6 +210,7 @@ function guidedStep(state: GameState, [, kind, a, , c, d]: Step): [Command, Acto
         kind: ACTION_KINDS[c % ACTION_KINDS.length] ?? 'bleed',
         ...(d % 3 === 0 && target ? { target } : {}),
         ...(d % 2 === 0 ? { card } : {}),
+        ...(c % 4 === 0 ? { override: a % 2 ? { source: minion } : {} } : {}),
       },
       actor,
     ];
@@ -341,6 +359,8 @@ describe('hidden information', { timeout: 60_000 }, () => {
       'ActionResolving',
       'ActionEnded',
       'AutoPassSet',
+      'StopsSet',
+      'Held',
     ]) {
       expect(seen, type).toContain(type);
     }

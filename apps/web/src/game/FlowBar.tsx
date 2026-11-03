@@ -12,8 +12,10 @@ import {
   impulseHolder,
   type Offer,
   type OfferStep,
+  type Override,
   PHASES,
   type StepValue,
+  stopRules,
 } from '@torn-signpost/engine';
 import type { PlayerCommand } from '@torn-signpost/protocol';
 import { useEffect } from 'react';
@@ -232,7 +234,16 @@ function StepInput(props: {
   }
 }
 
-/** Which end-of-phase pass rounds to pass automatically (all of them by default). */
+const STOP_CHOICES = [
+  ['never', 'Only when I can block'],
+  ['neighbours', 'For my prey’s and predator’s actions'],
+  ['anyone', 'For every action'],
+] as const;
+
+/**
+ * Which end-of-phase pass rounds to pass automatically (all of them by default), and the standing
+ * stops for block windows.
+ */
 function AutoPass(props: {
   view: GameState;
   seat: string;
@@ -241,6 +252,8 @@ function AutoPass(props: {
   const me = props.view.seats.find((s) => s.id === props.seat);
   if (!me) return null;
   const phases = autoPassPhases(me);
+  const stops = stopRules(me);
+  const blockStop = stops.find((r) => r.on === 'block-window')?.actors ?? 'never';
   return (
     <details className="autopass">
       <summary>Auto-pass</summary>
@@ -266,9 +279,49 @@ function AutoPass(props: {
             {p}
           </label>
         ))}
+        <p className="muted small">
+          Stop in block windows, even when you can't block, so you can play reactions that let you
+          block anyway. Use Hold for a one-off stop.
+        </p>
+        {STOP_CHOICES.map(([value, label]) => (
+          <label key={value}>
+            <input
+              type="radio"
+              name="block-stop"
+              checked={blockStop === value}
+              onChange={() =>
+                props.send({
+                  type: 'SetStops',
+                  stops: [
+                    ...stops.filter((r) => r.on !== 'block-window'),
+                    ...(value === 'never' ? [] : [{ on: 'block-window' as const, actors: value }]),
+                  ],
+                })
+              }
+            />{' '}
+            {label}
+          </label>
+        ))}
       </div>
     </details>
   );
+}
+
+/** " (card effect: X, unverified)" for an override, so everyone sees it before responding. */
+function overrideNote(
+  o: Override | undefined,
+  name: (id: string | undefined) => string,
+  action?: string,
+): string {
+  if (!o) return '';
+  // The action card is named already; other sources are in play or were just played, so visible.
+  const source =
+    o.source === undefined
+      ? 'no card named'
+      : o.source === action
+        ? 'the action card'
+        : name(o.source);
+  return ` (card effect: ${source}${o.verified ? '' : ', unverified'})`;
 }
 
 function statusLine(
@@ -280,6 +333,8 @@ function statusLine(
   if (!turn) return 'Waiting to start';
   const who = client.seatName;
   const holder = impulseHolder(view);
+  const holds = view.window?.holds?.filter((s) => s !== holder) ?? [];
+  const holding = holds.length ? ` · ${holds.map(who).join(', ')} asked to wait` : '';
   const a = view.action;
   if (a) {
     const target = a.target
@@ -288,14 +343,16 @@ function statusLine(
         : ` against ${who(a.target)}`
       : '';
     const card = a.cardId ? ` with ${name(a.card)}` : '';
-    const what = `${name(a.minion)} ${VERBS[a.kind]}${target}${card}`;
+    const what = `${name(a.minion)} ${VERBS[a.kind]}${target}${card}${overrideNote(a.override, name, a.card)}`;
     if (a.stage === 'combat') return `${what} · blocked by ${name(a.blocker)}: combat`;
     if (a.stage === 'resolution') return `${what} · not blocked: ${who(a.seat)} resolves it`;
-    const attempt = a.blockAttempt ? ` · ${name(a.blockAttempt.minion)} tries to block` : '';
-    return `${what}${attempt} · waiting for ${holder ? who(holder) : 'nobody'}`;
+    const attempt = a.blockAttempt
+      ? ` · ${name(a.blockAttempt.minion)} tries to block${overrideNote(a.blockAttempt.override, name)}`
+      : '';
+    return `${what}${attempt} · waiting for ${holder ? who(holder) : 'nobody'}${holding}`;
   }
   if (view.window) {
-    return `End of ${who(turn.seat)}'s ${turn.phase} phase · waiting for ${holder ? who(holder) : 'nobody'}`;
+    return `End of ${who(turn.seat)}'s ${turn.phase} phase · waiting for ${holder ? who(holder) : 'nobody'}${holding}`;
   }
   const reversed = view.turnDirection === 'toPredator' ? ' · play passes to the predator' : '';
   return `Turn ${turn.number} · ${who(turn.seat)} · ${turn.phase} phase${reversed}`;

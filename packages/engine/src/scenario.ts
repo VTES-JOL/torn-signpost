@@ -227,6 +227,8 @@ function check(state: GameState, args: string[], catalog: CardCatalog): string |
       const w = state.window;
       return same('window', w ? `${w.kind} ${w.phase}` : 'none', rest.join(' '));
     }
+    case 'holds':
+      return same('holds', state.window?.holds?.join(',') || 'none', rest[0] ?? '');
     case 'autopass': {
       const s = seat(rest[0]);
       return same(

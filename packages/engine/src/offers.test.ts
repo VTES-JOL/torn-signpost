@@ -61,14 +61,42 @@ describe('available actions (UX-03)', () => {
     );
     // No ally or retainer in hand, so no recruit or employ.
     expect(ids(offers)).not.toContain('action:recruit');
+    // A plain bleed goes to the prey; no Action card in hand, so no card step.
     const bleed = offers.find((o) => o.id === 'action:bleed');
-    expect(bleed?.steps.map((s) => s.kind)).toEqual(['card', 'seat']);
-    expect(bleed?.steps[1]).toMatchObject({ default: 'B', candidates: ['B', 'C'] });
+    expect(bleed?.steps.map((s) => s.kind)).toEqual(['card']);
     const minion = bleed?.steps[0];
-    expect(bleed?.build([minion?.kind === 'card' ? minion.candidates[0] : '', 'C'])).toMatchObject({
+    const vera = minion?.kind === 'card' ? (minion.candidates[0] ?? '') : '';
+    const plain = bleed?.build([vera]);
+    expect(plain).toMatchObject({ type: 'DeclareAction', kind: 'bleed', minion: vera });
+    expect(plain).not.toHaveProperty('target');
+    // Anyone else needs a card effect: the source is optional in casual games.
+    const other = offers.find((o) => o.id === 'action:bleed-other');
+    expect(other?.steps.map((s) => s.kind)).toEqual(['card', 'card', 'seat']);
+    expect(other?.steps[1]).toMatchObject({ optional: true, candidates: [vera] });
+    expect(other?.steps[2]).toMatchObject({ candidates: ['C'] });
+    expect(other?.build([vera, undefined, 'C'])).toEqual({
       type: 'DeclareAction',
       kind: 'bleed',
+      minion: vera,
       target: 'C',
+      override: {},
+    });
+    expect(other?.build([vera, vera, 'C'])).toMatchObject({ override: { source: vera } });
+  });
+
+  it('offers a card-effect block to a seat that is not an eligible blocker', () => {
+    const script =
+      'C> draw crypt\nC> move C:uncontrolled:1 ready\nA> next\nA> next\nA> bleed "Vera Nightfall"\nC> hold\nB> pass';
+    const offers = offersAfter(script, 'C');
+    expect(ids(offers)).toEqual(['block-override', 'play', 'pass']);
+    const block = offers[0];
+    expect(block?.steps.map((s) => s.kind)).toEqual(['card', 'card']);
+    const minion = block?.steps[1];
+    const ilse = minion?.kind === 'card' ? (minion.candidates[0] ?? '') : '';
+    expect(block?.build([undefined, ilse])).toEqual({
+      type: 'Block',
+      minion: ilse,
+      override: {},
     });
   });
 
@@ -77,7 +105,11 @@ describe('available actions (UX-03)', () => {
     expect(ids(offersAfter(declared, 'B'))).toEqual(['block', 'play', 'pass']);
     expect(offersAfter(declared, 'B').find((o) => o.id === 'pass')?.label).toBe('Don’t block');
     expect(offersAfter(declared, 'A')).toEqual([]);
-    expect(offersAfter(declared, 'C')).toEqual([]);
+    // Seats without the impulse may only ask the window to wait; the acting seat never needs to.
+    const hold = offersAfter(declared, 'C');
+    expect(ids(hold)).toEqual(['hold']);
+    expect(hold[0]?.build([])).toEqual({ type: 'Hold' });
+    expect(offersAfter(`${declared}\nC> hold`, 'C')).toEqual([]);
     const resolving = `${declared}\nB> pass`;
     expect(ids(offersAfter(resolving, 'A'))).toEqual(['success', 'failure', 'play', 'cancel']);
     const success = offersAfter(resolving, 'A').find((o) => o.id === 'success');

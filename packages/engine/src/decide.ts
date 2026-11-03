@@ -1,8 +1,14 @@
-import type { CardCatalog } from './catalog.ts';
+import type { CardCatalog, Grant } from './catalog.ts';
 import type { BloodHolder, Command } from './commands.ts';
 import type { EventBody, GameEvent } from './events.ts';
 import { evolve } from './evolve.ts';
-import { eligibleBlockers, impulseHolder, passesAutomatically, seatRefs } from './flow.ts';
+import {
+  eligibleBlockers,
+  impulseHolder,
+  isHolding,
+  passesAutomatically,
+  seatRefs,
+} from './flow.ts';
 import type {
   Actor,
   ActorRef,
@@ -11,9 +17,11 @@ import type {
   GameState,
   InstanceId,
   Instant,
+  Override,
+  StopRule,
   ZoneId,
 } from './model.ts';
-import { ACTION_KINDS, PHASES } from './model.ts';
+import { ACTION_KINDS, PHASES, STOP_ACTORS, STOP_TRIGGERS } from './model.ts';
 import { canSee } from './projection.ts';
 import { newInstanceId, type Rng, shuffled } from './rng.ts';
 import { nextTurnSeat, prey, type SeatId, windowOrder } from './seating.ts';
@@ -158,6 +166,17 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
     }
     return m;
   };
+  /** Whether the catalog says the card lifts the rule. */
+  const hasGrant = (c: CardInstance | undefined, grant: Grant): boolean =>
+    !!c?.cardId && !!ctx.catalog.get(c.cardId)?.grants?.includes(grant);
+  /** A public override source: a face-up card the seat controls in play. */
+  const faceUpInPlay = (c: CardInstance, s: SeatId): boolean =>
+    c.controller === s && IN_PLAY_ZONES.has(parseZoneId(c.zone).name) && !c.faceDown;
+  const overrideFrom = (grant: Grant, source: CardInstance | undefined): Override =>
+    withOptional(
+      { grant, verified: hasGrant(source, grant) },
+      { source: source?.id, sourceCardId: source?.cardId },
+    );
   /** The action in progress, which the actor (its Methuselah or a judge) may steer. */
   const actingAction = () => {
     const a = state.action ?? reject('not-now', 'No action in progress');
@@ -451,6 +470,28 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
       return settle(state, [{ type: 'AutoPassSet', seat: s, phases }]);
     }
 
+    case 'SetStops': {
+      const s = mySeat ?? reject('not-seated', 'Only players have stops');
+      const stops: StopRule[] = [];
+      for (const r of cmd.stops) {
+        if (!STOP_TRIGGERS.includes(r.on)) reject('invalid', `Unknown stop ${r.on}`);
+        if (!STOP_ACTORS.includes(r.actors)) reject('invalid', `Unknown stop scope ${r.actors}`);
+        const rule: StopRule = { on: r.on, actors: r.actors };
+        if (!stops.some((x) => JSON.stringify(x) === JSON.stringify(rule))) stops.push(rule);
+      }
+      return settle(state, [{ type: 'StopsSet', seat: s, stops }]);
+    }
+
+    case 'Hold': {
+      const s = mySeat ?? reject('not-seated', 'Only players hold windows');
+      const w = state.window ?? reject('not-now', 'There is nothing to hold');
+      if (!w.order.includes(s)) reject('forbidden', 'You are not part of this window');
+      if (w.order[0] === s) reject('no-change', 'The window always waits for you');
+      if (impulseHolder(state) === s) reject('no-change', 'You already have the impulse');
+      if (isHolding(state, s)) reject('no-change', 'You are already holding');
+      return settle(state, [{ type: 'Held', seat: s }]);
+    }
+
     case 'DeclareAction': {
       const s = mySeat ?? reject('not-seated', 'Only the acting player declares actions');
       const turn = state.turn;
@@ -466,14 +507,45 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
         const t = seat(target);
         if (t.ousted || t.withdrawn) reject('invalid', 'That player is out of the game');
       }
-      if (cmd.kind === 'bleed') {
-        target ??= prey(seatRefs(state), s) ?? reject('invalid', 'There is nobody to bleed');
-      }
-      let cardId: string | undefined;
+      let actionCard: CardInstance | undefined;
       if (cmd.card !== undefined) {
-        const c = card(cmd.card);
-        if (c.zone !== zoneId(s, 'hand')) reject('invalid', 'The action card must be in your hand');
-        cardId = c.cardId;
+        actionCard = card(cmd.card);
+        if (actionCard.zone !== zoneId(s, 'hand')) {
+          reject('invalid', 'The action card must be in your hand');
+        }
+      }
+      const cardId = actionCard?.cardId;
+      let override: Override | undefined;
+      if (cmd.kind === 'bleed') {
+        const myPrey = prey(seatRefs(state), s);
+        target ??= myPrey ?? reject('invalid', 'There is nobody to bleed');
+        // Bleeding anyone but your prey needs a card effect (docs/flow.md, "Overrides").
+        if (target !== myPrey) {
+          let source = actionCard;
+          const claimed = cmd.override?.source;
+          if (claimed !== undefined && claimed !== cmd.card) {
+            source = card(claimed);
+            if (!faceUpInPlay(source, s)) {
+              reject(
+                'invalid',
+                'The card that allows it must be the action card or one of your face-up cards in play',
+              );
+            }
+          }
+          if (!cmd.override && !hasGrant(actionCard, 'bleed-any')) {
+            reject(
+              'forbidden',
+              'You can only bleed your prey. Name the card that lets you bleed another Methuselah',
+            );
+          }
+          if (!source && state.settings.tournament) {
+            reject(
+              'forbidden',
+              'In tournament games, name the card that lets you bleed another Methuselah',
+            );
+          }
+          override = overrideFrom('bleed-any', source);
+        }
       }
       const bodies: EventBody[] = [{ type: 'CardLocked', card: minion.id, locked: true }];
       bodies.push({
@@ -487,7 +559,7 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
             declined: [],
             stage: 'blocks' as const,
           },
-          { target, card: cmd.card, cardId },
+          { target, card: cmd.card, cardId, override },
         ),
       });
       const order = windowOrder(
@@ -512,12 +584,44 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
       const s = holdingImpulse();
       const a = state.action;
       if (state.window?.kind !== 'blocks' || !a) reject('not-now', 'There is nothing to block');
-      if (!a.eligible.includes(s) || a.declined.includes(s)) {
-        reject('forbidden', 'You cannot block this action');
-      }
+      if (a.seat === s) reject('forbidden', 'You cannot block your own action');
+      // A decision not to block stands, whatever card effect comes later.
+      if (a.declined.includes(s)) reject('forbidden', 'You already declined to block this action');
       if (a.blockAttempt) reject('not-now', 'A block attempt is already pending');
       const minion = readyMinion(cmd.minion, s);
-      return settle(state, [{ type: 'BlockAttempted', seat: s, minion: minion.id }]);
+      if (a.eligible.includes(s)) {
+        return settle(state, [{ type: 'BlockAttempted', seat: s, minion: minion.id }]);
+      }
+      // Not an eligible blocker: only a card effect lets you (docs/flow.md, "Overrides").
+      if (!cmd.override) {
+        reject(
+          'forbidden',
+          'You are not an eligible blocker. Name the card that lets you block this action',
+        );
+      }
+      const bodies: EventBody[] = [];
+      let source: CardInstance | undefined;
+      if (cmd.override.source !== undefined) {
+        source = card(cmd.override.source);
+        if (source.zone === zoneId(s, 'hand')) {
+          // A card from the hand is played with the attempt, so it is public from here on.
+          bodies.push(...played(source, zoneId(s, 'ashHeap'), true));
+        } else if (!faceUpInPlay(source, s)) {
+          reject(
+            'invalid',
+            'The card that allows it must be in your hand or one of your face-up cards in play',
+          );
+        }
+      } else if (state.settings.tournament) {
+        reject('forbidden', 'In tournament games, name the card that lets you block this action');
+      }
+      bodies.push({
+        type: 'BlockAttempted',
+        seat: s,
+        minion: minion.id,
+        override: overrideFrom('block-any', source),
+      });
+      return settle(state, bodies);
     }
 
     case 'WithdrawBlock': {

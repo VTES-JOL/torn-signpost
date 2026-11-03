@@ -1,0 +1,122 @@
+# Holds and stops: seats that can't block still get the impulse when they ask for it.
+# Seating A B C D: A's prey is B, its predator D. C's prey is D, its predator B.
+seed 5
+seat A alice
+seat B bob
+seat C carol
+seat D dave
+crypt A "Vera Nightfall" *12
+library A "Iron Ward" *40
+crypt B "Tomas Grey" *12
+library B "Quick Feed" *40
+crypt C "Ilse Várga" *12
+library C "Signal Fire" *40
+crypt D "Tomas Grey" *12
+library D "Quick Feed" *40
+start
+
+A> draw crypt
+A> move A:uncontrolled:1 ready
+B> draw crypt
+B> move B:uncontrolled:1 ready
+C> draw crypt
+C> move C:uncontrolled:1 ready
+C> draw 7
+D> draw crypt
+D> move D:uncontrolled:1 ready
+A> next
+A> next
+expect turn 1 A minion
+
+# By default C, who can't block a bleed on B, is passed automatically.
+A> bleed "Vera Nightfall"
+expect impulse B
+B> pass
+expect action bleed A resolution
+A> resolve failure
+A> unlock "Vera Nightfall"
+
+# A hold, armed while B decides: C gets the impulse instead of being passed.
+A> bleed "Vera Nightfall"
+expect impulse B
+reject:no-change A> hold
+reject:no-change B> hold
+C> hold
+log public C asks the table to wait
+expect holds C
+reject:no-change C> hold
+B> pass
+expect impulse C
+expect action bleed A blocks
+# Playing a card keeps the hold; passing releases it.
+C> play C:hand:1
+expect impulse A
+expect holds C
+A> pass
+expect impulse C
+C> pass
+expect holds none
+expect action bleed A resolution
+A> resolve failure
+A> unlock "Vera Nightfall"
+
+# Standing stops. C stops for its prey's and predator's actions: not for A's.
+C> stop neighbours
+A> bleed "Vera Nightfall"
+B> pass
+expect action bleed A resolution
+A> resolve failure
+A> unlock "Vera Nightfall"
+
+# C stops for every action.
+C> stop anyone
+A> bleed "Vera Nightfall"
+B> pass
+expect impulse C
+C> pass
+expect action bleed A resolution
+A> resolve failure
+C> stop neighbours
+
+# A late hold voids D's automatic pass: the round waits until the impulse comes round to D.
+# Phase round order: A, prey B, predator D, then C.
+C> autopass none
+A> next
+expect window phase minion
+expect impulse C
+D> hold
+expect holds D
+C> pass
+expect impulse A
+A> pass
+expect impulse D
+D> pass
+expect window none
+expect turn 1 A influence
+C> autopass all
+
+# Holding needs an open window.
+reject:not-now C> hold
+
+# On to D's turn: D is C's prey, so C's neighbours stop fires on D's bleed of A.
+A> next
+A> next
+B> next
+B> next
+B> next
+B> next
+B> next
+C> next
+C> next
+C> next
+C> next
+C> next
+D> next
+D> next
+expect turn 4 D minion
+D> bleed D:ready:1
+expect impulse A
+A> pass
+expect impulse C
+C> pass
+expect action bleed D resolution

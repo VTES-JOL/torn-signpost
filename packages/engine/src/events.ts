@@ -15,7 +15,9 @@ import type {
   ImpulseWindow,
   InstanceId,
   Instant,
+  Override,
   Phase,
+  StopRule,
   Turn,
   UserId,
   ZoneId,
@@ -89,13 +91,17 @@ export type EventBody =
   | { type: 'PlayerReplaced'; seat: SeatId; user: UserId }
   /** `phases` is private to the seat. */
   | { type: 'AutoPassSet'; seat: SeatId; phases?: Phase[] }
+  /** `stops` is private to the seat. */
+  | { type: 'StopsSet'; seat: SeatId; stops?: StopRule[] }
+  /** The seat holds the open window; public. */
+  | { type: 'Held'; seat: SeatId }
   | { type: 'WindowOpened'; window: ImpulseWindow }
   | { type: 'Passed'; seat: SeatId; auto?: true }
   /** A card play returned the impulse to the acting Methuselah and voided the passes. */
   | { type: 'ImpulseReset' }
   | { type: 'WindowClosed' }
   | { type: 'ActionDeclared'; action: ActionState }
-  | { type: 'BlockAttempted'; seat: SeatId; minion: InstanceId }
+  | { type: 'BlockAttempted'; seat: SeatId; minion: InstanceId; override?: Override }
   | { type: 'BlockWithdrawn'; seat: SeatId }
   | { type: 'ActionBlocked'; blocker: InstanceId }
   | { type: 'ActionResolving' }

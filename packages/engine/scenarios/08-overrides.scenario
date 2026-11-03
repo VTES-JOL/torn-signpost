@@ -1,0 +1,107 @@
+# Overrides (docs/flow.md): card effects that lift the default targeting and blocking rules.
+# Seating A B C D: A's prey is B, its predator D; C is neither.
+# Invented cards: Long Reach (action card, bleed any Methuselah), Wide Gaze (vampire, bleeds any
+# Methuselah), Hawk Watch (reaction, blocks ignoring the restrictions). Iron Ward and Quick Feed
+# are untagged.
+seed 5
+seat A alice
+seat B bob
+seat C carol
+seat D dave
+crypt A "Vera Nightfall" *6 "Wide Gaze" *6
+library A "Long Reach" *20 "Iron Ward" *20
+crypt B "Tomas Grey" *12
+library B "Quick Feed" *40
+crypt C "Ilse Várga" *12
+library C "Hawk Watch" *20 "Quick Feed" *20
+crypt D "Tomas Grey" *12
+library D "Quick Feed" *40
+start
+
+A> draw crypt 4
+A> move "Vera Nightfall" ready
+A> move "Wide Gaze" ready
+A> draw 10
+B> draw crypt
+B> move B:uncontrolled:1 ready
+C> draw crypt
+C> move C:uncontrolled:1 ready
+C> draw 10
+D> draw crypt
+D> move D:uncontrolled:1 ready
+A> next
+A> next
+expect turn 1 A minion
+
+# By default only the prey can be bled.
+reject:forbidden A> bleed A:ready:1 C
+
+# A tagged action card lets the bleed go anywhere, no claim needed.
+A> bleed A:ready:1 C with "Long Reach"
+log public A: Vera Nightfall bleeds C with Long Reach, ignoring the prey restriction (Long Reach)
+expect impulse C
+C> pass
+A> resolve failure
+A> unlock A:ready:1
+
+# An untagged action card needs a claim, and is flagged as unverified.
+reject:forbidden A> bleed A:ready:1 C with "Iron Ward"
+A> bleed A:ready:1 C with "Iron Ward" override
+log public A: Vera Nightfall bleeds C with Iron Ward, ignoring the prey restriction (Iron Ward, unverified)
+C> pass
+A> resolve failure
+A> unlock A:ready:1
+
+# A card in play can be the source: here a vampire whose text allows it.
+A> bleed A:ready:1 D via A:ready:2
+log public A: Vera Nightfall bleeds D, ignoring the prey restriction (Wide Gaze)
+expect impulse D
+D> pass
+A> resolve failure
+A> unlock A:ready:1
+
+# The source must be public and yours.
+reject:invalid A> bleed A:ready:1 C via B:ready:1
+
+# In casual games, a claim without a card is accepted and flagged.
+A> bleed A:ready:1 C override
+log public A: Vera Nightfall bleeds C, ignoring the prey restriction (no card named, unverified)
+C> pass
+A> resolve failure
+A> unlock A:ready:1
+
+# Blocking when not eligible: C holds, then blocks with a reaction played from the hand.
+A> bleed A:ready:1
+expect impulse B
+C> hold
+B> pass
+expect impulse C
+reject:forbidden C> block "Ilse Várga"
+C> block "Ilse Várga" via "Hawk Watch"
+log public C tries to block with Ilse Várga, ignoring the blocking restrictions (Hawk Watch)
+expect count C:ashHeap 1
+expect count C:hand 10
+expect impulse A
+A> pass
+expect impulse C
+C> pass
+expect action bleed A combat
+C> endcombat
+expect action none
+A> unlock A:ready:1
+
+# An untagged reaction is accepted as unverified.
+A> bleed A:ready:1
+C> hold
+B> pass
+C> block "Ilse Várga" via "Quick Feed"
+log public C tries to block with Ilse Várga, ignoring the blocking restrictions (Quick Feed, unverified)
+C> unblock
+expect action bleed A blocks
+expect impulse A
+A> pass
+# C still holds. Giving up the attempt was a decision not to block: no second override.
+expect impulse C
+reject:forbidden C> block "Ilse Várga" via C:hand:1
+C> pass
+expect action bleed A resolution
