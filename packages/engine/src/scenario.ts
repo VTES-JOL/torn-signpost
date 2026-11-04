@@ -226,6 +226,8 @@ function check(state: GameState, args: string[], catalog: CardCatalog): string |
       return same(`${rest[0]} pool`, seat(rest[0])?.pool, rest[1] ?? '');
     case 'vp':
       return same(`${rest[0]} VP`, seat(rest[0])?.vp, rest[1] ?? '');
+    case 'ousted':
+      return same(`${rest[0]} ousted`, !!seat(rest[0])?.ousted, rest[1] ?? '');
     case 'edge':
       return same('Edge', state.seats.find((s) => s.hasEdge)?.id ?? 'none', rest[0] ?? '');
     case 'direction':

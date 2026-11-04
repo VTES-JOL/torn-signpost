@@ -1,0 +1,93 @@
+# Ousting (GAME-08, GAME-21): at 0 pool a Methuselah is out. Their predator gains 1 VP and
+# 6 pool, the cards they control go to their owners' ash heaps, and predator and prey close up.
+seed 5
+seat A alice
+seat B bob
+seat C carol
+seat D dave
+crypt A "Vera Nightfall" *8
+library A "Iron Ward" *20
+crypt B "Tomas Grey" *8
+library B "Quick Feed" *20
+crypt C "Ilse Várga" *8
+library C "Night Errand" *20
+crypt D "Tomas Grey" *8
+library D "Quick Feed" *20
+start
+
+A> transfer +4 A:uncontrolled:1
+A> move A:uncontrolled:1 ready
+B> transfer +4 B:uncontrolled:1
+B> move B:uncontrolled:1 ready
+# Bob controls a card Alice owns, and holds the Edge.
+A> move A:hand:1 B:ready
+expect card B:ready:2 owner A
+B> edge B
+# Bob is down to his last pool.
+B> pool -25
+expect pool B 1
+
+# Alice bleeds her prey for his last pool.
+A> next
+A> next
+A> bleed A:ready:1
+B> pass
+A> resolve success 1
+expect ousted B true
+log public B was ousted; A gains 1 VP and 6 pool
+expect vp A 1
+expect pool A 32
+# Bob's Edge is burned, and the cards he controlled went to their owners' ash heaps.
+expect edge none
+expect count B:ready 0
+expect count B:ashHeap 1
+expect count A:ashHeap 1
+# Bob can no longer act, and nobody can act on him.
+reject:not-seated B> draw
+reject:invalid A> pool +1 B
+reject:invalid judge> edge B
+# Alice's prey is now Carol.
+A> unlock A:ready:1
+A> bleed A:ready:1
+expect action bleed A blocks
+expect impulse C
+log public A: Vera Nightfall bleeds C
+C> pass
+A> resolve failure
+
+# Ousted during their own turn: the turn ends at once and play passes on.
+A> next
+A> next
+A> next
+# Bob's seat is skipped.
+expect turn 2 C unlock
+C> next
+C> next
+C> pool -30
+expect ousted C true
+expect turn 3 D unlock
+# Carol's predator is now Alice, two seats away.
+expect vp A 2
+log public C was ousted; A gains 1 VP and 6 pool
+
+# Two Methuselahs left: each is the other's predator and prey, so Alice may block Dave's hunt.
+D> transfer +4 D:uncontrolled:1
+D> move D:uncontrolled:1 ready
+D> next
+D> next
+expect turn 3 D minion
+D> hunt D:ready:1
+expect impulse A
+A> block A:ready:1
+D> pass
+A> pass
+expect action hunt D combat
+# Ousted mid-combat: the combat and the action end at once, and Dave gains the reward.
+expect pool A 38
+A> pool -38
+expect ousted A true
+expect action none
+expect turn 3 D minion
+expect vp D 1
+expect pool D 32
+expect count A:ready 0

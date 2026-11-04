@@ -107,7 +107,17 @@ export type EventBody =
   | { type: 'ActionResolving' }
   | {
       type: 'ActionEnded';
-      outcome: 'success' | 'failure' | 'blocked' | 'cancelled';
+      /** `ousted`: the acting Methuselah, the target or the blocker's was ousted (DQ9). */
+      outcome: 'success' | 'failure' | 'blocked' | 'cancelled' | 'ousted';
+    }
+  /**
+   * A Methuselah reached 0 pool and is out of the game (GAME-08). Their cards in play have already
+   * gone to their owners' ash heaps. The predator gains VP and pool (no pool if ousted too).
+   */
+  | {
+      type: 'Ousted';
+      seat: SeatId;
+      predator?: { seat: SeatId; vp: number; pool: number };
     };
 
 export type EventType = EventBody['type'];

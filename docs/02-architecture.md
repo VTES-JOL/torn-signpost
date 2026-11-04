@@ -558,6 +558,15 @@ primitives, and corrections are new commands.
 - **Card plays**: `PlayCard` plays from the hand and draws a replacement. In a window it needs the
   impulse and returns it to the acting Methuselah, voiding the passes.
 - **Turns** start by unlocking the new Methuselah's ready and torpor cards.
+- **Ousting** (GAME-08, GAME-21, DQ9): after every command the engine ousts any live seat at 0
+  pool. Cards in its ready, torpor and research zones go to their owners' ash heaps; its predator
+  (read from the seating before the oust) gains 1 VP and 6 pool, with no pool if it was ousted by
+  the same effect; its Edge is burned. It leaves any open window, keeping the impulse and the
+  passes so far. An action it acts in, is the target of or blocks in ends (`ActionEnded{ousted}`),
+  and if it was its turn, the turn passes on from its seat. It can't act, and nobody can act on it,
+  except that cards it owns can still go to its ash heap. The table hides ousted seats, and an
+  ousted player watches like a spectator. The last survivor's VP and the end of the game come with
+  M6.
 - **Opening draw**: `GameStarted` deals each seat 4 crypt cards to the uncontrolled region and 7
   library cards to the hand (`OPENING_DRAW`), so the deal isn't logged as draws.
 - **Replay foundation** (web, behind the `replay` flag): a `Timeline` is an event log split into

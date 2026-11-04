@@ -171,7 +171,14 @@ export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOp
         failure: 'The action failed',
         blocked: 'Combat is over; the action was blocked',
         cancelled: `${who} cancelled the action`,
+        ousted: 'The action ends: a Methuselah in it was ousted',
       }[ev.outcome];
+    case 'Ousted': {
+      const reward = ev.predator;
+      if (!reward) return `${seatName(ev.seat)} was ousted`;
+      const gains = [`${reward.vp} VP`, ...(reward.pool ? [`${reward.pool} pool`] : [])];
+      return `${seatName(ev.seat)} was ousted; ${seatName(reward.seat)} gains ${gains.join(' and ')}`;
+    }
   }
 }
 

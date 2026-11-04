@@ -269,6 +269,46 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
       delete d.action;
       delete d.window;
       break;
+    case 'Ousted': {
+      const by = ev.predator?.seat;
+      patchSeat(d, ev.seat, () => ({
+        ousted: by === undefined ? { atSeq: ev.seq } : { atSeq: ev.seq, by },
+        pool: 0,
+        // An ousted Methuselah's Edge is burned.
+        hasEdge: false,
+      }));
+      const reward = ev.predator;
+      if (reward) {
+        patchSeat(d, reward.seat, (s) => ({ vp: s.vp + reward.vp, pool: s.pool + reward.pool }));
+      }
+      // Out of the open window, keeping the impulse and the passes so far.
+      const w = d.window;
+      const i = w ? w.order.indexOf(ev.seat) : -1;
+      if (w && i >= 0) {
+        const n = w.order.length;
+        const back = (w.cursor - i + n) % n;
+        const passed = back >= 1 && back <= w.passes;
+        const order = w.order.filter((x) => x !== ev.seat);
+        let cursor = i < w.cursor ? w.cursor - 1 : w.cursor;
+        if (cursor >= order.length) cursor = 0;
+        const holds = w.holds?.filter((x) => x !== ev.seat);
+        d.window = {
+          ...w,
+          order,
+          cursor,
+          passes: passed ? w.passes - 1 : w.passes,
+          ...(holds ? { holds } : {}),
+        };
+      }
+      if (d.action) {
+        d.action = {
+          ...d.action,
+          eligible: d.action.eligible.filter((x) => x !== ev.seat),
+          declined: d.action.declined.filter((x) => x !== ev.seat),
+        };
+      }
+      break;
+    }
     case 'PlayerReplaced':
       patchSeat(d, ev.seat, (s) => ({
         occupant: ev.user,

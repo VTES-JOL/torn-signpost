@@ -94,6 +94,7 @@ reject A> look A:library:1     # the command must fail; reject:<code> pins the r
 expect pool A 30
 expect vp A 1.5
 expect edge A|none
+expect ousted B true|false
 expect direction prey|predator
 expect turn 2 B unlock
 expect occupant B erin

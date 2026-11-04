@@ -24,7 +24,7 @@ import type {
 import { ACTION_KINDS, PHASES, STOP_ACTORS, STOP_TRIGGERS } from './model.ts';
 import { canSee } from './projection.ts';
 import { newInstanceId, type Rng, shuffled } from './rng.ts';
-import { nextTurnSeat, prey, type SeatId, windowOrder } from './seating.ts';
+import { nextTurnSeat, predator, prey, type SeatId, windowOrder } from './seating.ts';
 import {
   HIDDEN_ZONES,
   IN_PLAY_ZONES,
@@ -80,7 +80,7 @@ function reject(code: RejectionCode, message: string): never {
 export function decide(state: GameState, cmd: Command, ctx: DecideContext): DecideResult {
   try {
     const by = actorRef(state, cmd, ctx.actor);
-    const bodies = bodiesFor(state, cmd, ctx, by);
+    const bodies = withOusts(state, bodiesFor(state, cmd, ctx, by), ctx.now, by);
     return {
       ok: true,
       events: bodies.map(
@@ -142,8 +142,14 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
   };
   const seat = (id: SeatId) =>
     state.seats.find((s) => s.id === id) ?? reject('unknown-seat', `No seat ${id}`);
+  /** A seat still in the game: an ousted or withdrawn one can't be acted on (GAME-08). */
+  const liveSeat = (id: SeatId) => {
+    const s = seat(id);
+    if (s.ousted || s.withdrawn) reject('invalid', 'That player is out of the game');
+    return s;
+  };
   const ownSeatOrJudge = (id: SeatId) => {
-    seat(id);
+    liveSeat(id);
     if (mySeat !== undefined && id !== mySeat) reject('forbidden', "That is another player's zone");
   };
   const nonZero = (n: number, step = 1) => {
@@ -227,29 +233,7 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
     }
     return played(c, zoneId(a.seat, 'ready'), true);
   };
-  const apply = (from: GameState, bodies: EventBody[]) =>
-    bodies.reduce(
-      (s, body) => evolve(s, { ...body, seq: s.seq + 1, at: ctx.now, by } as GameEvent),
-      from,
-    );
-  /** Run the open window forward: automatic passes, then whatever closing it leads to. */
-  const settle = (from: GameState, bodies: EventBody[]): EventBody[] => {
-    const out = [...bodies];
-    let s = apply(from, bodies);
-    for (let guard = 0; guard < 100 && s.window; guard++) {
-      const w = s.window;
-      let next: EventBody[];
-      if (w.passes >= w.order.length) next = closeWindow(s);
-      else {
-        const holder = w.order[w.cursor];
-        if (holder === undefined || !passesAutomatically(s, holder)) break;
-        next = [{ type: 'Passed', seat: holder, auto: true }];
-      }
-      out.push(...next);
-      s = apply(s, next);
-    }
-    return out;
-  };
+  const settle = (from: GameState, bodies: EventBody[]) => settleWindow(from, bodies, ctx.now, by);
 
   switch (cmd.type) {
     case 'StartGame':
@@ -258,7 +242,9 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
     case 'MoveCard': {
       const c = touchable(cmd.card);
       const { seat: toSeat, name: toName } = parseZoneId(cmd.to);
-      seat(toSeat);
+      // Cards an ousted player owns may still leave play into their ash heap.
+      if (!(toName === 'ashHeap' && toSeat === c.owner)) liveSeat(toSeat);
+      else seat(toSeat);
       if (!isZoneName(toName)) reject('invalid', `No zone ${toName}`);
       const toHidden = HIDDEN_ZONES.has(toName);
       if (toHidden && toSeat !== c.owner) {
@@ -349,7 +335,7 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
     }
 
     case 'AdjustPool': {
-      const s = seat(cmd.seat);
+      const s = liveSeat(cmd.seat);
       nonZero(cmd.delta);
       if (s.pool + cmd.delta < 0) reject('not-enough', 'Pool cannot go below zero');
       return [{ type: 'PoolAdjusted', seat: s.id, delta: cmd.delta }];
@@ -366,7 +352,7 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
       if (!Number.isInteger(cmd.amount) || cmd.amount < 1)
         reject('invalid', `Invalid amount: ${cmd.amount}`);
       const available = (h: BloodHolder) => {
-        if ('pool' in h) return seat(h.pool).pool;
+        if ('pool' in h) return liveSeat(h.pool).pool;
         const c = touchable(h.card);
         inPublicZone(c, true);
         return c.counters.blood ?? 0;
@@ -434,7 +420,7 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
     }
 
     case 'SetEdge': {
-      if (cmd.seat !== undefined) seat(cmd.seat);
+      if (cmd.seat !== undefined) liveSeat(cmd.seat);
       if (state.seats.find((s) => s.hasEdge)?.id === cmd.seat) reject('no-change', 'No change');
       return [withOptional({ type: 'EdgeSet' }, { seat: cmd.seat })];
     }
@@ -457,7 +443,7 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
         type: 'WindowOpened',
         window: { kind: 'phase', phase: turn.phase, order, cursor: 1 % order.length, passes: 1 },
       };
-      const probe = apply(state, [opened]);
+      const probe = applyBodies(state, [opened], ctx.now, by);
       // Skip the round entirely when nobody would stop it.
       if (order.slice(1).every((s) => passesAutomatically(probe, s))) return advancePhase(state);
       return settle(state, [opened]);
@@ -705,13 +691,119 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
     case 'ReplacePlayer': {
       if (state.settings.tournament)
         reject('forbidden', 'Players cannot be replaced in tournament games');
-      seat(cmd.seat);
+      liveSeat(cmd.seat);
       if (!cmd.user) reject('invalid', 'Missing user');
       if (state.seats.some((s) => s.occupant === cmd.user))
         reject('invalid', 'That user is already seated');
       return [{ type: 'PlayerReplaced', seat: cmd.seat, user: cmd.user }];
     }
   }
+}
+
+function applyBodies(from: GameState, bodies: EventBody[], now: string, by: ActorRef): GameState {
+  return bodies.reduce(
+    (s, body) => evolve(s, { ...body, seq: s.seq + 1, at: now, by } as GameEvent),
+    from,
+  );
+}
+
+/** Run the open window forward: automatic passes, then whatever closing it leads to. */
+function settleWindow(
+  from: GameState,
+  bodies: EventBody[],
+  now: string,
+  by: ActorRef,
+): EventBody[] {
+  const out = [...bodies];
+  let s = applyBodies(from, bodies, now, by);
+  for (let guard = 0; guard < 100 && s.window; guard++) {
+    const w = s.window;
+    let next: EventBody[];
+    if (w.passes >= w.order.length) next = closeWindow(s);
+    else {
+      const holder = w.order[w.cursor];
+      if (holder === undefined || !passesAutomatically(s, holder)) break;
+      next = [{ type: 'Passed', seat: holder, auto: true }];
+    }
+    out.push(...next);
+    s = applyBodies(s, next, now, by);
+  }
+  return out;
+}
+
+/** Pool and VP for ousting your prey (GAME-08). */
+export const OUST_REWARD = { vp: 1, pool: 6 } as const;
+
+/**
+ * Oust every live seat the command left at 0 pool or less (GAME-08, GAME-21, DQ9). The command's
+ * own effect has resolved by now. For each ousted seat:
+ * - the cards it controls in play go to their owners' ash heaps;
+ * - its predator (read from the seating before the oust) gains 1 VP and 6 pool, but no pool if the
+ *   predator is ousted by the same effect;
+ * - it leaves any open window, and an action it is acting in, targeted by or fighting in ends;
+ * - if it was its turn, the turn ends and play passes on from its seat.
+ */
+function withOusts(state: GameState, bodies: EventBody[], now: string, by: ActorRef): EventBody[] {
+  if (state.status !== 'active') return bodies;
+  const after = applyBodies(state, bodies, now, by);
+  const live = seatRefs(after);
+  const out = after.seats.filter((x) => !x.ousted && !x.withdrawn && x.pool <= 0).map((x) => x.id);
+  if (out.length === 0) return bodies;
+  const ousting = new Set(out);
+  const next: EventBody[] = [];
+  for (const id of out) {
+    for (const z of ['ready', 'torpor', 'research'] as const) {
+      for (const cardId of zoneCards(after, zoneId(id, z))) {
+        const c = after.cards[cardId];
+        if (!c) continue;
+        next.push(
+          withOptional(
+            {
+              type: 'CardMoved',
+              card: c.id,
+              from: c.zone,
+              to: zoneId(c.owner, 'ashHeap'),
+              position: 'bottom',
+              faceDown: false,
+            } as const,
+            { cardId: c.cardId },
+          ),
+        );
+      }
+    }
+  }
+  const a = after.action;
+  const blockerSeat = a?.blocker ? after.cards[a.blocker]?.controller : undefined;
+  const inAction = [a?.seat, a?.target, blockerSeat];
+  if (a && inAction.some((x) => x !== undefined && ousting.has(x))) {
+    // The action (and any combat in it) ends at once: its actor, target or blocker is gone.
+    if (after.window) next.push({ type: 'WindowClosed' });
+    next.push({ type: 'ActionEnded', outcome: 'ousted' });
+  } else if (a?.blockAttempt && ousting.has(a.blockAttempt.seat)) {
+    next.push({ type: 'BlockWithdrawn', seat: a.blockAttempt.seat });
+  }
+  for (const id of out) {
+    const pred = predator(live, id);
+    const reward = pred === undefined ? undefined : { seat: pred, vp: OUST_REWARD.vp };
+    next.push(
+      withOptional({ type: 'Ousted', seat: id } as const, {
+        predator: reward && {
+          ...reward,
+          pool: ousting.has(reward.seat) ? 0 : OUST_REWARD.pool,
+        },
+      }),
+    );
+  }
+  const s = applyBodies(after, next, now, by);
+  const turn = s.turn;
+  if (turn && ousting.has(turn.seat)) {
+    const endTurn: EventBody[] = [
+      ...(s.window ? [{ type: 'WindowClosed' } as const] : []),
+      ...(s.action ? [{ type: 'ActionEnded', outcome: 'ousted' } as const] : []),
+    ];
+    next.push(...endTurn, ...nextTurn(applyBodies(s, endTurn, now, by)));
+  }
+  return [...bodies, ...settleWindow(after, next, now, by)];
 }
 
 /** The events that end a fully passed window. */
@@ -736,6 +828,16 @@ function advancePhase(state: GameState): EventBody[] {
   if (!turn) return [];
   const next = PHASES[PHASES.indexOf(turn.phase) + 1];
   if (next) return [{ type: 'PhaseAdvanced', turn: { ...turn, phase: next } }];
+  return nextTurn(state);
+}
+
+/**
+ * The next Methuselah's turn, which starts by unlocking their cards. Walks from the current seat's
+ * physical position, so it works when that seat was just ousted (GAME-21).
+ */
+function nextTurn(state: GameState): EventBody[] {
+  const turn = state.turn;
+  if (!turn) return [];
   const seatId = nextTurnSeat(seatRefs(state), turn.seat, state.turnDirection) ?? turn.seat;
   const unlocks: EventBody[] = [];
   for (const z of ['ready', 'torpor'] as const) {

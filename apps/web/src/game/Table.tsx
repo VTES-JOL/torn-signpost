@@ -67,8 +67,10 @@ export function Table(props: {
   onError: (m: string) => void;
 }) {
   const { client, snapshot, catalog, judge, onError } = props;
-  const seat = snapshot.seat;
   const view = snapshot.view;
+  // An ousted (or withdrawn) player only watches from now on, like a spectator.
+  const outOfGame = !!snapshot.seat && isOut(view, snapshot.seat);
+  const seat = outOfGame ? undefined : snapshot.seat;
   const [menu, setMenu] = useState<{ card: CardInstance; anchor: DOMRect }>();
   const [inspected, setInspected] = useState<CardInstance>();
   const [picking, setPicking] = useState<CardInstance>();
@@ -185,6 +187,11 @@ export function Table(props: {
           send={send}
         />
         <TurnBar zoom={zoom} setZoom={setZoom} />
+        {outOfGame && (
+          <p className="notice small" role="status">
+            You have been ousted. You can keep watching the game.
+          </p>
+        )}
         {picking && (
           <p className="picking" role="status">
             Choose a minion to attach to, or press Escape.
@@ -214,17 +221,23 @@ export function Table(props: {
 /** Opponents placed as at a real table (prey left, predator right, the rest across); you below. */
 function Seats({ view }: { view: GameState }) {
   const { seat, client } = useTable();
-  const refs = view.seats.map((s) => ({ id: s.id, ousted: !!(s.ousted || s.withdrawn) }));
-  const me = seat ?? view.seats[0]?.id;
+  const refs = view.seats.map((s) => ({ id: s.id, ousted: isOut(view, s.id) }));
+  // Ousted and withdrawn Methuselahs leave the table; the rest close up around it.
+  const me = seat ?? view.seats.find((s) => !isOut(view, s.id))?.id;
   const order: string[] = [];
   if (me) {
     const i = view.seats.findIndex((s) => s.id === me);
-    for (let n = 1; n < view.seats.length; n++)
-      order.push(view.seats[(i + n) % view.seats.length]?.id ?? '');
+    for (let n = 1; n < view.seats.length; n++) {
+      const id = view.seats[(i + n) % view.seats.length]?.id;
+      if (id && !isOut(view, id)) order.push(id);
+    }
   }
   const preyOf = me ? prey(refs, me) : undefined;
   const predOf = me ? predator(refs, me) : undefined;
   const layout = seatLayout(order, preyOf, predOf);
+  // Prey and predator are yours only when you're playing; otherwise they'd be someone else's.
+  const relation = (id: string) =>
+    !seat ? undefined : id === preyOf ? 'prey' : id === predOf ? 'predator' : undefined;
   return (
     <div className="seats">
       <div
@@ -236,7 +249,7 @@ function Seats({ view }: { view: GameState }) {
             key={id}
             seat={id}
             place={{ gridRow: row, gridColumn: column }}
-            label={id === preyOf ? 'prey' : id === predOf ? 'predator' : undefined}
+            label={relation(id)}
           />
         ))}
       </div>
@@ -770,4 +783,10 @@ function ZoomViewport({
       </div>
     </div>
   );
+}
+
+/** Ousted or withdrawn: no longer at the table. */
+function isOut(view: GameState, seat: string): boolean {
+  const s = view.seats.find((x) => x.id === seat);
+  return !!(s?.ousted || s?.withdrawn);
 }
