@@ -15,29 +15,24 @@ crypt D "Tomas Grey" *12
 library D "Quick Feed" *40
 start
 
-A> draw crypt
 A> move A:uncontrolled:1 ready
-B> draw crypt
 B> move B:uncontrolled:1 ready
-C> draw crypt
 C> move C:uncontrolled:1 ready
-C> draw 7
-D> draw crypt
 D> move D:uncontrolled:1 ready
 A> next
 A> next
 expect turn 1 A minion
 
 # By default C, who can't block a bleed on B, is passed automatically.
-A> bleed "Vera Nightfall"
+A> bleed A:ready:1
 expect impulse B
 B> pass
 expect action bleed A resolution
 A> resolve failure
-A> unlock "Vera Nightfall"
+A> unlock A:ready:1
 
 # A hold, armed while B decides: C gets the impulse instead of being passed.
-A> bleed "Vera Nightfall"
+A> bleed A:ready:1
 expect impulse B
 reject:no-change A> hold
 reject:no-change B> hold
@@ -58,19 +53,19 @@ C> pass
 expect holds none
 expect action bleed A resolution
 A> resolve failure
-A> unlock "Vera Nightfall"
+A> unlock A:ready:1
 
 # Standing stops. C stops for its prey's and predator's actions: not for A's.
 C> stop neighbours
-A> bleed "Vera Nightfall"
+A> bleed A:ready:1
 B> pass
 expect action bleed A resolution
 A> resolve failure
-A> unlock "Vera Nightfall"
+A> unlock A:ready:1
 
 # C stops for every action.
 C> stop anyone
-A> bleed "Vera Nightfall"
+A> bleed A:ready:1
 B> pass
 expect impulse C
 C> pass

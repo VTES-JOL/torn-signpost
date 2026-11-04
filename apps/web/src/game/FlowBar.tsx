@@ -19,7 +19,7 @@ import {
 } from '@torn-signpost/engine';
 import type { PlayerCommand } from '@torn-signpost/protocol';
 import { useEffect } from 'react';
-import type { GameClient } from './client.ts';
+import type { TableClient } from './client.ts';
 
 export interface Choosing {
   offer: Offer;
@@ -56,7 +56,7 @@ export function waitingOnMe(view: GameState, seat: string | undefined): boolean 
 export function FlowBar(props: {
   view: GameState;
   seat: string | undefined;
-  client: GameClient;
+  client: TableClient;
   catalog: CardCatalog;
   offers: Offer[];
   choosing: Choosing | undefined;
@@ -67,7 +67,8 @@ export function FlowBar(props: {
   const mine = waitingOnMe(view, seat);
   const name = (id: string | undefined) => {
     const cardId = id ? view.cards[id]?.cardId : undefined;
-    return (cardId && catalog.get(cardId)?.name) || 'a hidden card';
+    if (!cardId) return 'a hidden card';
+    return catalog.get(cardId)?.name ?? `an unknown card (${cardId})`;
   };
 
   // Tell the player in the tab title when the table is waiting on them (UX-09).
@@ -326,7 +327,7 @@ function overrideNote(
 
 function statusLine(
   view: GameState,
-  client: GameClient,
+  client: TableClient,
   name: (id: string | undefined) => string,
 ): string {
   const turn = view.turn;

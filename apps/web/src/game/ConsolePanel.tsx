@@ -5,10 +5,10 @@ import { type ConsoleContext, completeConsole, parseConsole } from '@torn-signpo
 import type { PlayerCommand } from '@torn-signpost/protocol';
 import { useState } from 'react';
 import { ApiError } from '../api.ts';
-import type { GameClient, GameSnapshot } from './client.ts';
+import type { GameSnapshot, TableClient } from './client.ts';
 
 export function ConsolePanel(props: {
-  client: GameClient;
+  client: TableClient;
   snapshot: GameSnapshot;
   catalog: CardCatalog;
 }) {

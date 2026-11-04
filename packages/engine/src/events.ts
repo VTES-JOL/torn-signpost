@@ -44,7 +44,7 @@ export type EventBody =
       format: Format;
       settings: GameSettings;
       seats: { id: SeatId; user: UserId }[];
-      /** Every card, listed in zone order (top first). */
+      /** Every card, listed in zone order (top first), with the opening draw already dealt. */
       cards: { id: InstanceId; cardId?: CardId; owner: SeatId; zone: ZoneId }[];
     }
   | {

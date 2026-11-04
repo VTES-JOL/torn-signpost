@@ -1,0 +1,51 @@
+# Bleeding your prey: a block that leads to combat, then a bleed that gets through.
+# Cards are given by VEKN ID; names and images come from the content pack (LEGAL-08).
+seed 3
+seat A alice
+seat B bob
+seat C carol
+seat D dave
+crypt A 200107 *3 200848 *3 200734 *3 200106 *3
+library A 101055 *10 100845 *8 100401 *8 100199 *6 100598 *4 100518 *4
+crypt B 200534 *4 200842 *4 200117 *4
+library B 100573 *10 100518 *10 100401 *10 100199 *10
+crypt C 200378 *6 200107 *6
+library C 100001 *10 101321 *10 100845 *10 100984 *10
+crypt D 200106 *6 200848 *6
+library D 100598 *10 102137 *10 101743 *10 100059 *10
+start
+
+# Fast-forward: everyone has brought out a vampire or two (sped up for the demo).
+A> transfer +7 A:uncontrolled:3
+A> move A:uncontrolled:3 ready
+A> transfer +8 A:uncontrolled:3
+A> move A:uncontrolled:3 ready
+B> transfer +8 B:uncontrolled:2
+B> move B:uncontrolled:2 ready
+C> transfer +5 C:uncontrolled:1
+C> move C:uncontrolled:1 ready
+D> transfer +10 D:uncontrolled:1
+D> move D:uncontrolled:1 ready
+A> next
+A> next
+expect turn 1 A minion
+
+# Alice bleeds her prey, Bob. Only Bob may block, and he does: combat.
+A> bleed A:ready:1
+expect action bleed A blocks
+expect impulse B
+B> block B:ready:1
+A> pass
+B> pass
+expect action bleed A combat
+B> endcombat
+expect action none
+
+# Her second vampire bleeds Bob too, adding a modifier. Bob doesn't block.
+A> bleed A:ready:2
+B> pass
+expect action bleed A resolution
+A> play A:hand:1
+A> resolve success 2 edge
+expect pool B 20
+expect edge A

@@ -71,13 +71,20 @@ syntax. The TypeScript tests run them, and the Swift client will run the same fi
 JavaScriptCore. They use an invented card catalog (`catalog.json`), since real card data is never
 committed (LEGAL-08).
 
+Scenarios in `scenarios/real-cards/` use real cards, named by VEKN ID only (`crypt A 200107 *3`),
+so the files still carry no card data. Commands refer to cards by position (`A:hand:3`), which the
+seed fixes. They run in the tests when a local content pack exists (`pnpm content:ingest`), and
+the web app's **Replay** page (behind the `replay` flag, on locally) plays them on the real table:
+step forward and back, watch from any seat, the judge, a spectator or everything, and play on from
+any step.
+
 ```text
 # comment
 seed 7                         # deterministic shuffles
 format standard|v5|duel
 tournament                     # mark the game as a tournament game
 seat A alice                   # seats in clockwise order
-crypt A "Vera Nightfall" *12   # deck lists; *n repeats the previous card
+crypt A "Vera Nightfall" *12   # deck lists by name or card ID; *n repeats the previous card
 library A "Iron Ward" *40
 start
 

@@ -20,6 +20,7 @@ import type { Actor, CardId, Format, GameState, Viewer } from './model.ts';
 import { project, projectEvent } from './projection.ts';
 import { seededRng } from './rng.ts';
 import type { SeatId } from './seating.ts';
+import type { TimelineStep } from './timeline.ts';
 import { zoneCards } from './zones.ts';
 
 export interface ScenarioFailure {
@@ -31,10 +32,16 @@ export interface ScenarioFailure {
 export interface ScenarioRun {
   state: GameState;
   events: GameEvent[];
+  /** One step per script line that isn't blank or a comment, up to the failing one. */
+  steps: TimelineStep[];
   failure?: ScenarioFailure;
 }
 
-const NOW = '2026-01-01T00:00:00.000Z';
+const SETUP_DIRECTIVES = new Set(['seed', 'format', 'tournament', 'seat', 'crypt', 'library']);
+
+const START = Date.parse('2026-01-01T00:00:00.000Z');
+/** A fixed clock that ticks one second per script line, so each command has its own timestamp. */
+const clock = (line: number) => new Date(START + line * 1000).toISOString();
 
 export function runScenario(source: string, catalog: CardCatalog): ScenarioRun {
   let rng = seededRng(1);
@@ -43,18 +50,29 @@ export function runScenario(source: string, catalog: CardCatalog): ScenarioRun {
   const seats: { id: SeatId; user: string; crypt: CardId[]; library: CardId[] }[] = [];
   let state = newGame('scenario');
   const events: GameEvent[] = [];
+  const steps: TimelineStep[] = [];
   let lastEvents: { ev: GameEvent; before: GameState; after: GameState }[] = [];
 
   const lines = source.split('\n');
   for (const [i, raw] of lines.entries()) {
     const text = raw.trim();
     if (!text || text.startsWith('#')) continue;
-    const fail = (message: string): ScenarioRun => ({
-      state,
-      events,
-      failure: { line: i + 1, text, message },
-    });
     const [head = '', ...rest] = tokenize(text);
+    const isCommand = /^(reject(?::[\w-]+)?\s+)?\w+>/.test(text);
+    const step: TimelineStep = {
+      kind:
+        isCommand || head === 'start' ? 'command' : SETUP_DIRECTIVES.has(head) ? 'setup' : 'check',
+      text,
+      line: i + 1,
+      from: events.length,
+      to: events.length,
+    };
+    steps.push(step);
+    const fail = (message: string): ScenarioRun => {
+      step.to = events.length;
+      step.failure = message;
+      return { state, events, steps, failure: { line: i + 1, text, message } };
+    };
 
     try {
       const command = /^(reject(?::([\w-]+))?\s+)?(\w+)>\s*(.*)$/.exec(text);
@@ -65,7 +83,7 @@ export function runScenario(source: string, catalog: CardCatalog): ScenarioRun {
         const ctx: ConsoleContext = { view, catalog, ...(seat ? { seat } : {}) };
         const parsed = parseConsole(input, ctx);
         const result = parsed.ok
-          ? decide(state, parsed.command, { actor, now: NOW, rng, catalog })
+          ? decide(state, parsed.command, { actor, now: clock(i + 1), rng, catalog })
           : undefined;
         if (isReject) {
           if (result?.ok) return fail('Expected the command to be rejected, but it succeeded');
@@ -86,6 +104,7 @@ export function runScenario(source: string, catalog: CardCatalog): ScenarioRun {
           lastEvents.push({ ev, before, after: state });
           events.push(ev);
         }
+        step.to = events.length;
         continue;
       }
 
@@ -113,13 +132,14 @@ export function runScenario(source: string, catalog: CardCatalog): ScenarioRun {
           const result = decide(
             state,
             { type: 'StartGame', gameId: 'scenario', format, seats, settings: { tournament } },
-            { actor: { kind: 'system' }, now: NOW, rng, catalog },
+            { actor: { kind: 'system' }, now: clock(i + 1), rng, catalog },
           );
           if (!result.ok) return fail(`Rejected: ${result.rejection.message}`);
           for (const ev of result.events) {
             state = evolve(state, ev);
             events.push(ev);
           }
+          step.to = events.length;
           break;
         }
         case 'expect': {
@@ -146,7 +166,7 @@ export function runScenario(source: string, catalog: CardCatalog): ScenarioRun {
       return fail(e instanceof Error ? e.message : String(e));
     }
   }
-  return { state, events };
+  return { state, events, steps };
 }
 
 function deckList(tokens: string[], catalog: CardCatalog): CardId[] {
@@ -159,7 +179,10 @@ function deckList(tokens: string[], catalog: CardCatalog): CardId[] {
       for (let n = 1; n < Number(times[1]); n++) out.push(last);
       continue;
     }
-    const card = catalog.all().find((c) => normalizeName(c.name) === normalizeName(token));
+    // A card ID (e.g. a VEKN ID, so scripts using real cards carry no card data) or a name.
+    const card =
+      catalog.get(token) ??
+      catalog.all().find((c) => normalizeName(c.name) === normalizeName(token));
     if (!card) throw new Error(`Unknown card "${token}"`);
     out.push(card.id);
   }

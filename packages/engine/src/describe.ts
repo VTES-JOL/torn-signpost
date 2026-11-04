@@ -42,7 +42,9 @@ export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOp
   const who = actorName(ev.by, seatName);
   const cardName = (id: InstanceId, cardId?: CardId) => {
     const known = cardId ?? before.cards[id]?.cardId;
-    return (known && opts.catalog.get(known)?.name) || 'a card';
+    if (!known) return 'a card';
+    // Known to the viewer but missing from the card data (e.g. a deck from another catalog).
+    return opts.catalog.get(known)?.name ?? `an unknown card (${known})`;
   };
   const zone = (z: ZoneId) => {
     const { seat, name } = parseZoneId(z);
@@ -67,7 +69,8 @@ export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOp
       const name = ev.faceDown ? 'a face-down card' : cardName(ev.card, ev.cardId);
       if (ev.played) {
         const into = parseZoneId(ev.to).name === 'ashHeap' ? '' : ` into ${zone(ev.to)}`;
-        return `${who} played ${name}${into}`;
+        // Whoever's hand it left: an action card is finished off by whoever ends the action.
+        return `${seatName(parseZoneId(ev.from).seat)} played ${name}${into}`;
       }
       const toName = parseZoneId(ev.to).name;
       const where =
@@ -79,7 +82,7 @@ export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOp
       const names = ev.cards.every((c) => c.cardId)
         ? `: ${ev.cards.map((c) => cardName(c.id, c.cardId)).join(', ')}`
         : '';
-      return `${who} drew ${n} ${n === 1 ? 'card' : 'cards'} from their ${ev.from}${names}`;
+      return `${seatName(ev.seat)} drew ${n} ${n === 1 ? 'card' : 'cards'} from their ${ev.from}${names}`;
     }
     case 'ZoneShuffled':
       return `${who} shuffled ${zone(ev.zone)}`;

@@ -232,6 +232,15 @@ button:disabled {
   cursor: default;
 }
 
+/* Smaller controls on the game screen; :where keeps them below class rules such as .card. */
+:where(.game) button,
+:where(.game) input,
+:where(.game) select {
+  min-height: 1.9rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.9rem;
+}
+
 button.primary,
 .button.primary {
   background: var(--accent);
@@ -537,22 +546,22 @@ dialog::backdrop {
 
 .game-title h1 {
   margin: 0;
-  font-size: 1.3rem;
+  font-size: 1.1rem;
 }
 
 .game-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 22rem;
-  gap: 1rem;
-  margin-top: 0.5rem;
+  grid-template-columns: minmax(0, 1fr) 20rem;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
 }
 
 .game-side {
   border-left: 1px solid var(--border);
-  padding-left: 1rem;
+  padding-left: 0.75rem;
   display: flex;
   flex-direction: column;
-  max-height: calc(100dvh - 8rem);
+  max-height: calc(100dvh - 6rem);
   position: sticky;
   top: 0.5rem;
 }
@@ -571,7 +580,7 @@ dialog::backdrop {
 }
 
 .turn-bar {
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.35rem;
   font-size: 0.9rem;
 }
 
@@ -584,7 +593,7 @@ dialog::backdrop {
 
 .table-viewport {
   overflow: auto;
-  max-height: calc(100dvh - 15rem);
+  max-height: calc(100dvh - 11rem);
   min-height: 20rem;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -593,30 +602,39 @@ dialog::backdrop {
 }
 
 .table {
-  padding: 0.75rem;
+  padding: 0.4rem;
   --card-w: 64px;
 }
 
-.seats,
-.opponents {
+.seats {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
+  flex-direction: column;
+  gap: 0.4rem;
 }
 
-.seats {
-  flex-direction: column;
+/* Laid out as at a real table (seatLayout.ts): columns and cells are set inline. */
+.opponents {
+  display: grid;
+  gap: 0.4rem;
 }
 
 .seat {
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 0.5rem;
+  padding: 0.3rem 0.4rem 0.4rem;
   background: var(--surface);
 }
 
 .opponents > .seat {
-  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+/* Too narrow for a table: one column in clockwise order, prey first. */
+@media (max-width: 760px) {
+  .opponents {
+    display: flex;
+    flex-direction: column;
+  }
 }
 
 .seat.turn {
@@ -635,15 +653,15 @@ dialog::backdrop {
 .seat-header {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.3rem;
   align-items: center;
-  font-size: 0.9rem;
-  margin-bottom: 0.4rem;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
 }
 
 .seat-header button {
-  min-height: 1.6rem;
-  width: 1.6rem;
+  min-height: 1.4rem;
+  width: 1.4rem;
   padding: 0;
 }
 
@@ -660,16 +678,16 @@ dialog::backdrop {
 .seat-zones {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.35rem;
 }
 
 .zone {
   position: relative;
-  min-width: calc(var(--card-w) + 1rem);
-  min-height: calc(var(--card-w) * 1.4 + 1.4rem);
+  min-width: calc(var(--card-w) + 0.5rem);
+  min-height: calc(var(--card-w) * 1.4 + 1.1rem);
   border: 1px dashed var(--border);
   border-radius: 6px;
-  padding: 1.1rem 0.35rem 0.35rem;
+  padding: 0.9rem 0.25rem 0.25rem;
 }
 
 .zone-ready {
@@ -682,9 +700,9 @@ dialog::backdrop {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  top: 0.15rem;
-  left: 0.4rem;
-  font-size: 0.7rem;
+  top: 0.1rem;
+  left: 0.3rem;
+  font-size: 0.65rem;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -693,7 +711,7 @@ dialog::backdrop {
 .zone-cards {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.3rem;
   align-items: flex-start;
 }
 
@@ -789,7 +807,7 @@ dialog::backdrop {
 }
 
 .hand {
-  margin-top: 0.75rem;
+  margin-top: 0.4rem;
   --card-w: 84px;
   position: sticky;
   bottom: 0;
@@ -990,6 +1008,35 @@ body.dragging {
   }
 }
 
+.card-unknown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  width: 100%;
+  aspect-ratio: 358 / 500;
+  padding: 0.2rem;
+  border: 1px dashed #c08040;
+  border-radius: 5px;
+  background: #2a2420;
+  color: #e8d8c0;
+  font-size: 0.6rem;
+  line-height: 1.1;
+  text-align: center;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.card-unknown code {
+  font-size: 0.55rem;
+  opacity: 0.8;
+}
+
+.card.face-down .card-unknown {
+  filter: brightness(0.7);
+}
+
 .card.face-down img {
   filter: brightness(0.55) saturate(0.4);
 }
@@ -1031,8 +1078,8 @@ body.dragging {
 .flow-bar {
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 0.5rem 0.75rem;
-  margin-bottom: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  margin-bottom: 0.35rem;
   background: var(--surface);
 }
 
@@ -1042,8 +1089,8 @@ body.dragging {
 }
 
 .flow-status {
-  margin: 0 0 0.4rem;
-  font-size: 0.95rem;
+  margin: 0 0 0.3rem;
+  font-size: 0.9rem;
 }
 
 .flow-bar.yours .flow-status strong {
@@ -1063,7 +1110,8 @@ body.dragging {
 .autopass summary {
   cursor: pointer;
   list-style: none;
-  padding: 0.4rem 0.7rem;
+  font-size: 0.9rem;
+  padding: 0.25rem 0.55rem;
   border: 1px solid var(--border);
   border-radius: 6px;
 }
@@ -1094,4 +1142,96 @@ body.dragging {
 .card.candidate {
   outline: 3px solid var(--accent);
   outline-offset: 1px;
+}
+
+/* Compact game screen: the table uses the full width, with smaller controls than other pages. */
+
+.main:has(.game) {
+  max-width: none;
+  padding-block: 0.5rem;
+}
+
+.game .toolbar {
+  gap: 0.35rem;
+}
+
+.game .tabs {
+  margin-bottom: 0.4rem;
+}
+
+/* Replay (behind the replay flag) */
+
+.replay-list li {
+  margin-bottom: 0.4rem;
+}
+
+.replay-controls {
+  margin: 0 0 0 auto;
+  padding: 0;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.replay-branch button {
+  margin-left: 0.5rem;
+}
+
+.script {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  flex: 1;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.script-note {
+  color: var(--muted);
+  font-style: italic;
+  padding: 0.2rem 0.25rem 0.1rem;
+}
+
+.script-step button {
+  display: flex;
+  gap: 0.4rem;
+  width: 100%;
+  min-height: 0;
+  padding: 0.1rem 0.25rem;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  justify-content: flex-start;
+  text-align: left;
+  font-size: inherit;
+}
+
+.script-step code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.script-line {
+  min-width: 1.75rem;
+  color: var(--muted);
+  text-align: right;
+}
+
+.script-step:not(.done) code {
+  opacity: 0.6;
+}
+
+.script-step.current button {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.script-step p {
+  margin: 0 0 0.2rem 2.2rem;
+}
+
+.script-step.failed code,
+.script-step.failed p {
+  color: var(--accent);
 }

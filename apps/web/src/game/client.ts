@@ -45,6 +45,19 @@ export interface GameSnapshot {
   chat: ChatMessage[];
 }
 
+/**
+ * What the table, toolbar, log and console need from a game: a live game on the server
+ * (`GameClient`) or a local replay (`ReplayClient`).
+ */
+export interface TableClient {
+  subscribe(listener: () => void): () => void;
+  getSnapshot(): GameSnapshot;
+  /** Rejects with an `ApiError` (or another `Error`) when the command is refused. */
+  send(command: PlayerCommand): Promise<void>;
+  say(text: string): Promise<void>;
+  seatName(seat: string): string;
+}
+
 export interface GameClientOptions {
   gameId: string;
   api: Api;
@@ -58,7 +71,7 @@ export interface GameClientOptions {
 
 const BACKOFF = [500, 1000, 2000, 5000, 10000];
 
-export class GameClient {
+export class GameClient implements TableClient {
   private snapshot: GameSnapshot;
   private readonly listeners = new Set<() => void>();
   private socket?: WebSocket;

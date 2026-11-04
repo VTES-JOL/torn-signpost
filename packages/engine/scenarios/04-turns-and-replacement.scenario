@@ -47,6 +47,6 @@ reject C> vp +0.25 C
 admin> replace B erin
 expect occupant B erin
 B> draw crypt 1
-expect count B:uncontrolled 1
+expect count B:uncontrolled 5
 reject:forbidden admin> pool +1 A
 reject:invalid admin> replace C erin

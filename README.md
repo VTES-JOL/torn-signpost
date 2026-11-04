@@ -58,6 +58,7 @@ Everything runs on your machine without touching AWS:
 ```sh
 pnpm dev          # DynamoDB Local (Docker), API on :3001, web on http://localhost:5173
 pnpm db:down      # stop DynamoDB Local (data is kept in a Docker volume)
+pnpm db:reset     # wipe DynamoDB Local (deletes the volume) and recreate an empty table
 pnpm sandbox      # play the engine in the terminal as any seat, judge or admin
 ```
 
@@ -68,6 +69,9 @@ pnpm sandbox      # play the engine in the terminal as any seat, judge or admin
   judge) instead of signing in. WebSockets connect to `ws://localhost:3001/ws?token=dev:alice`.
 - Backend integration tests run against DynamoDB Local in throwaway tables. Start it with
   `pnpm db:up`; without it they're skipped locally (CI always runs them).
+- Feature flags still dark on the beta are on locally (`apps/web/vite.config.ts`): currently
+  `replay`, the scenario player at http://localhost:5173/replay. It runs in the browser and needs
+  only the web server and card content.
 - To point the local web client at the live beta API instead:
   `TS_API_URL=https://api.tornsignpost.org pnpm dev:web`.
 - The sandbox starts a three-player table with invented test cards. Type `.help` for commands,

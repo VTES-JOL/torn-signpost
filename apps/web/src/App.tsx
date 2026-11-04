@@ -13,6 +13,7 @@ import { DeckEditor } from './pages/DeckEditor.tsx';
 import { DecksPage } from './pages/DecksPage.tsx';
 import { GamesPage } from './pages/GamesPage.tsx';
 import { NameForm, ProfileProvider, useProfile } from './profile.tsx';
+import { ReplayListPage, ReplayPage } from './replay/ReplayPage.tsx';
 
 export function App() {
   const [config, setConfig] = useState<ClientConfig>();
@@ -37,6 +38,12 @@ export function App() {
                   <Route path="decks/:id" element={<DeckEditor />} />
                   <Route path="games" element={<GamesPage />} />
                   <Route path="games/:id" element={<GamePage />} />
+                  {config.flags.replay && (
+                    <>
+                      <Route path="replay" element={<ReplayListPage />} />
+                      <Route path="replay/:name" element={<ReplayPage />} />
+                    </>
+                  )}
                   <Route path="account" element={<AccountPage />} />
                   <Route path="auth/callback" element={<AuthCallback />} />
                   <Route path="*" element={<p className="notice">Page not found.</p>} />
@@ -87,6 +94,7 @@ function ChooseName() {
 
 function Header() {
   const auth = useAuth();
+  const { flags } = useConfig();
   const { profile } = useProfile();
   const [devName, setDevName] = useState('');
   return (
@@ -98,6 +106,7 @@ function Header() {
         <NavLink to="/games">Games</NavLink>
         <NavLink to="/cards">Cards</NavLink>
         <NavLink to="/decks">Decks</NavLink>
+        {flags.replay && <NavLink to="/replay">Replay</NavLink>}
       </nav>
       <div className="account">
         {auth.user ? (

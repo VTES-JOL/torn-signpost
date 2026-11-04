@@ -18,16 +18,12 @@ crypt D "Tomas Grey" *12
 library D "Quick Feed" *40
 start
 
-A> draw crypt 4
 A> move "Vera Nightfall" ready
 A> move "Wide Gaze" ready
-A> draw 10
-B> draw crypt
+A> draw 3
 B> move B:uncontrolled:1 ready
-C> draw crypt
 C> move C:uncontrolled:1 ready
-C> draw 10
-D> draw crypt
+C> draw 3
 D> move D:uncontrolled:1 ready
 A> next
 A> next
@@ -76,8 +72,8 @@ expect impulse B
 C> hold
 B> pass
 expect impulse C
-reject:forbidden C> block "Ilse Várga"
-C> block "Ilse Várga" via "Hawk Watch"
+reject:forbidden C> block C:ready:1
+C> block C:ready:1 via "Hawk Watch"
 log public C tries to block with Ilse Várga, ignoring the blocking restrictions (Hawk Watch)
 expect count C:ashHeap 1
 expect count C:hand 10
@@ -94,7 +90,7 @@ A> unlock A:ready:1
 A> bleed A:ready:1
 C> hold
 B> pass
-C> block "Ilse Várga" via "Quick Feed"
+C> block C:ready:1 via "Quick Feed"
 log public C tries to block with Ilse Várga, ignoring the blocking restrictions (Quick Feed, unverified)
 C> unblock
 expect action bleed A blocks
@@ -102,6 +98,6 @@ expect impulse A
 A> pass
 # C still holds. Giving up the attempt was a decision not to block: no second override.
 expect impulse C
-reject:forbidden C> block "Ilse Várga" via C:hand:1
+reject:forbidden C> block C:ready:1 via C:hand:1
 C> pass
 expect action bleed A resolution

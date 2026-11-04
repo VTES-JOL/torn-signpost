@@ -29,13 +29,14 @@ import {
 import { ApiError } from '../api.ts';
 import { useCards } from '../content.tsx';
 import { cardActions, type MenuItem } from './actions.ts';
-import type { GameClient, GameSnapshot } from './client.ts';
+import type { GameSnapshot, TableClient } from './client.ts';
 import { DragProvider, type DragSource, type DropTarget, useDrag } from './drag.tsx';
 import { type Choosing, currentStep, FlowBar } from './FlowBar.tsx';
+import { seatLayout } from './seatLayout.ts';
 
 interface TableContextValue {
   snapshot: GameSnapshot;
-  client: GameClient;
+  client: TableClient;
   seat: string | undefined;
   judge: boolean;
   send(command: PlayerCommand): void;
@@ -59,7 +60,7 @@ const useTable = () => {
 const IN_PLAY: ZoneName[] = ['ready', 'torpor'];
 
 export function Table(props: {
-  client: GameClient;
+  client: TableClient;
   snapshot: GameSnapshot;
   catalog: CardCatalog;
   judge: boolean;
@@ -210,7 +211,7 @@ export function Table(props: {
   );
 }
 
-/** Opponents across the top in clockwise order from your prey; you at the bottom. */
+/** Opponents placed as at a real table (prey left, predator right, the rest across); you below. */
 function Seats({ view }: { view: GameState }) {
   const { seat, client } = useTable();
   const refs = view.seats.map((s) => ({ id: s.id, ousted: !!(s.ousted || s.withdrawn) }));
@@ -223,13 +224,18 @@ function Seats({ view }: { view: GameState }) {
   }
   const preyOf = me ? prey(refs, me) : undefined;
   const predOf = me ? predator(refs, me) : undefined;
+  const layout = seatLayout(order, preyOf, predOf);
   return (
     <div className="seats">
-      <div className="opponents">
-        {order.map((id) => (
+      <div
+        className="opponents"
+        style={{ gridTemplateColumns: `repeat(${layout.columns}, minmax(0, 1fr))` }}
+      >
+        {layout.placements.map(({ seat: id, row, column }) => (
           <SeatArea
             key={id}
             seat={id}
+            place={{ gridRow: row, gridColumn: column }}
             label={id === preyOf ? 'prey' : id === predOf ? 'predator' : undefined}
           />
         ))}
@@ -244,10 +250,13 @@ function SeatArea({
   seat,
   own,
   label,
+  place,
 }: {
   seat: string;
   own?: boolean;
   label?: string | undefined;
+  /** Grid cell among the opponents. */
+  place?: { gridRow: number; gridColumn: number };
 }) {
   const { snapshot, client, send, judge, showZone } = useTable();
   const { begin } = useDrag();
@@ -261,6 +270,7 @@ function SeatArea({
     <section
       className={['seat', own ? 'own' : '', turn ? 'turn' : '', s.ousted ? 'ousted' : ''].join(' ')}
       aria-label={`Seat ${seat}: ${client.seatName(seat)}`}
+      style={place}
     >
       <header className="seat-header">
         <strong>{client.seatName(seat)}</strong>
@@ -372,6 +382,8 @@ function CardView({ id }: { id: string }) {
   const hold = useRef<ReturnType<typeof setTimeout>>(undefined);
   if (!card || cards.state !== 'ready') return null;
   const record = card.cardId ? cards.get(card.cardId) : undefined;
+  // The viewer knows the card, but the card data doesn't: say so rather than show a card back.
+  const unknown = card.cardId !== undefined && !record;
   const zone = parseZoneId(card.zone);
   const kind =
     record?.kind ?? (zone.name === 'crypt' || zone.name === 'uncontrolled' ? 'crypt' : 'library');
@@ -390,10 +402,11 @@ function CardView({ id }: { id: string }) {
         card.faceDown ? 'face-down' : '',
         card.contested ? 'contested' : '',
         candidates?.has(card.id) ? 'candidate' : '',
+        unknown ? 'unknown' : '',
       ].join(' ')}
       style={{ viewTransitionName: `c-${card.id}` }}
       data-drop={`card:${card.id}`}
-      aria-label={`${record?.name ?? 'Hidden card'}${card.locked ? ', locked' : ''}`}
+      aria-label={`${cardLabel(card.cardId, record)}${card.locked ? ', locked' : ''}`}
       onClick={(e) => {
         if (candidates) choose(card.id);
         else if (picking) pick(card);
@@ -413,17 +426,33 @@ function CardView({ id }: { id: string }) {
         openMenu(card, e.currentTarget.getBoundingClientRect());
       }}
     >
-      <img
-        src={src}
-        alt=""
-        draggable={false}
-        onError={(e) => {
-          e.currentTarget.src = cards.back(kind, 'thumb');
-        }}
-      />
+      {unknown ? (
+        <span className="card-unknown" title={cardLabel(card.cardId, record)}>
+          Unknown card
+          <code>{card.cardId}</code>
+        </span>
+      ) : (
+        <img
+          src={src}
+          alt=""
+          draggable={false}
+          onError={(e) => {
+            e.currentTarget.src = cards.back(kind, 'thumb');
+          }}
+        />
+      )}
       <Counters card={card} />
     </button>
   );
+}
+
+/**
+ * A card's label: its name; "Unknown card <id>" when the viewer knows it but the card data
+ * doesn't; "Hidden card" when the viewer can't see it.
+ */
+function cardLabel(cardId: string | undefined, record: { name: string } | undefined): string {
+  if (record) return record.name;
+  return cardId ? `Unknown card ${cardId}` : 'Hidden card';
 }
 
 function Counters({ card }: { card: CardInstance }) {
@@ -515,8 +544,8 @@ function CardMenu(props: {
   const cards = useCards();
   const ref = useRef<HTMLDivElement>(null);
   const items: MenuItem[] = cardActions(props.card, seat, judge);
-  const name =
-    props.card.cardId && cards.state === 'ready' ? cards.get(props.card.cardId)?.name : undefined;
+  const cardId = props.card.cardId;
+  const name = cardLabel(cardId, cardId && cards.state === 'ready' ? cards.get(cardId) : undefined);
   useEffect(() => {
     ref.current?.querySelector('button')?.focus();
     const close = (e: PointerEvent) => {
@@ -534,7 +563,7 @@ function CardMenu(props: {
       role="menu"
       style={{ top: Math.max(8, top), left: Math.max(8, left) }}
     >
-      <p className="muted small">{name ?? 'Hidden card'}</p>
+      <p className="muted small">{name}</p>
       {items.length === 0 && <p className="muted small">Nothing you can do with this card.</p>}
       {items.map((item) => (
         <button
@@ -559,7 +588,16 @@ function Inspector({ card }: { card: CardInstance | undefined }) {
   const cards = useCards();
   if (!card || cards.state !== 'ready' || !card.cardId) return null;
   const record: CardRecord | undefined = cards.get(card.cardId);
-  if (!record) return null;
+  if (!record) {
+    return (
+      <aside className="inspector" aria-live="polite">
+        <div>
+          <strong>{cardLabel(card.cardId, record)}</strong>
+          <p className="small muted">This card isn't in the card data, so it can't be shown.</p>
+        </div>
+      </aside>
+    );
+  }
   const counters = Object.entries(card.counters)
     .map(([k, n]) => `${n} ${k}`)
     .join(', ');

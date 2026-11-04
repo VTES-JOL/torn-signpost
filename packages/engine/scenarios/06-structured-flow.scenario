@@ -12,18 +12,12 @@ crypt C "Ilse Várga" *12
 library C "Signal Fire" *40
 start
 
-A> draw crypt
 A> transfer +4 A:uncontrolled:1
 A> move A:uncontrolled:1 ready
-A> draw 7
-B> draw crypt
 B> transfer +4 B:uncontrolled:1
 B> move B:uncontrolled:1 ready
-B> draw 7
-C> draw crypt
 C> transfer +4 C:uncontrolled:1
 C> move C:uncontrolled:1 ready
-C> draw 7
 
 # Everyone auto-passes by default, so phases advance at once.
 expect autopass B unlock,master,minion,influence,discard
@@ -54,13 +48,13 @@ expect window none
 expect turn 1 A minion
 
 # A bleed: the prey may block; C, not eligible, passes automatically.
-reject:forbidden B> bleed "Tomas Grey"
-A> bleed "Vera Nightfall"
+reject:forbidden B> bleed B:ready:1
+A> bleed A:ready:1
 expect action bleed A blocks
 expect card A:ready:1 locked true
 expect impulse B
 log public A: Vera Nightfall bleeds B
-reject:not-now C> block "Ilse Várga"
+reject:not-now C> block C:ready:1
 reject:not-now A> next
 reject:not-now A> resolve success
 B> pass
@@ -75,13 +69,13 @@ expect action none
 log public The action succeeded
 
 # Locked minions can't act.
-reject:invalid A> hunt "Vera Nightfall"
-A> unlock "Vera Nightfall"
+reject:invalid A> hunt A:ready:1
+A> unlock A:ready:1
 
 # A hunt, undirected: prey and predator may block. B tries, A answers, B gives up.
-A> hunt "Vera Nightfall"
+A> hunt A:ready:1
 expect impulse B
-B> block "Tomas Grey"
+B> block B:ready:1
 log public B tries to block with Tomas Grey
 expect impulse A
 reject:not-now B> play B:hand:1
@@ -101,10 +95,10 @@ expect card A:ready:1 blood 7
 expect card B:ready:1 locked false
 
 # Equip, blocked by B: the blocker locks, and the card goes to the ash heap after combat.
-A> unlock "Vera Nightfall"
-A> equip "Vera Nightfall" with A:hand:1
+A> unlock A:ready:1
+A> equip A:ready:1 with A:hand:1
 log public A: Vera Nightfall equips with Iron Ward
-B> block "Tomas Grey"
+B> block B:ready:1
 A> pass
 B> pass
 C> pass
@@ -113,13 +107,16 @@ expect card B:ready:1 locked true
 log public Tomas Grey blocks: combat
 reject:forbidden C> endcombat
 B> endcombat
+# B ended combat, but the card and its replacement are A's.
+log public A played Iron Ward
+log public A drew 1 card from their library
 expect action none
 expect count A:ashHeap 2
 expect count A:hand 7
 
 # A successful equip attaches the card.
-A> unlock "Vera Nightfall"
-A> equip "Vera Nightfall" with A:hand:1
+A> unlock A:ready:1
+A> equip A:ready:1 with A:hand:1
 B> pass
 C> pass
 A> resolve success
@@ -127,8 +124,8 @@ expect card A:ready:2 attached Vera Nightfall
 expect count A:hand 7
 
 # Cancelling an action (an override) closes its window.
-A> unlock "Vera Nightfall"
-A> action "Vera Nightfall"
+A> unlock A:ready:1
+A> action A:ready:1
 A> cancel
 expect action none
 expect window none

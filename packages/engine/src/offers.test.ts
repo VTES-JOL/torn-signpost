@@ -30,13 +30,8 @@ library B "Quick Feed" *40
 crypt C "Ilse Várga" *12
 library C "Signal Fire" *40
 start
-A> draw crypt
 A> move A:uncontrolled:1 ready
-A> draw 7
-B> draw crypt
 B> move B:uncontrolled:1 ready
-B> draw 7
-C> draw 7
 `;
 
 function offersAfter(script: string, seat: string) {
@@ -86,7 +81,7 @@ describe('available actions (UX-03)', () => {
 
   it('offers a card-effect block to a seat that is not an eligible blocker', () => {
     const script =
-      'C> draw crypt\nC> move C:uncontrolled:1 ready\nA> next\nA> next\nA> bleed "Vera Nightfall"\nC> hold\nB> pass';
+      'C> move C:uncontrolled:1 ready\nA> next\nA> next\nA> bleed A:ready:1\nC> hold\nB> pass';
     const offers = offersAfter(script, 'C');
     expect(ids(offers)).toEqual(['block-override', 'play', 'pass']);
     const block = offers[0];
@@ -101,7 +96,7 @@ describe('available actions (UX-03)', () => {
   });
 
   it('offers block and decline to the impulse holder only, then resolution to the actor', () => {
-    const declared = 'A> next\nA> next\nA> bleed "Vera Nightfall"';
+    const declared = 'A> next\nA> next\nA> bleed A:ready:1';
     expect(ids(offersAfter(declared, 'B'))).toEqual(['block', 'play', 'pass']);
     expect(offersAfter(declared, 'B').find((o) => o.id === 'pass')?.label).toBe('Don’t block');
     expect(offersAfter(declared, 'A')).toEqual([]);
@@ -123,7 +118,7 @@ describe('available actions (UX-03)', () => {
 
   it('offers ending combat to both players in it', () => {
     const combat =
-      'A> next\nA> next\nA> hunt "Vera Nightfall"\nB> block "Tomas Grey"\nA> pass\nB> pass\nC> pass';
+      'A> next\nA> next\nA> hunt A:ready:1\nB> block B:ready:1\nA> pass\nB> pass\nC> pass';
     expect(ids(offersAfter(combat, 'A'))).toContain('endcombat');
     expect(ids(offersAfter(combat, 'B'))).toContain('endcombat');
     expect(ids(offersAfter(combat, 'C'))).not.toContain('endcombat');

@@ -16,30 +16,24 @@ crypt D "Tomas Grey" *12
 library D "Quick Feed" *40
 start
 
-A> draw crypt
 A> move A:uncontrolled:1 ready
-A> draw 7
-B> draw crypt
 B> move B:uncontrolled:1 ready
-C> draw crypt
 C> move C:uncontrolled:1 ready
-C> draw 7
-D> draw crypt
 D> move D:uncontrolled:1 ready
 A> next
 A> next
 
-reject:forbidden A> bleed "Vera Nightfall" C override
+reject:forbidden A> bleed A:ready:1 C override
 # An untagged card is still accepted, flagged as unverified.
-A> bleed "Vera Nightfall" C with "Iron Ward" override
+A> bleed A:ready:1 C with "Iron Ward" override
 log public A: Vera Nightfall bleeds C with Iron Ward, ignoring the prey restriction (Iron Ward, unverified)
 C> pass
 A> resolve failure
-A> unlock "Vera Nightfall"
+A> unlock A:ready:1
 
-A> bleed "Vera Nightfall"
+A> bleed A:ready:1
 C> hold
 B> pass
-reject:forbidden C> block "Ilse Várga" override
-C> block "Ilse Várga" via "Quick Feed"
+reject:forbidden C> block C:ready:1 override
+C> block C:ready:1 via "Quick Feed"
 log public C tries to block with Ilse Várga, ignoring the blocking restrictions (Quick Feed, unverified)

@@ -749,6 +749,12 @@ function advancePhase(state: GameState): EventBody[] {
   ];
 }
 
+/** Every Methuselah starts with 4 crypt cards in the uncontrolled region and 7 in hand. */
+export const OPENING_DRAW = {
+  crypt: { count: 4, to: 'uncontrolled' },
+  library: { count: 7, to: 'hand' },
+} as const;
+
 function startGame(
   cmd: Extract<Command, { type: 'StartGame' }>,
   catalog: CardCatalog,
@@ -772,9 +778,12 @@ function startGame(
         const info = catalog.get(cardId) ?? reject('unknown-card', `Unknown card ${cardId}`);
         if (info.kind !== kind) reject('invalid', `${info.name} is not a ${kind} card`);
       }
-      for (const cardId of shuffled(s[kind], rng)) {
-        cards.push({ id: ids(), cardId, owner: s.id, zone: zoneId(s.id, kind) });
-      }
+      // The opening draw is part of setup, not a play, so it isn't logged as draws.
+      const dealt = OPENING_DRAW[kind];
+      shuffled(s[kind], rng).forEach((cardId, i) => {
+        const zone = zoneId(s.id, i < dealt.count ? dealt.to : kind);
+        cards.push({ id: ids(), cardId, owner: s.id, zone });
+      });
     }
   }
   return {

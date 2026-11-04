@@ -11,8 +11,8 @@ const seats = (n: number) =>
   ['A', 'B', 'C', 'D', 'E', 'F'].slice(0, n).map((id) => ({
     id,
     user: id.toLowerCase(),
-    crypt: ['t-vera', 't-tomas'],
-    library: ['t-feed', 't-ward', 't-signal'],
+    crypt: Array.from({ length: 6 }, (_, i) => (i % 2 ? 't-tomas' : 't-vera')),
+    library: Array.from({ length: 12 }, (_, i) => ['t-feed', 't-ward', 't-signal'][i % 3] ?? ''),
   }));
 const start = (cmd: Partial<Extract<Command, { type: 'StartGame' }>> = {}): DecideResult =>
   decide(
@@ -54,6 +54,27 @@ describe('StartGame', () => {
       ok: false,
       rejection: { code: 'invalid' },
     });
+  });
+
+  it('deals the opening draw: 4 crypt cards and 7 library cards, seen only by the owner', () => {
+    const state = started();
+    expect(state.zones['A:uncontrolled']).toHaveLength(4);
+    expect(state.zones['A:crypt']).toHaveLength(2);
+    expect(state.zones['A:hand']).toHaveLength(7);
+    expect(state.zones['A:library']).toHaveLength(5);
+    const r = start();
+    // One event: the deal isn't logged as draws.
+    expect(r.ok && r.events.map((e) => e.type)).toEqual(['GameStarted']);
+  });
+
+  it('deals what there is from a short deck', () => {
+    const r = start({
+      seats: seats(3).map((s) => ({ ...s, crypt: ['t-vera'], library: ['t-feed'] })),
+    });
+    if (!r.ok) throw new Error(r.rejection.message);
+    const state = r.events.reduce(evolve, newGame('g'));
+    expect(state.zones['A:uncontrolled']).toHaveLength(1);
+    expect(state.zones['A:hand']).toHaveLength(1);
   });
 
   it('only the system can start a game, once', () => {

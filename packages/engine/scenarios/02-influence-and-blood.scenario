@@ -11,7 +11,6 @@ crypt C "Tomas Grey" *12
 library C "Quick Feed" *40
 start
 
-A> draw crypt 4
 A> transfer +3 "Vera Nightfall"
 expect pool A 27
 expect card A:uncontrolled:1 blood 3
@@ -26,7 +25,6 @@ expect card A:ready:1 controller A
 expect pool A 23
 log B A moved Vera Nightfall from their uncontrolled region to their ready region
 
-A> draw 7
 A> attach "Iron Ward" A:ready:1
 expect count A:hand 6
 expect card A:ready:2 attached Vera Nightfall

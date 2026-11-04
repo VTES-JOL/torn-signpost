@@ -37,7 +37,7 @@ const ZONE_LABELS: Record<ZoneName, string> = {
   crypt: 'crypt',
 };
 
-/** A three-player table with the invented test cards, opening draws already done. */
+/** A three-player table with the invented test cards; starting the game deals the opening draw. */
 export function defaultSetup(seed: number): string {
   const seats = [
     ['A', 'alice', 'Vera Nightfall', 'Iron Ward'],
@@ -52,7 +52,6 @@ export function defaultSetup(seed: number): string {
       `library ${id} "${card}" *20 "Signal Fire" *20`,
     ]),
     'start',
-    ...seats.flatMap(([id]) => [`${id}> draw crypt 4`, `${id}> draw 7`]),
   ].join('\n');
 }
 

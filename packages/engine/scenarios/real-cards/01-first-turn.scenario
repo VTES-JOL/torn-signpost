@@ -1,0 +1,75 @@
+# Opening turns at a four-player table: phases, a master card and the first transfers.
+# Cards are given by VEKN ID, so this file holds no card data: names and images come from the
+# content pack (LEGAL-08). Positions such as A:hand:4 follow from the seed.
+seed 3
+seat A alice
+seat B bob
+seat C carol
+seat D dave
+crypt A 200107 *3 200848 *3 200734 *3 200106 *3
+library A 101055 *10 100845 *8 100401 *8 100199 *6 100598 *4 100518 *4
+crypt B 200534 *4 200842 *4 200117 *4
+library B 100573 *10 100518 *10 100401 *10 100199 *10
+crypt C 200378 *6 200107 *6
+library C 100001 *10 101321 *10 100845 *10 100984 *10
+crypt D 200106 *6 200848 *6
+library D 100598 *10 102137 *10 101743 *10 100059 *10
+start
+
+# Everyone starts with 30 pool, 4 crypt cards face down and 7 cards in hand.
+expect pool A 30
+expect count A:uncontrolled 4
+expect count A:hand 7
+expect turn 1 A unlock
+
+# Alice's turn. The unlock phase has nothing to do yet.
+A> next
+expect turn 1 A master
+# A master card in the master phase: a location, so it stays in play. It is replaced.
+A> play A:hand:4 ready
+expect count A:ready 1
+expect count A:hand 7
+A> next
+expect turn 1 A minion
+# No minions in play yet, so on to influence: the first player gets one transfer.
+A> next
+expect turn 1 A influence
+A> transfer +1 A:uncontrolled:3
+expect pool A 29
+expect card A:uncontrolled:3 blood 1
+A> next
+A> next
+
+# Bob's turn: a master card of his own, then two transfers onto one vampire.
+expect turn 2 B unlock
+B> next
+B> play B:hand:2 ready
+B> next
+B> next
+B> transfer +2 B:uncontrolled:2
+expect card B:uncontrolled:2 blood 2
+expect pool B 28
+B> next
+B> next
+
+# Carol's turn: three transfers, spread over two vampires.
+expect turn 3 C unlock
+C> next
+C> next
+C> next
+C> transfer +2 C:uncontrolled:1
+C> transfer +1 C:uncontrolled:2
+expect pool C 27
+C> next
+C> next
+
+# Dave's turn: four transfers. From now on everyone gets four.
+expect turn 4 D unlock
+D> next
+D> next
+D> next
+D> transfer +4 D:uncontrolled:1
+expect pool D 26
+D> next
+D> next
+expect turn 5 A unlock

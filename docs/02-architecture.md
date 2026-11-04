@@ -558,6 +558,15 @@ primitives, and corrections are new commands.
 - **Card plays**: `PlayCard` plays from the hand and draws a replacement. In a window it needs the
   impulse and returns it to the acting Methuselah, voiding the passes.
 - **Turns** start by unlocking the new Methuselah's ready and torpor cards.
+- **Opening draw**: `GameStarted` deals each seat 4 crypt cards to the uncontrolled region and 7
+  library cards to the hand (`OPENING_DRAW`), so the deal isn't logged as draws.
+- **Replay foundation** (web, behind the `replay` flag): a `Timeline` is an event log split into
+  steps (`packages/engine/src/timeline.ts`). Scenarios produce one step per script line;
+  `timelineFromEvents` groups a recorded log into one step per command, ready for replaying stored
+  games (GAME-17). The web `ReplayClient` implements the same `TableClient` interface as the live
+  `GameClient`, rebuilding each state with `evolve` and redacting it per viewer with `project`, so
+  the table, toolbar, log and console run unchanged. Commands sent during a replay are decided
+  locally and branch the timeline at the current step.
 - **Toolbar**: `availableActions(view, seat, catalog)` returns offers whose steps the web toolbar
   walks, highlighting candidate cards on the table, with a confirm step for anything that reveals
   information or affects other players (GAME-11). The tab title shows ● while the table waits on

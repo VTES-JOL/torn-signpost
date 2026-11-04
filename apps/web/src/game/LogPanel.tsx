@@ -1,7 +1,7 @@
 /** Game log with chat interleaved (GAME-12); spectators read but cannot chat (GAME-16). */
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api.ts';
-import type { GameClient, GameSnapshot } from './client.ts';
+import type { GameSnapshot, TableClient } from './client.ts';
 
 type Entry = {
   key: string;
@@ -13,9 +13,10 @@ type Entry = {
 };
 
 export function LogPanel(props: {
-  client: GameClient;
+  client: TableClient;
   snapshot: GameSnapshot;
-  canChat: boolean;
+  /** `none` hides chat altogether, as in a replay. */
+  canChat: boolean | 'none';
   me?: string | undefined;
 }) {
   const [text, setText] = useState('');
@@ -47,7 +48,7 @@ export function LogPanel(props: {
         ))}
         <li ref={end} aria-hidden />
       </ol>
-      {props.canChat ? (
+      {props.canChat === 'none' ? null : props.canChat ? (
         <form
           onSubmit={(e) => {
             e.preventDefault();
