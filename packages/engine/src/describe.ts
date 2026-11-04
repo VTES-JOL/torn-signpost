@@ -130,6 +130,9 @@ export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOp
     // Bookkeeping with nothing to tell (auto-pass settings and stops are private): no log line.
     case 'AutoPassSet':
     case 'StopsSet':
+    // Presence shows on the seats, not in the log (TEMPO-06).
+    case 'PlayerPresent':
+    case 'PlayerAbsent':
     case 'ImpulseReset':
     case 'WindowClosed':
       return '';

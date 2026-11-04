@@ -31,6 +31,8 @@ beforeAll(() => {
     env,
     apiFunction: p.apiFunction,
     wsFunction: p.wsFunction,
+    timersFunction: p.timersFunction,
+    timersDeadLetters: p.timersDeadLetters,
     httpApi: p.httpApi,
   });
   foundation = Template.fromStack(f);
@@ -119,7 +121,7 @@ describe('api', () => {
   });
 
   it('serves live updates from a throttled WebSocket API on ws.<domain>', () => {
-    api.resourceCountIs('AWS::Lambda::Function', 2);
+    api.resourceCountIs('AWS::Lambda::Function', 3);
     api.hasResourceProperties('AWS::ApiGatewayV2::Api', { ProtocolType: 'WEBSOCKET' });
     api.hasResourceProperties('AWS::ApiGatewayV2::Stage', {
       StageName: 'live',
@@ -132,7 +134,37 @@ describe('api', () => {
 
   it('switches games on for the beta (internal alpha)', () => {
     api.hasResourceProperties('AWS::Lambda::Function', {
-      Environment: { Variables: Match.objectLike({ GAMES_ENABLED: 'true' }) },
+      Environment: {
+        Variables: Match.objectLike({ GAMES_ENABLED: 'true', PRESENCE_ENABLED: 'true' }),
+      },
+    });
+  });
+
+  it('runs one-off timers through EventBridge Scheduler and a dead-lettered timers Lambda', () => {
+    api.resourceCountIs('AWS::Scheduler::ScheduleGroup', 1);
+    api.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'torn-signpost-beta-timers',
+      Environment: {
+        Variables: Match.objectLike({
+          SCHEDULER_GROUP: 'torn-signpost-beta',
+          WS_CALLBACK_URL: Match.anyValue(),
+        }),
+      },
+    });
+    // The WebSocket Lambda schedules presence checks; only the scheduler may assume its role.
+    api.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: Match.objectLike({ TIMERS_FUNCTION_ARN: Match.anyValue() }),
+      },
+      Handler: 'index.handler',
+    });
+    api.hasResourceProperties('AWS::IAM::Role', {
+      AssumeRolePolicyDocument: Match.objectLike({
+        Statement: [Match.objectLike({ Principal: { Service: 'scheduler.amazonaws.com' } })],
+      }),
+    });
+    ops.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmDescription: 'Timer firings dead-lettered after retries',
     });
   });
 

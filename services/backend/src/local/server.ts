@@ -11,6 +11,7 @@ import { devAuthenticator } from '../auth.ts';
 import { ApiError } from '../errors.ts';
 import type { ConnectionGateway } from '../realtime/gateway.ts';
 import { createServices } from '../services.ts';
+import { localTimers } from '../timers/timers.ts';
 import { local } from './env.ts';
 
 /** Stand-in for API Gateway's connection management API. */
@@ -29,6 +30,8 @@ const services = createServices({
   endpoint: local.dynamodb.endpoint,
   contentUrl: local.contentUrl,
   gateway,
+  timers: (handler) => localTimers(handler),
+  presence: true,
 });
 
 const app = createApp({

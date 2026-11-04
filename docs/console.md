@@ -89,12 +89,15 @@ library A "Iron Ward" *40
 start
 
 A> draw crypt 4                # a command by seat A's player; also judge> and admin>
+present B no                   # the server records B's player as away (yes: at the table)
 reject A> look A:library:1     # the command must fail; reject:<code> pins the rejection code
 
 expect pool A 30
 expect vp A 1.5
 expect edge A|none
 expect ousted B true|false
+expect present B yes|no
+expect tempo live|async        # live while every Methuselah still in the game is present
 expect direction prey|predator
 expect turn 2 B unlock
 expect occupant B erin

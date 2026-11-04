@@ -201,6 +201,35 @@ describe('ReplacePlayer (GAME-19)', () => {
   });
 });
 
+describe('SetPresence (TEMPO-06)', () => {
+  const system: Actor = { kind: 'system' };
+  it('records arrival and absence, attributed to the system', () => {
+    const r = run(started(), { type: 'SetPresence', seat: 'B', present: true }, system);
+    expect(r).toMatchObject({
+      ok: true,
+      events: [{ type: 'PlayerPresent', seat: 'B', by: system }],
+    });
+    const state = apply(started(), { type: 'SetPresence', seat: 'B', present: true }, system);
+    expect(state.seats[1]?.present).toBe(true);
+    const away = apply(state, { type: 'SetPresence', seat: 'B', present: false }, system);
+    expect(away.seats[1]).not.toHaveProperty('present');
+  });
+  it('refuses no-ops, players, judges and ousted seats', () => {
+    const cmd: Command = { type: 'SetPresence', seat: 'A', present: false };
+    expect(run(started(), cmd, system)).toMatchObject({ rejection: { code: 'no-change' } });
+    expect(run(started(), { ...cmd, present: true })).toMatchObject({
+      rejection: { code: 'forbidden' },
+    });
+    expect(run(started(), { ...cmd, present: true }, { kind: 'judge', user: 'j' })).toMatchObject({
+      rejection: { code: 'forbidden' },
+    });
+    const ousted = apply(started(), { type: 'AdjustPool', seat: 'A', delta: -30 });
+    expect(run(ousted, { ...cmd, present: true }, system)).toMatchObject({
+      rejection: { code: 'invalid' },
+    });
+  });
+});
+
 describe('AdvancePhase', () => {
   it('skips ousted seats when passing the turn', () => {
     let state = started();

@@ -314,7 +314,15 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
       }
       break;
     }
+    case 'PlayerPresent':
+      patchSeat(d, ev.seat, () => ({ present: true }));
+      break;
+    case 'PlayerAbsent':
+      d.seats = d.seats.map((s) => (s.id === ev.seat ? withoutPresence(s) : s));
+      break;
     case 'PlayerReplaced':
+      // The new player is away until the server sees them.
+      d.seats = d.seats.map((s) => (s.id === ev.seat ? withoutPresence(s) : s));
       patchSeat(d, ev.seat, (s) => ({
         occupant: ev.user,
         occupants: [
@@ -407,6 +415,10 @@ function addCounter(
   if (value === 0) delete counters[counter];
   else counters[counter] = value;
   d.cards[id] = { ...card, counters };
+}
+
+function withoutPresence({ present: _, ...s }: Seat): Seat {
+  return s;
 }
 
 function patchSeat(d: GameState, id: SeatId, patch: (s: Seat) => Partial<Seat>) {

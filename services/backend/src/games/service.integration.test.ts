@@ -11,9 +11,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Identity } from '../auth.ts';
 import type { GameStore } from '../db/store.ts';
 import type { ConnectionGateway } from '../realtime/gateway.ts';
-import { Fanout, Realtime } from '../realtime/realtime.ts';
+import { ABSENCE_DELAY_MS, Fanout, Realtime } from '../realtime/realtime.ts';
 import { testContent, testDeck } from '../testing/content.ts';
 import { dynamoAvailable, testStore } from '../testing/dynamo.ts';
+import { presenceKey, type TimerPayload, type Timers } from '../timers/timers.ts';
 import { GameService, viewerOf } from './service.ts';
 
 const available = await dynamoAvailable();
@@ -47,17 +48,52 @@ function recordingGateway() {
   return { gateway, sent, gone };
 }
 
+/** Timers that fire only when the test says so. */
+function manualTimers() {
+  const scheduled = new Map<string, { at: Date; payload: TimerPayload }>();
+  const timers: Timers = {
+    async schedule(key, at, payload) {
+      scheduled.set(key, { at, payload });
+    },
+    async cancel(key) {
+      scheduled.delete(key);
+    },
+  };
+  return { timers, scheduled };
+}
+
 let n = 0;
-function service(store: GameStore, gateway: ConnectionGateway, seed = 1) {
+function service(
+  store: GameStore,
+  gateway: ConnectionGateway,
+  seed = 1,
+  timers?: Timers,
+  presence = true,
+) {
   const games = new GameService({
     store,
     content: testContent,
     rng: seededRng(seed),
     publisher: new Fanout(store, gateway),
     newId: () => `g${++n}-${seed}`,
+    now: () => new Date('2026-11-05T10:00:00Z'),
+    presence,
   });
-  return { games, realtime: new Realtime(store, gateway, games) };
+  const realtime = new Realtime(store, gateway, games, {
+    presence,
+    ...(timers ? { timers } : {}),
+    now: () => new Date('2026-11-05T10:00:00Z'),
+  });
+  return { games, realtime };
 }
+
+/** Pushed event batches, leaving out presence bookkeeping. */
+const pushedEvents = (messages: ServerMessage[] | undefined) =>
+  (messages ?? []).filter(
+    (m): m is Extract<ServerMessage, { type: 'events' }> =>
+      m.type === 'events' &&
+      !m.events.every((e) => e.type === 'PlayerPresent' || e.type === 'PlayerAbsent'),
+  );
 
 let commandCounter = 0;
 const cmd = (
@@ -331,14 +367,11 @@ describe.skipIf(!available)('game service (DynamoDB Local)', () => {
       for (const c of ['c-bob', 'c-dave', 'c-judge']) {
         await realtime.message(c, JSON.stringify({ type: 'subscribe', gameId: id }));
       }
-      expect(rec.sent.get('c-bob')).toEqual([{ type: 'subscribed', gameId: id, seq: 1 }]);
+      expect(rec.sent.get('c-bob')?.[0]).toEqual({ type: 'subscribed', gameId: id, seq: 1 });
       expect(rec.sent.get('c-dave')).toEqual([{ type: 'error', message: 'No such game' }]);
 
       await games.command(alice, id, cmd({ type: 'Draw', count: 3 }));
-      const pushed = (c: string) =>
-        (rec.sent.get(c) ?? []).filter(
-          (m): m is Extract<ServerMessage, { type: 'events' }> => m.type === 'events',
-        );
+      const pushed = (c: string) => pushedEvents(rec.sent.get(c));
       const bobSees = pushed('c-bob')[0]?.events[0] as Extract<GameEvent, { type: 'CardsDrawn' }>;
       expect(bobSees.cards.map((c) => c.cardId)).toEqual([undefined, undefined, undefined]);
       expect(pushed('c-judge')).toHaveLength(1);
@@ -371,6 +404,114 @@ describe.skipIf(!available)('game service (DynamoDB Local)', () => {
       await expect(games.command(carol, id, cmd({ type: 'AdvancePhase' }))).rejects.toMatchObject({
         code: 'not_playing',
       });
+    });
+  });
+
+  describe('presence (TEMPO-06)', () => {
+    const presence = async (games: GameService, id: string) =>
+      Object.fromEntries(
+        (await games.details(judge, id)).view?.seats.map((s) => [s.occupant, !!s.present]) ?? [],
+      );
+
+    it('marks players present on arrival and away once they have been gone a while', async () => {
+      const rec = recordingGateway();
+      const manual = manualTimers();
+      const { games, realtime } = service(store, rec.gateway, 1, manual.timers);
+      const g = await games.create(alice, {
+        name: 'Presence',
+        format: 'standard',
+        visibility: 'public',
+        maxSeats: 3,
+      });
+      for (const p of [alice, bob, carol]) await games.join(p, g.id, { deck });
+      // Alice watches the lobby, so she is at the table as soon as the game starts.
+      await realtime.connect('p-alice', alice);
+      await realtime.message('p-alice', JSON.stringify({ type: 'subscribe', gameId: g.id }));
+      await games.start(alice, g.id);
+      expect(await presence(games, g.id)).toEqual({ alice: true, bob: false, carol: false });
+
+      await realtime.connect('p-bob', bob);
+      await realtime.message('p-bob', JSON.stringify({ type: 'subscribe', gameId: g.id }));
+      await realtime.connect('p-bob2', bob);
+      await realtime.message('p-bob2', JSON.stringify({ type: 'subscribe', gameId: g.id }));
+      expect(await presence(games, g.id)).toMatchObject({ bob: true });
+      // Arrival was pushed to the others; spectators are counted, players aren't.
+      const aliceGot = rec.sent.get('p-alice') ?? [];
+      expect(
+        aliceGot.some((m) => m.type === 'events' && m.events[0]?.type === 'PlayerPresent'),
+      ).toBe(true);
+      await realtime.connect('p-dave', dave);
+      await realtime.message('p-dave', JSON.stringify({ type: 'subscribe', gameId: g.id }));
+      expect(rec.sent.get('p-alice')?.at(-1)).toEqual({
+        type: 'audience',
+        gameId: g.id,
+        spectators: 1,
+      });
+
+      // Bob closes one tab: the check finds his other one and leaves him present.
+      const key = presenceKey(g.id, 'bob');
+      await realtime.disconnect('p-bob');
+      expect(manual.scheduled.get(key)).toEqual({
+        at: new Date(Date.parse('2026-11-05T10:00:00Z') + ABSENCE_DELAY_MS),
+        payload: { kind: 'presence', gameId: g.id, user: 'bob' },
+      });
+      await games.checkAbsence(g.id, 'bob');
+      expect(await presence(games, g.id)).toMatchObject({ bob: true });
+
+      // Bob closes the other one too and stays gone: away.
+      await realtime.disconnect('p-bob2');
+      await games.checkAbsence(g.id, 'bob');
+      expect(await presence(games, g.id)).toMatchObject({ bob: false });
+      // A spectator leaving schedules nothing.
+      manual.scheduled.clear();
+      await realtime.disconnect('p-dave');
+      expect(manual.scheduled.size).toBe(0);
+      expect(rec.sent.get('p-alice')?.at(-1)).toMatchObject({ type: 'audience', spectators: 0 });
+
+      // Presence is bookkeeping: none of it reaches the log as a command anyone made.
+      const { events } = await games.events(alice, g.id, 0);
+      expect(
+        events.filter((e) => e.type === 'PlayerPresent' || e.type === 'PlayerAbsent'),
+      ).toSatisfy((es: GameEvent[]) => es.every((e) => e.by.kind === 'system'));
+    });
+
+    it('does nothing when switched off', async () => {
+      const rec = recordingGateway();
+      const manual = manualTimers();
+      const { games, realtime } = service(store, rec.gateway, 1, manual.timers, false);
+      const { id } = await startedGame(games);
+      await realtime.connect('off-bob', bob);
+      await realtime.message('off-bob', JSON.stringify({ type: 'subscribe', gameId: id }));
+      await realtime.disconnect('off-bob');
+      await games.checkAbsence(id, 'bob');
+      expect(await presence(games, id)).toEqual({ alice: false, bob: false, carol: false });
+      expect(manual.scheduled.size).toBe(0);
+      expect(rec.sent.get('off-bob')).toEqual([{ type: 'subscribed', gameId: id, seq: 1 }]);
+    });
+
+    it('ignores players who came back, and games that are not in progress', async () => {
+      const manual = manualTimers();
+      const { games, realtime } = service(store, recordingGateway().gateway, 1, manual.timers);
+      const { id } = await startedGame(games);
+      await realtime.connect('q-carol', carol);
+      await realtime.message('q-carol', JSON.stringify({ type: 'subscribe', gameId: id }));
+      await realtime.message('q-carol', JSON.stringify({ type: 'unsubscribe', gameId: id }));
+      expect(manual.scheduled.has(presenceKey(id, 'carol'))).toBe(true);
+      // A reload: back before the check runs.
+      await realtime.message('q-carol', JSON.stringify({ type: 'subscribe', gameId: id }));
+      const seq = (await games.details(carol, id)).game.seq;
+      await games.checkAbsence(id, 'carol');
+      expect((await games.details(carol, id)).game.seq).toBe(seq);
+      expect(await presence(games, id)).toMatchObject({ carol: true });
+
+      const open = await games.create(alice, {
+        name: 'Lobby',
+        format: 'standard',
+        visibility: 'public',
+        maxSeats: 3,
+      });
+      await expect(games.setPresence(open.id, 'alice', true)).resolves.toBeUndefined();
+      expect((await games.details(alice, open.id)).game.seq).toBe(0);
     });
   });
 });

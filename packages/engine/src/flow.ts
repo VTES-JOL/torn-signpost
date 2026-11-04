@@ -9,6 +9,17 @@ export function seatRefs(state: GameState): SeatRef[] {
   return state.seats.map((s) => ({ id: s.id, ousted: !!(s.ousted || s.withdrawn) }));
 }
 
+/**
+ * How the game is being played (TEMPO-06): `live` while every Methuselah still in the game has it
+ * open, `async` otherwise. Spectators and judges don't count.
+ */
+export type Tempo = 'live' | 'async';
+
+export function tempo(state: GameState): Tempo {
+  const live = state.seats.filter((s) => !s.ousted && !s.withdrawn);
+  return live.length > 0 && live.every((s) => s.present) ? 'live' : 'async';
+}
+
 /** The seat holding the impulse in the open window, if any. */
 export function impulseHolder(state: GameState): SeatId | undefined {
   const w = state.window;

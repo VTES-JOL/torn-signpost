@@ -2,6 +2,7 @@
 import { cognitoAuthenticator } from '../auth.ts';
 import { awsGateway } from '../realtime/gateway.ts';
 import { createServices, type Services } from '../services.ts';
+import { schedulerTimers } from '../timers/timers.ts';
 
 const env = (name: string) => {
   const value = process.env[name];
@@ -13,6 +14,7 @@ export const stage = process.env.STAGE ?? 'local';
 export const version = process.env.APP_VERSION ?? 'dev';
 export const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '').split(',').filter(Boolean);
 export const gamesEnabled = process.env.GAMES_ENABLED === 'true';
+export const presenceEnabled = process.env.PRESENCE_ENABLED === 'true';
 
 export const auth = cognitoAuthenticator(env('USER_POOL_ID'), env('USER_POOL_CLIENT_ID'));
 
@@ -26,6 +28,21 @@ export function servicesFor(callbackUrl: string): Services {
       tableName: env('TABLE_NAME'),
       contentUrl: env('CONTENT_URL'),
       gateway: awsGateway(callbackUrl),
+      presence: presenceEnabled,
+      // Firings go to the timers Lambda, not back to this process.
+      ...(process.env.SCHEDULER_GROUP
+        ? {
+            timers: () =>
+              schedulerTimers({
+                group: env('SCHEDULER_GROUP'),
+                targetArn: env('TIMERS_FUNCTION_ARN'),
+                roleArn: env('SCHEDULER_ROLE_ARN'),
+                ...(process.env.TIMERS_DLQ_ARN
+                  ? { deadLetterArn: process.env.TIMERS_DLQ_ARN }
+                  : {}),
+              }),
+          }
+        : {}),
     });
     byCallbackUrl.set(callbackUrl, services);
   }

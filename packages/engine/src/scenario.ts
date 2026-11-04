@@ -15,7 +15,7 @@ import { decide } from './decide.ts';
 import { describeEvent } from './describe.ts';
 import type { GameEvent } from './events.ts';
 import { evolve, newGame } from './evolve.ts';
-import { autoPassPhases, impulseHolder } from './flow.ts';
+import { autoPassPhases, impulseHolder, tempo } from './flow.ts';
 import type { Actor, CardId, Format, GameState, Viewer } from './model.ts';
 import { project, projectEvent } from './projection.ts';
 import { seededRng } from './rng.ts';
@@ -61,7 +61,11 @@ export function runScenario(source: string, catalog: CardCatalog): ScenarioRun {
     const isCommand = /^(reject(?::[\w-]+)?\s+)?\w+>/.test(text);
     const step: TimelineStep = {
       kind:
-        isCommand || head === 'start' ? 'command' : SETUP_DIRECTIVES.has(head) ? 'setup' : 'check',
+        isCommand || head === 'start' || head === 'present'
+          ? 'command'
+          : SETUP_DIRECTIVES.has(head)
+            ? 'setup'
+            : 'check',
       text,
       line: i + 1,
       from: events.length,
@@ -137,6 +141,28 @@ export function runScenario(source: string, catalog: CardCatalog): ScenarioRun {
           if (!result.ok) return fail(`Rejected: ${result.rejection.message}`);
           for (const ev of result.events) {
             state = evolve(state, ev);
+            events.push(ev);
+          }
+          step.to = events.length;
+          break;
+        }
+        // The server's presence tracking, which the engine only records (TEMPO-06).
+        case 'present': {
+          const [who = '', answer = ''] = rest;
+          if (answer !== 'yes' && answer !== 'no') return fail('Usage: present <seat> yes|no');
+          const seat = resolveSeat(who, { view: state, catalog });
+          const result = decide(
+            state,
+            { type: 'SetPresence', seat, present: answer === 'yes' },
+            { actor: { kind: 'system' }, now: clock(i + 1), rng, catalog },
+          );
+          if (!result.ok)
+            return fail(`Rejected (${result.rejection.code}): ${result.rejection.message}`);
+          lastEvents = [];
+          for (const ev of result.events) {
+            const before = state;
+            state = evolve(state, ev);
+            lastEvents.push({ ev, before, after: state });
             events.push(ev);
           }
           step.to = events.length;
@@ -228,6 +254,10 @@ function check(state: GameState, args: string[], catalog: CardCatalog): string |
       return same(`${rest[0]} VP`, seat(rest[0])?.vp, rest[1] ?? '');
     case 'ousted':
       return same(`${rest[0]} ousted`, !!seat(rest[0])?.ousted, rest[1] ?? '');
+    case 'present':
+      return same(`${rest[0]} present`, seat(rest[0])?.present ? 'yes' : 'no', rest[1] ?? '');
+    case 'tempo':
+      return same('tempo', tempo(state), rest[0] ?? '');
     case 'edge':
       return same('Edge', state.seats.find((s) => s.hasEdge)?.id ?? 'none', rest[0] ?? '');
     case 'direction':

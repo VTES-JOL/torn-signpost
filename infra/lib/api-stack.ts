@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url';
-import { Duration, Stack, type StackProps } from 'aws-cdk-lib';
+import { ArnFormat, Duration, Stack, type StackProps } from 'aws-cdk-lib';
 import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
 import {
   HttpLambdaIntegration,
@@ -13,6 +13,8 @@ import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as targets from 'aws-cdk-lib/aws-route53-targets';
+import * as scheduler from 'aws-cdk-lib/aws-scheduler';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
 import type { Construct } from 'constructs';
 import { hosts, type StageConfig } from './config.ts';
 
@@ -36,6 +38,8 @@ export class ApiStack extends Stack {
   readonly wsUrl: string;
   readonly apiFunction: nodejs.NodejsFunction;
   readonly wsFunction: nodejs.NodejsFunction;
+  readonly timersFunction: nodejs.NodejsFunction;
+  readonly timersDeadLetters: sqs.Queue;
   readonly httpApi: apigw.HttpApi;
 
   constructor(scope: Construct, id: string, config: StageConfig, props: ApiStackProps) {
@@ -51,11 +55,18 @@ export class ApiStack extends Stack {
       USER_POOL_ID: props.userPoolId,
       USER_POOL_CLIENT_ID: props.userPoolClientId,
       GAMES_ENABLED: String(config.gamesEnabled),
+      PRESENCE_ENABLED: String(config.presenceEnabled),
       CONTENT_URL: `https://${h.content}`,
       NODE_OPTIONS: '--enable-source-maps',
     };
-    const fn = (name: string, entry: string, extra: Record<string, string> = {}) => {
+    const fn = (
+      name: string,
+      entry: string,
+      extra: Record<string, string> = {},
+      functionName?: string,
+    ) => {
       const f = new nodejs.NodejsFunction(this, `${name}Function`, {
+        ...(functionName ? { functionName } : {}),
         entry: repoPath(entry),
         handler: 'handler',
         runtime: lambda.Runtime.NODEJS_24_X,
@@ -112,6 +123,86 @@ export class ApiStack extends Stack {
         this.formatArn({
           service: 'execute-api',
           resource: `*/${wsStage.stageName}/POST/@connections/*`,
+        }),
+      ),
+    );
+
+    // One-off timers (docs/m5b-plan.md, design decision 5): EventBridge Scheduler schedules that
+    // invoke the timers Lambda once and delete themselves. Presence checks now; deadlines later.
+    // The timers function has a fixed name so the WebSocket Lambda can target it by ARN without a
+    // dependency cycle (the timers Lambda pushes through the WebSocket API).
+    const timersName = `torn-signpost-${config.stage}-timers`;
+    const timersArn = this.formatArn({
+      service: 'lambda',
+      resource: 'function',
+      resourceName: timersName,
+      arnFormat: ArnFormat.COLON_RESOURCE_NAME,
+    });
+    const scheduleGroup = new scheduler.CfnScheduleGroup(this, 'TimersGroup', {
+      name: `torn-signpost-${config.stage}`,
+    });
+    this.timersDeadLetters = new sqs.Queue(this, 'TimersDeadLetters', {
+      retentionPeriod: Duration.days(14),
+      enforceSSL: true,
+    });
+    const schedulerRole = new iam.Role(this, 'SchedulerRole', {
+      assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com', {
+        conditions: { StringEquals: { 'aws:SourceAccount': this.account } },
+      }),
+    });
+    schedulerRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['lambda:InvokeFunction'],
+        resources: [timersArn, `${timersArn}:*`],
+      }),
+    );
+    this.timersDeadLetters.grantSendMessages(schedulerRole);
+    const timerEnv = {
+      SCHEDULER_GROUP: scheduleGroup.name ?? '',
+      SCHEDULER_ROLE_ARN: schedulerRole.roleArn,
+      TIMERS_FUNCTION_ARN: timersArn,
+      TIMERS_DLQ_ARN: this.timersDeadLetters.queueArn,
+    };
+    const canSchedule = (f: lambda.Function) => {
+      f.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: [
+            'scheduler:CreateSchedule',
+            'scheduler:UpdateSchedule',
+            'scheduler:DeleteSchedule',
+          ],
+          resources: [
+            this.formatArn({
+              service: 'scheduler',
+              resource: 'schedule',
+              resourceName: `${scheduleGroup.name}/*`,
+            }),
+          ],
+        }),
+      );
+      f.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ['iam:PassRole'],
+          resources: [schedulerRole.roleArn],
+          conditions: { StringEquals: { 'iam:PassedToService': 'scheduler.amazonaws.com' } },
+        }),
+      );
+    };
+    for (const [k, v] of Object.entries(timerEnv)) this.wsFunction.addEnvironment(k, v);
+    canSchedule(this.wsFunction);
+
+    this.timersFunction = fn(
+      'Timers',
+      'services/backend/src/lambda/timers.ts',
+      { WS_CALLBACK_URL: wsStage.callbackUrl, ...timerEnv },
+      timersName,
+    );
+    canSchedule(this.timersFunction);
+    this.timersFunction.addToRolePolicy(
+      manageConnections(
+        this.formatArn({
+          service: 'execute-api',
+          resource: `${wsApi.apiId}/${wsStage.stageName}/POST/@connections/*`,
         }),
       ),
     );

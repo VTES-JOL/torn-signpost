@@ -7,6 +7,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import type * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as subs from 'aws-cdk-lib/aws-sns-subscriptions';
+import type * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import type { Construct } from 'constructs';
 import type { StageConfig } from './config.ts';
@@ -14,6 +15,8 @@ import type { StageConfig } from './config.ts';
 export interface OpsStackProps extends StackProps {
   apiFunction: lambda.IFunction;
   wsFunction: lambda.IFunction;
+  timersFunction: lambda.IFunction;
+  timersDeadLetters: sqs.IQueue;
   httpApi: apigw.HttpApi;
 }
 
@@ -75,6 +78,23 @@ export class OpsStack extends Stack {
       alarmDescription: 'WebSocket Lambda errors',
       metric: props.wsFunction.metricErrors({ period: Duration.minutes(5) }),
       threshold: 5,
+      evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    }).addAlarmAction(action);
+    new cloudwatch.Alarm(this, 'TimersErrors', {
+      alarmDescription: 'Timers Lambda errors',
+      metric: props.timersFunction.metricErrors({ period: Duration.minutes(5) }),
+      threshold: 5,
+      evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    }).addAlarmAction(action);
+    // A timer that failed every retry: a missed presence check, later a missed deadline.
+    new cloudwatch.Alarm(this, 'TimersDeadLettered', {
+      alarmDescription: 'Timer firings dead-lettered after retries',
+      metric: props.timersDeadLetters.metricApproximateNumberOfMessagesVisible({
+        period: Duration.minutes(5),
+      }),
+      threshold: 1,
       evaluationPeriods: 1,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     }).addAlarmAction(action);

@@ -123,9 +123,17 @@ export type Command =
   | { type: 'EndCombat' }
   | { type: 'CancelAction' }
   /** Admin only, non-tournament games only (GAME-19). */
-  | { type: 'ReplacePlayer'; seat: SeatId; user: UserId };
+  | { type: 'ReplacePlayer'; seat: SeatId; user: UserId }
+  /**
+   * The server records a seated player arriving at the table or leaving it (TEMPO-06). System
+   * only: arrival is immediate, absence is debounced by the server.
+   */
+  | { type: 'SetPresence'; seat: SeatId; present: boolean };
 
 export type CommandType = Command['type'];
 
-/** Commands players, judges and admins send; only the server starts games. */
-export type ClientCommand = Exclude<Command, { type: 'StartGame' }>;
+/** Commands only the server issues. */
+export type SystemCommand = Extract<Command, { type: 'StartGame' | 'SetPresence' }>;
+
+/** Commands players, judges and admins send. */
+export type ClientCommand = Exclude<Command, SystemCommand>;

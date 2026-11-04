@@ -70,8 +70,9 @@ pnpm sandbox      # play the engine in the terminal as any seat, judge or admin
 - Backend integration tests run against DynamoDB Local in throwaway tables. Start it with
   `pnpm db:up`; without it they're skipped locally (CI always runs them).
 - Feature flags still dark on the beta are on locally (`apps/web/vite.config.ts`): currently
-  `replay`, the scenario player at http://localhost:5173/replay. It runs in the browser and needs
-  only the web server and card content.
+  `replay`, the scenario player at http://localhost:5173/replay (it runs in the browser and needs
+  only the web server and card content), and `presence`, the presence dots and live/async status
+  at the table. Locally, timers (such as the 30 s absence check) run in the API process.
 - To point the local web client at the live beta API instead:
   `TS_API_URL=https://api.tornsignpost.org pnpm dev:web`.
 - The sandbox starts a three-player table with invented test cards. Type `.help` for commands,

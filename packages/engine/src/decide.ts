@@ -104,6 +104,10 @@ function actorRef(state: GameState, cmd: Command, actor: Actor): ActorRef {
     if (actor.kind !== 'admin') reject('forbidden', 'Only admins can replace players');
     return { kind: 'admin', user: actor.user };
   }
+  if (cmd.type === 'SetPresence') {
+    if (actor.kind !== 'system') reject('forbidden', 'Only the server records presence');
+    return { kind: 'system' };
+  }
   if (cmd.type === 'JudgeReveal' && actor.kind !== 'judge') {
     reject('forbidden', 'Only judges can look at hidden cards');
   }
@@ -727,6 +731,13 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
       if (state.seats.some((s) => s.occupant === cmd.user))
         reject('invalid', 'That user is already seated');
       return [{ type: 'PlayerReplaced', seat: cmd.seat, user: cmd.user }];
+    }
+    case 'SetPresence': {
+      const s = liveSeat(cmd.seat);
+      if (!!s.present === cmd.present) {
+        reject('no-change', cmd.present ? 'Already present' : 'Already away');
+      }
+      return [{ type: cmd.present ? 'PlayerPresent' : 'PlayerAbsent', seat: s.id }];
     }
   }
 }

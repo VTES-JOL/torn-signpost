@@ -5,6 +5,7 @@
 import { expand, validateDeck } from '@torn-signpost/cards';
 import {
   type Actor,
+  type Command,
   decide,
   ENGINE_VERSION,
   evolve,
@@ -52,6 +53,8 @@ export interface GameServiceDeps {
   publisher: Publisher;
   newId: () => string;
   now?: () => Date;
+  /** Track presence (TEMPO-06); off unless set. */
+  presence?: boolean;
 }
 
 const SNAPSHOT_EVERY = 25;
@@ -187,7 +190,92 @@ export class GameService {
     const game = summary(await this.meta(id));
     await this.publishSteps(id, steps);
     await this.deps.publisher.publish(id, () => ({ type: 'lobby', game }));
+    // Players already watching the lobby are at the table from the first moment.
+    if (this.deps.presence) {
+      for (const u of await this.watchingUsers(id)) await this.setPresence(id, u, true);
+    }
     return game;
+  }
+
+  /**
+   * Presence (TEMPO-06): record that a seated user has the game open, or is away. Does nothing
+   * for anyone not in a live seat, for games not in progress, or when it is already recorded.
+   */
+  async setPresence(id: string, user: string, present: boolean): Promise<void> {
+    if (!this.deps.presence) return;
+    await this.system(id, (state) => {
+      const seat = liveSeatOf(state, user);
+      if (!seat || !!seat.present === present) return undefined;
+      return { type: 'SetPresence', seat: seat.id, present };
+    });
+  }
+
+  /** A player's last connection to the game closed a while ago: away, unless they came back. */
+  async checkAbsence(id: string, user: string): Promise<void> {
+    if ((await this.watchingUsers(id)).has(user)) return;
+    await this.setPresence(id, user, false);
+  }
+
+  /** Whether `user` holds a live seat in a game in progress, so their presence matters. */
+  async isPlaying(id: string, user: string): Promise<boolean> {
+    const meta = await this.deps.store.getMeta(id);
+    if (meta?.status !== 'active') return false;
+    return !!liveSeatOf(await this.load(id, meta.seq), user);
+  }
+
+  /** Everyone who has a seat (or, before the start, has joined): they aren't the audience. */
+  async seatedUsers(id: string): Promise<Set<string>> {
+    const meta = await this.deps.store.getMeta(id);
+    if (!meta) return new Set();
+    if (meta.status === 'open') return new Set(meta.players.map((p) => p.user));
+    const state = await this.load(id, meta.seq);
+    return new Set(state.seats.map((s) => s.occupant));
+  }
+
+  private async watchingUsers(id: string): Promise<Set<string>> {
+    const subs = await this.deps.store.subscribers(id);
+    return new Set(subs.flatMap((s) => (s.identity.kind === 'user' ? [s.identity.sub] : [])));
+  }
+
+  /**
+   * Run a system command built from the current state, through the same append and push as player
+   * commands. `build` returning nothing, or the engine refusing, means there is nothing to record.
+   */
+  private async system(
+    id: string,
+    build: (state: GameState) => Command | undefined,
+  ): Promise<void> {
+    for (let attempt = 1; ; attempt++) {
+      const meta = await this.deps.store.getMeta(id);
+      if (meta?.status !== 'active') return;
+      const state = await this.load(id, meta.seq);
+      const command = build(state);
+      if (!command) return;
+      const result = decide(state, command, {
+        actor: { kind: 'system' },
+        now: this.now().toISOString(),
+        rng: this.deps.rng,
+        catalog: (await this.deps.content()).catalog,
+      });
+      if (!result.ok) return;
+      const steps = run(state, result.events);
+      const after = steps.at(-1)?.after ?? state;
+      const appended = await this.deps.store.append({
+        id,
+        expectedSeq: state.seq,
+        events: result.events,
+        commandId: `system-${this.deps.newId()}`,
+        user: 'system',
+        ...(crossesSnapshot(state, after) ? { snapshot: after } : {}),
+      });
+      if (appended === 'ok') {
+        this.remember(after);
+        await this.publishSteps(id, steps);
+        return;
+      }
+      this.cache.delete(id);
+      if (attempt >= MAX_ATTEMPTS) throw new ApiError(409, 'busy', 'The game is busy; try again');
+    }
   }
 
   async leave(identity: Identity, id: string): Promise<GameSummary> {
@@ -297,8 +385,7 @@ export class GameService {
       if (!result.ok) throw new ApiError(422, result.rejection.code, result.rejection.message);
       const steps = run(state, result.events);
       const after = steps.at(-1)?.after ?? state;
-      const crosses =
-        Math.floor(after.seq / SNAPSHOT_EVERY) > Math.floor(state.seq / SNAPSHOT_EVERY);
+      const crosses = crossesSnapshot(state, after);
       const appended = await this.deps.store.append({
         id,
         expectedSeq: state.seq,
@@ -407,6 +494,14 @@ export class GameService {
 function requireUser(identity: Identity): User {
   if (identity.kind !== 'user') throw new ApiError(401, 'sign_in', 'Sign in first');
   return identity;
+}
+
+function crossesSnapshot(before: GameState, after: GameState): boolean {
+  return Math.floor(after.seq / SNAPSHOT_EVERY) > Math.floor(before.seq / SNAPSHOT_EVERY);
+}
+
+function liveSeatOf(state: GameState, user: string) {
+  return state.seats.find((s) => s.occupant === user && !s.ousted && !s.withdrawn);
 }
 
 function run(state: GameState, events: GameEvent[]): Step[] {

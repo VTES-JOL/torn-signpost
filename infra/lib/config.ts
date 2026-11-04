@@ -23,6 +23,11 @@ export interface StageConfig {
   flags: Record<string, boolean>;
   /** Server-side switch for the game service (M2) and its WebSocket connections. */
   gamesEnabled: boolean;
+  /**
+   * Server-side switch for presence tracking (TEMPO-06): recording players arriving and leaving,
+   * the absence checks behind it and the spectator count. The web display has its own flag.
+   */
+  presenceEnabled: boolean;
 }
 
 export const beta: StageConfig = {
@@ -37,6 +42,8 @@ export const beta: StageConfig = {
   flags: {},
   // On for the internal alpha (M4).
   gamesEnabled: true,
+  // On, so the scheduler and timers Lambda run on the beta while the UI is still dark.
+  presenceEnabled: true,
 };
 
 export const hosts = (c: StageConfig) => ({

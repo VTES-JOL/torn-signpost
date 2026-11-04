@@ -72,6 +72,11 @@ export interface Seat {
   ousted?: { atSeq: number; by?: SeatId };
   withdrawn?: boolean;
   /**
+   * Whether the seat's player has the game open (TEMPO-06). Missing means away: every seat starts
+   * away until the server sees its player at the table.
+   */
+  present?: true;
+  /**
    * Phases whose end-of-phase pass round this seat passes automatically. Missing means every
    * phase (the default). Private: other viewers' views don't carry it.
    */

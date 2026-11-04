@@ -66,6 +66,8 @@ new OpsStack(app, stackName(config, 'Ops'), config, {
   env,
   apiFunction: api.apiFunction,
   wsFunction: api.wsFunction,
+  timersFunction: api.timersFunction,
+  timersDeadLetters: api.timersDeadLetters,
   httpApi: api.httpApi,
 });
 

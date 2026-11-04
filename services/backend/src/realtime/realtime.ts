@@ -7,7 +7,11 @@ import type { Identity } from '../auth.ts';
 import type { GameStore } from '../db/store.ts';
 import { ApiError } from '../errors.ts';
 import type { GameService, Publisher } from '../games/service.ts';
+import { presenceKey, type Timers } from '../timers/timers.ts';
 import type { ConnectionGateway } from './gateway.ts';
+
+/** How long a player may be gone before they count as away (TEMPO-06): rides out a page reload. */
+export const ABSENCE_DELAY_MS = 30_000;
 
 /** Push is best effort: clients catch up over HTTP when they see a `seq` gap (§5.2). */
 export class Fanout implements Publisher {
@@ -34,19 +38,80 @@ export class Fanout implements Publisher {
   }
 }
 
+export interface RealtimeOptions {
+  /** Track presence and the audience (TEMPO-06); off unless set. */
+  presence?: boolean;
+  /** Absence checks (TEMPO-06); without them players are never marked away. */
+  timers?: Timers;
+  now?: () => Date;
+}
+
 export class Realtime {
+  private readonly fanout: Fanout;
+  private readonly now: () => Date;
+
   constructor(
     private readonly store: GameStore,
     private readonly gateway: ConnectionGateway,
     private readonly games: GameService,
-  ) {}
+    private readonly options: RealtimeOptions = {},
+  ) {
+    this.fanout = new Fanout(store, gateway);
+    this.now = options.now ?? (() => new Date());
+  }
 
   connect(connectionId: string, identity: Identity): Promise<void> {
     return this.store.putConnection(connectionId, identity);
   }
 
-  disconnect(connectionId: string): Promise<void> {
-    return this.store.deleteConnection(connectionId);
+  async disconnect(connectionId: string): Promise<void> {
+    const conn = await this.store.getConnection(connectionId);
+    await this.store.deleteConnection(connectionId);
+    if (!conn) return;
+    for (const gameId of new Set(conn.games)) await this.left(conn.identity, gameId);
+  }
+
+  /**
+   * Arrival is recorded at once; absence only after `ABSENCE_DELAY_MS`, and only if the player
+   * hasn't come back (`GameService.checkAbsence`). Presence never gets in the way of watching.
+   */
+  private async arrived(identity: Identity, gameId: string): Promise<void> {
+    if (!this.options.presence) return;
+    try {
+      if (identity.kind === 'user') await this.games.setPresence(gameId, identity.sub, true);
+      await this.publishAudience(gameId);
+    } catch (e) {
+      console.warn('presence failed', { gameId, error: String(e) });
+    }
+  }
+
+  private async left(identity: Identity, gameId: string): Promise<void> {
+    if (!this.options.presence) return;
+    try {
+      if (identity.kind === 'user' && (await this.games.isPlaying(gameId, identity.sub))) {
+        await this.options.timers?.schedule(
+          presenceKey(gameId, identity.sub),
+          new Date(this.now().getTime() + ABSENCE_DELAY_MS),
+          { kind: 'presence', gameId, user: identity.sub },
+        );
+      }
+      await this.publishAudience(gameId);
+    } catch (e) {
+      console.warn('presence failed', { gameId, error: String(e) });
+    }
+  }
+
+  /** Tell everyone watching how many spectators there are: signed-in users without a seat. */
+  private async publishAudience(gameId: string): Promise<void> {
+    const subs = await this.store.subscribers(gameId);
+    const seated = await this.games.seatedUsers(gameId);
+    const watchers = new Set(
+      subs.map(({ connectionId, identity }) =>
+        identity.kind === 'user' ? identity.sub : `guest:${connectionId}`,
+      ),
+    );
+    const spectators = [...watchers].filter((u) => !seated.has(u)).length;
+    await this.fanout.publish(gameId, () => ({ type: 'audience', gameId, spectators }));
   }
 
   async message(connectionId: string, body: string): Promise<void> {
@@ -62,9 +127,12 @@ export class Realtime {
       case 'ping':
         await reply({ type: 'pong' });
         return;
-      case 'unsubscribe':
+      case 'unsubscribe': {
         await this.store.unsubscribe(connectionId, parsed.gameId);
+        const conn = await this.store.getConnection(connectionId);
+        if (conn) await this.left(conn.identity, parsed.gameId);
         return;
+      }
       case 'subscribe': {
         const conn = await this.store.getConnection(connectionId);
         if (!conn) {
@@ -75,6 +143,7 @@ export class Realtime {
           const { seq } = await this.games.canView(conn.identity, parsed.gameId);
           await this.store.subscribe(connectionId, parsed.gameId, conn.identity);
           await reply({ type: 'subscribed', gameId: parsed.gameId, seq });
+          await this.arrived(conn.identity, parsed.gameId);
         } catch (e) {
           if (!(e instanceof ApiError)) throw e;
           await reply({ type: 'error', message: e.message });

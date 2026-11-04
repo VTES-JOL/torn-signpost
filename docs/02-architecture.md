@@ -587,8 +587,24 @@ primitives, and corrections are new commands.
   information or affects other players (GAME-11). The tab title shows ● while the table waits on
   you (UX-09). The property tests drive random games through windows, blocks and resolutions with
   a guided policy and check they reach every flow event.
-- Not yet: referendums and combat steps (M6); presence, the table timer, async deadlines, judge
-  calls and notifications (M5b); structural window elision beyond auto-pass.
+- **Presence** (TEMPO-06, behind the `presence` flag in the web client): the system command
+  `SetPresence` records `PlayerPresent` / `PlayerAbsent` and sets `Seat.present`; every seat starts
+  away, and a replacement player is away until seen. `tempo(state)` is `live` while every live seat
+  is present, else `async`. The backend marks a seated player present when they subscribe to the
+  game (and, at the start, everyone already watching the lobby). When a connection closes it
+  schedules a check 30 s later (`ABSENCE_DELAY_MS`) that marks them away only if they have no
+  subscription left, so a reload or blip changes nothing. System commands go through the same
+  append and push as player commands, by `system`, and write no log lines. Subscribers also get an
+  `audience` message with the number of signed-in spectators.
+  The backend side has its own switch, `presenceEnabled` in the stage config (`PRESENCE_ENABLED`
+  on the Lambdas, on locally); off, nothing is recorded, scheduled or sent.
+- **Timers** (`services/backend/src/timers`): `Timers.schedule(key, at, payload)` / `cancel(key)`.
+  In AWS, EventBridge Scheduler one-time schedules in the `torn-signpost-<stage>` group invoke the
+  timers Lambda and delete themselves; failures retry twice, then go to a dead-letter queue with an
+  alarm. Locally, in-process timeouts. Firings are checked against current state, so stale ones do
+  nothing. Delivery can be up to a minute late.
+- Not yet: referendums and combat steps (M6); the table timer, async deadlines, judge calls and
+  notifications (M5b); structural window elision beyond auto-pass.
 
 ## 7. macOS client (`apps/apple`)
 

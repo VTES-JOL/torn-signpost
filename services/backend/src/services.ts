@@ -9,6 +9,7 @@ import { cryptoRng } from './games/rng.ts';
 import { GameService } from './games/service.ts';
 import type { ConnectionGateway } from './realtime/gateway.ts';
 import { Fanout, Realtime } from './realtime/realtime.ts';
+import type { TimerHandler, TimerPayload, Timers } from './timers/timers.ts';
 import { ProfileService } from './users/service.ts';
 
 export interface Services {
@@ -31,6 +32,10 @@ export function createServices(opts: {
   gateway: ConnectionGateway;
   /** Override the card source (tests). */
   content?: Content;
+  /** One-off timers; given the handler their firings go to. None: presence is never marked away. */
+  timers?: (handler: () => TimerHandler) => Timers;
+  /** Track presence (TEMPO-06); off by default. */
+  presence?: boolean;
 }): Services {
   const db = documentClient(
     opts.endpoint
@@ -47,7 +52,23 @@ export function createServices(opts: {
     rng: cryptoRng,
     publisher: new Fanout(store, opts.gateway),
     newId,
+    presence: !!opts.presence,
   });
   const profiles = new ProfileService({ store: new ProfileStore(db, opts.tableName) });
-  return { store, games, decks, profiles, realtime: new Realtime(store, opts.gateway, games) };
+  const timers = opts.timers?.(() => (payload) => fireTimer(services, payload));
+  const realtime = new Realtime(store, opts.gateway, games, {
+    presence: !!opts.presence,
+    ...(timers ? { timers } : {}),
+  });
+  const services: Services = { store, games, decks, profiles, realtime };
+  return services;
+}
+
+/** A timer fired (locally, or through the timers Lambda): do what it was set for. */
+export async function fireTimer(services: Services, payload: TimerPayload): Promise<void> {
+  switch (payload.kind) {
+    case 'presence':
+      await services.games.checkAbsence(payload.gameId, payload.user);
+      return;
+  }
 }

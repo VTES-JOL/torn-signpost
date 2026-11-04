@@ -40,7 +40,11 @@ Every increment ships dark behind a feature flag (`presence`, `clock`, `judgeCal
 
 ## Increments
 
-### M5b.1 Presence (TEMPO-06)
+### M5b.1 Presence (TEMPO-06): done
+
+Built as planned, with a `SetPresence` system command, the `Timers` abstraction and its infra
+(scheduler group, timers Lambda, dead-letter queue and alarms) brought forward from M5b.3, and an
+`audience` WebSocket message for the spectator count.
 
 - **Engine**: system events `PlayerPresent{seat}` / `PlayerAbsent{seat}`; `Seat.present`. Seated
   players only: spectators and judges are shown but don't affect the game's tempo. `tempo(state)`

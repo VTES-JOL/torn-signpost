@@ -12,6 +12,7 @@ import {
   parseZoneId,
   predator,
   prey,
+  tempo,
   type ZoneId,
   type ZoneName,
   zoneId,
@@ -27,7 +28,7 @@ import {
   useState,
 } from 'react';
 import { ApiError } from '../api.ts';
-import { useCards } from '../content.tsx';
+import { useCards, useConfig } from '../content.tsx';
 import { cardActions, type MenuItem } from './actions.ts';
 import type { GameSnapshot, TableClient } from './client.ts';
 import { DragProvider, type DragSource, type DropTarget, useDrag } from './drag.tsx';
@@ -273,6 +274,7 @@ function SeatArea({
 }) {
   const { snapshot, client, send, judge, showZone } = useTable();
   const { begin } = useDrag();
+  const presence = !!useConfig().flags.presence;
   const view = snapshot.view;
   const s = view.seats.find((x) => x.id === seat);
   if (!s) return null;
@@ -286,6 +288,7 @@ function SeatArea({
       style={place}
     >
       <header className="seat-header">
+        {presence && !s.ousted && <PresenceDot present={!!s.present} />}
         <strong>{client.seatName(seat)}</strong>
         {label && <span className="muted small">{label}</span>}
         {turn && <span className="badge">{view.turn?.phase}</span>}
@@ -673,6 +676,7 @@ function ZoneDialog({ zone, onClose }: { zone: ZoneId; onClose: () => void }) {
 function TurnBar({ zoom, setZoom }: { zoom: number; setZoom: (z: number) => void }) {
   const { snapshot, seat, judge, send } = useTable();
   const view = snapshot.view;
+  const presence = !!useConfig().flags.presence;
   return (
     <div className="turn-bar toolbar">
       {judge && !seat && (
@@ -710,6 +714,7 @@ function TurnBar({ zoom, setZoom }: { zoom: number; setZoom: (z: number) => void
           </button>
         </>
       )}
+      {presence && <PresenceStatus />}
       <span className="zoom-controls">
         <button
           type="button"
@@ -800,6 +805,44 @@ function ZoomViewport({
 }
 
 /** Ousted or withdrawn: no longer at the table. */
+/** At the table or away (TEMPO-06). Colour is never the only signal: the label says it too. */
+function PresenceDot({ present }: { present: boolean }) {
+  const label = present ? 'At the table' : 'Away';
+  return (
+    <span
+      className={`presence-dot ${present ? 'on' : 'off'}`}
+      role="img"
+      aria-label={label}
+      title={label}
+    />
+  );
+}
+
+/** Live or async, who is away, and how many are watching. */
+function PresenceStatus() {
+  const { snapshot, client } = useTable();
+  const view = snapshot.view;
+  if (view.status !== 'active') return null;
+  const away = view.seats.filter((s) => !isOut(view, s.id) && !s.present);
+  const names = away.map((s) => client.seatName(s.id));
+  const n = snapshot.spectators ?? 0;
+  return (
+    <span className="presence-status small" role="status">
+      <span className={`badge ${tempo(view) === 'live' ? 'ok' : ''}`}>
+        {tempo(view) === 'live' ? 'Live' : 'Async'}
+      </span>
+      {names.length > 0 && (
+        <span className="muted">
+          {names.length === 1
+            ? `${names[0]} is away`
+            : `${names.slice(0, -1).join(', ')} and ${names.at(-1)} are away`}
+        </span>
+      )}
+      {n > 0 && <span className="muted">{n === 1 ? '1 watching' : `${n} watching`}</span>}
+    </span>
+  );
+}
+
 function isOut(view: GameState, seat: string): boolean {
   const s = view.seats.find((x) => x.id === seat);
   return !!(s?.ousted || s?.withdrawn);

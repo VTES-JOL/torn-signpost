@@ -659,6 +659,28 @@ dialog::backdrop {
   margin-bottom: 0.25rem;
 }
 
+.presence-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  flex: none;
+}
+
+.presence-dot.on {
+  background: #3c8d5a;
+}
+
+/* Away: a hollow ring, so the state doesn't rest on colour alone. */
+.presence-dot.off {
+  border: 2px solid var(--muted);
+}
+
+.presence-status {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
 .seat-header button {
   min-height: 1.4rem;
   width: 1.4rem;

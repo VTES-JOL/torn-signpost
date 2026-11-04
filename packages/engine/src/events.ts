@@ -96,6 +96,9 @@ export type EventBody =
   | { type: 'TurnDirectionSet'; direction: TurnDirection }
   | { type: 'PhaseAdvanced'; turn: Turn }
   | { type: 'PlayerReplaced'; seat: SeatId; user: UserId }
+  /** The seat's player opened the game, or has been gone long enough to count as away. */
+  | { type: 'PlayerPresent'; seat: SeatId }
+  | { type: 'PlayerAbsent'; seat: SeatId }
   /** `phases` is private to the seat. */
   | { type: 'AutoPassSet'; seat: SeatId; phases?: Phase[] }
   /** `stops` is private to the seat. */

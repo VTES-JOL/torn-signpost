@@ -4,7 +4,7 @@
  */
 import {
   ACTION_KINDS,
-  type Command,
+  type ClientCommand,
   type GameEvent,
   type GameState,
   PHASES,
@@ -21,7 +21,7 @@ const Delta = z.number().int().min(-1000).max(1000);
 const OverrideClaim = z.strictObject({ source: opt(Id) });
 const BloodHolder = z.union([z.strictObject({ pool: Id }), z.strictObject({ card: Id })]);
 
-/** Every command a client may send. `StartGame` is issued by the server, never by clients. */
+/** Every command a client may send. System commands are issued by the server, never by clients. */
 export const PlayerCommand = z.discriminatedUnion('type', [
   z.strictObject({
     type: z.literal('MoveCard'),
@@ -103,7 +103,7 @@ export const PlayerCommand = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('CancelAction') }),
   z.strictObject({ type: z.literal('ReplacePlayer'), seat: Id, user: Id }),
 ]);
-export type PlayerCommand = Exclude<Command, { type: 'StartGame' }>;
+export type PlayerCommand = ClientCommand;
 
 // Compile-time check that the schema and the engine agree, in both directions.
 type Parsed = z.infer<typeof PlayerCommand>;
@@ -209,5 +209,7 @@ export type ServerMessage =
   | { type: 'events'; gameId: string; events: GameEvent[] }
   | { type: 'lobby'; game: GameSummary }
   | { type: 'chat'; gameId: string; message: ChatMessage }
+  /** Who else is watching (TEMPO-06): signed-in users who aren't seated. Seated presence is in the game. */
+  | { type: 'audience'; gameId: string; spectators: number }
   | { type: 'pong' }
   | { type: 'error'; message: string };

@@ -43,6 +43,8 @@ export interface GameSnapshot {
   view: GameState;
   log: LogLine[];
   chat: ChatMessage[];
+  /** Signed-in users watching without a seat (TEMPO-06); unknown until the server says. */
+  spectators?: number;
 }
 
 /**
@@ -244,6 +246,9 @@ export class GameClient implements TableClient {
           if (wasOpen && msg.game.status === 'active') void this.catchUp();
           break;
         }
+        case 'audience':
+          this.update({ spectators: msg.spectators });
+          break;
         case 'subscribed':
           this.update({ status: 'live' });
           if (msg.seq > this.snapshot.view.seq) void this.catchUp();

@@ -1,0 +1,46 @@
+# Presence (TEMPO-06): the server records who has the game open. Every seat starts away; the game
+# is live while every Methuselah still in it is present, and async otherwise. Presence changes
+# show on the seats, not in the log, and only the server can make them.
+seed 11
+seat A alice
+seat B bob
+seat C carol
+crypt A "Vera Nightfall" *8
+library A "Iron Ward" *20
+crypt B "Tomas Grey" *8
+library B "Signal Fire" *20
+crypt C "Ilse Várga" *8
+library C "Quick Feed" *20
+start
+expect present A no
+expect tempo async
+
+present A yes
+present B yes
+expect tempo async
+present C yes
+expect present C yes
+expect tempo live
+# Nothing for the log.
+log A
+
+# Bob drops out of the game long enough to count as away, then comes back.
+present B no
+expect present B no
+expect tempo async
+present B yes
+expect tempo live
+
+# An ousted Methuselah no longer counts: once Bob is out, the others decide the tempo.
+present B no
+expect tempo async
+B> pool -30
+expect ousted B true
+expect tempo live
+
+# A replacement player is away until the server sees them.
+admin> replace C erin
+expect present C no
+expect tempo async
+present C yes
+expect tempo live
