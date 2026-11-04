@@ -401,8 +401,7 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
       const host = rootOf(touchable(cmd.to));
       if (!IN_PLAY_ZONES.has(parseZoneId(host.zone).name))
         reject('invalid', 'The host is not in play');
-      if (host.id !== c.id && hasAttachments(c))
-        reject('invalid', 'Detach the cards on it first');
+      if (host.id !== c.id && hasAttachments(c)) reject('invalid', 'Detach the cards on it first');
       for (
         let h: CardInstance | undefined = host;
         h;
@@ -661,8 +660,7 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
         reject('not-now', 'Wait for the impulse to play a card');
       }
       let to = zoneId(s, cmd.to ?? 'ashHeap');
-      const attachTo =
-        cmd.attachTo === undefined ? undefined : rootOf(touchable(cmd.attachTo)).id;
+      const attachTo = cmd.attachTo === undefined ? undefined : rootOf(touchable(cmd.attachTo)).id;
       if (attachTo !== undefined) {
         const host = card(attachTo);
         if (!IN_PLAY_ZONES.has(parseZoneId(host.zone).name))
