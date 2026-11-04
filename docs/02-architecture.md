@@ -559,7 +559,9 @@ primitives, and corrections are new commands.
   impulse and returns it to the acting Methuselah, voiding the passes.
 - **Turns** start by unlocking the new Methuselah's ready and torpor cards.
 - **Ousting** (GAME-08, GAME-21, DQ9): after every command the engine ousts any live seat at 0
-  pool. Cards in its ready, torpor and research zones go to their owners' ash heaps; its predator
+  pool. Every card it controls in play is removed from the game (to the owner's removed pile),
+  wherever it is; cards on a removed card are burned to their owners' ash heaps; cards it owns that
+  others control stay in play (rulebook "Card ownership"; zero-vtes rules-qa 7.5). Its predator
   (read from the seating before the oust) gains 1 VP and 6 pool, with no pool if it was ousted by
   the same effect; its Edge is burned. It leaves any open window, keeping the impulse and the
   passes so far. An action it acts in, is the target of or blocks in ends (`ActionEnded{ousted}`),
@@ -567,6 +569,10 @@ primitives, and corrections are new commands.
   except that cards it owns can still go to its ash heap. The table hides ousted seats, and an
   ousted player watches like a spectator. The last survivor's VP and the end of the game come with
   M6.
+- **Control**: a card is controlled by the seat whose zone it's in, except a master card put on
+  another Methuselah's minion, which stays under the control of whoever played it
+  (`CardMoved.controller`). Equipment and other minion cards follow their host's controller. A
+  burned or removed card loses its counters.
 - **Opening draw**: `GameStarted` deals each seat 4 crypt cards to the uncontrolled region and 7
   library cards to the hand (`OPENING_DRAW`), so the deal isn't logged as draws.
 - **Replay foundation** (web, behind the `replay` flag): a `Timeline` is an event log split into

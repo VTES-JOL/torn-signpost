@@ -73,10 +73,14 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
       const { seat: toSeat, name: toName } = parseZoneId(ev.to);
       removeFromZone(d, card.zone, card.id);
       let moved: CardInstance = withCardId(
-        { ...card, zone: ev.to, controller: toSeat, faceDown: ev.faceDown },
+        { ...card, zone: ev.to, controller: ev.controller ?? toSeat, faceDown: ev.faceDown },
         ev.cardId,
       );
       delete moved.attachedTo;
+      // A burned or removed card loses its counters, and is no longer locked or contested.
+      if (toName === 'ashHeap' || toName === 'removed') {
+        moved = { ...moved, counters: {}, locked: false, contested: false };
+      }
       if (HIDDEN_ZONES.has(toName)) {
         moved = withCardId(blankCard(card.id, card.owner, ev.to), moved.cardId);
       }
@@ -95,7 +99,8 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
         if (carry) {
           removeFromZone(d, child.zone, child.id);
           next.zone = ev.to;
-          next.controller = toSeat;
+          // Minion cards follow their host's controller; a master card stays with its player.
+          if (child.controller === card.controller) next.controller = moved.controller;
           next.attachedTo = moved.id;
           zoneOf(d, ev.to).push(child.id);
         } else {

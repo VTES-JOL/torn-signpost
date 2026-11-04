@@ -291,6 +291,13 @@ function check(state: GameState, args: string[], catalog: CardCatalog): string |
         attached: name(card.attachedTo),
       };
       if (!(prop in props)) return `Unknown card property "${prop}"`;
+      // The host can be given as a card reference (A:ready:1, #id) as well as by name.
+      if (prop === 'attached' && /^#|:\d+$/.test(expected)) {
+        const host = resolveCard(expected, ctx);
+        return card.attachedTo === host.id
+          ? undefined
+          : `Expected ${ref} to be attached to ${expected}, got ${name(card.attachedTo)}`;
+      }
       return same(`${ref} ${prop}`, props[prop], expected);
     }
     default:

@@ -1,5 +1,5 @@
 # Ousting (GAME-08, GAME-21): at 0 pool a Methuselah is out. Their predator gains 1 VP and
-# 6 pool, the cards they control go to their owners' ash heaps, and predator and prey close up.
+# 6 pool, the cards they control are removed from the game, and predator and prey close up.
 seed 5
 seat A alice
 seat B bob
@@ -8,9 +8,9 @@ seat D dave
 crypt A "Vera Nightfall" *8
 library A "Iron Ward" *20
 crypt B "Tomas Grey" *8
-library B "Quick Feed" *20
+library B "Signal Fire" *20
 crypt C "Ilse Várga" *8
-library C "Night Errand" *20
+library C "Signal Fire" *20
 crypt D "Tomas Grey" *8
 library D "Quick Feed" *20
 start
@@ -23,6 +23,12 @@ B> move B:uncontrolled:1 ready
 A> move A:hand:1 B:ready
 expect card B:ready:2 owner A
 B> edge B
+# Carol puts a master card on Bob's vampire, and Bob one on Alice's: each stays under the control
+# of whoever played it.
+C> play C:hand:1 on B:ready:1
+expect card B:ready:3 controller C
+B> play B:hand:1 on A:ready:1
+expect card A:ready:2 controller B
 # Bob is down to his last pool.
 B> pool -25
 expect pool B 1
@@ -37,11 +43,17 @@ expect ousted B true
 log public B was ousted; A gains 1 VP and 6 pool
 expect vp A 1
 expect pool A 32
-# Bob's Edge is burned, and the cards he controlled went to their owners' ash heaps.
+# Bob's Edge is burned, and the cards he controlled are removed from the game, whoever owns them.
 expect edge none
 expect count B:ready 0
-expect count B:ashHeap 1
-expect count A:ashHeap 1
+expect count A:ready 1
+# Removed: his vampire, Alice's card he controlled, and his master card on Alice's vampire.
+expect count B:removed 2
+expect count A:removed 1
+log public Iron Ward is removed from the game: B was ousted
+# Burned: Carol's master card was on his removed vampire.
+expect count C:ashHeap 1
+log public Signal Fire is burned: B was ousted
 # Bob can no longer act, and nobody can act on him.
 reject:not-seated B> draw
 reject:invalid A> pool +1 B
@@ -91,3 +103,4 @@ expect turn 3 D minion
 expect vp D 1
 expect pool D 32
 expect count A:ready 0
+expect count A:removed 2

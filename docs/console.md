@@ -106,6 +106,6 @@ expect window phase master     # open window kind and phase, or none
 expect autopass B none         # phases a seat auto-passes, comma-separated, or none
 expect holds C                 # seats holding the open window, comma-separated, or none
 expect card A:ready:1 blood 7  # zone, controller, owner, locked, faceDown, contested,
-                               # blood, life, generic, attached
+                               # blood, life, generic, attached (a host name or card ref)
 log B A drew 7 cards from their library   # a log line, as the given viewer reads it
 ```

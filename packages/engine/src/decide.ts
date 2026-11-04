@@ -189,8 +189,36 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
     if (mySeat !== undefined && mySeat !== a.seat) reject('forbidden', 'It is not your action');
     return a;
   };
+  /**
+   * A master card put on another Methuselah's minion stays under the control of whoever put it
+   * there; any other card is controlled by the seat whose zone it is in (VTES rulebook, control).
+   */
+  const controllerOn = (c: CardInstance, by: SeatId, zone: ZoneId): SeatId | undefined => {
+    const master = !!c.cardId && (ctx.catalog.get(c.cardId)?.types ?? []).includes('Master');
+    return master && parseZoneId(zone).seat !== by ? by : undefined;
+  };
+  /**
+   * Cards attach to the card at the bottom of a stack, never to another attached card: naming an
+   * attached card means its host.
+   */
+  const rootOf = (c: CardInstance): CardInstance => {
+    let h = c;
+    for (let n = 0; h.attachedTo !== undefined && n < 100; n++) {
+      const next = state.cards[h.attachedTo];
+      if (!next) break;
+      h = next;
+    }
+    return h;
+  };
+  const hasAttachments = (c: CardInstance) =>
+    Object.values(state.cards).some((x) => x.attachedTo === c.id);
   /** A card leaving the hand face up, replaced from the library. */
-  const played = (c: CardInstance, to: ZoneId, replace: boolean): EventBody[] => {
+  const played = (
+    c: CardInstance,
+    to: ZoneId,
+    replace: boolean,
+    controller?: SeatId,
+  ): EventBody[] => {
     const owner = parseZoneId(c.zone).seat;
     const bodies: EventBody[] = [
       withOptional(
@@ -203,7 +231,7 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
           faceDown: false,
           played: true,
         } as const,
-        { cardId: c.cardId },
+        { cardId: c.cardId, controller },
       ),
     ];
     const top = zoneCards(state, zoneId(owner, 'library'))[0];
@@ -370,9 +398,11 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
         if (c.attachedTo === undefined) reject('no-change', 'The card is not attached');
         return [{ type: 'CardAttached', card: c.id }];
       }
-      const host = touchable(cmd.to);
+      const host = rootOf(touchable(cmd.to));
       if (!IN_PLAY_ZONES.has(parseZoneId(host.zone).name))
         reject('invalid', 'The host is not in play');
+      if (host.id !== c.id && hasAttachments(c))
+        reject('invalid', 'Detach the cards on it first');
       for (
         let h: CardInstance | undefined = host;
         h;
@@ -393,7 +423,7 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
               position: 'bottom',
               faceDown: false,
             },
-            { cardId: c.cardId },
+            { cardId: c.cardId, controller: controllerOn(c, c.controller, host.zone) },
           ),
         );
       }
@@ -631,15 +661,18 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
         reject('not-now', 'Wait for the impulse to play a card');
       }
       let to = zoneId(s, cmd.to ?? 'ashHeap');
-      if (cmd.attachTo !== undefined) {
-        const host = touchable(cmd.attachTo);
+      const attachTo =
+        cmd.attachTo === undefined ? undefined : rootOf(touchable(cmd.attachTo)).id;
+      if (attachTo !== undefined) {
+        const host = card(attachTo);
         if (!IN_PLAY_ZONES.has(parseZoneId(host.zone).name))
           reject('invalid', 'The host is not in play');
         to = host.zone;
       }
-      const bodies: EventBody[] = [played(c, to, cmd.replace ?? true)].flat();
-      if (cmd.attachTo !== undefined)
-        bodies.splice(1, 0, { type: 'CardAttached', card: c.id, to: cmd.attachTo });
+      const controller = attachTo === undefined ? undefined : controllerOn(c, s, to);
+      const bodies: EventBody[] = played(c, to, cmd.replace ?? true, controller);
+      if (attachTo !== undefined)
+        bodies.splice(1, 0, { type: 'CardAttached', card: c.id, to: attachTo });
       if (state.window) bodies.push({ type: 'ImpulseReset' });
       return settle(state, bodies);
     }
@@ -737,7 +770,8 @@ export const OUST_REWARD = { vp: 1, pool: 6 } as const;
 /**
  * Oust every live seat the command left at 0 pool or less (GAME-08, GAME-21, DQ9). The command's
  * own effect has resolved by now. For each ousted seat:
- * - the cards it controls in play go to their owners' ash heaps;
+ * - the cards it controls in play are removed from the game, and the cards on those are burned;
+ *   cards it owns that others control stay in play (`oustedCards`);
  * - its predator (read from the seating before the oust) gains 1 VP and 6 pool, but no pool if the
  *   predator is ousted by the same effect;
  * - it leaves any open window, and an action it is acting in, targeted by or fighting in ends;
@@ -751,27 +785,7 @@ function withOusts(state: GameState, bodies: EventBody[], now: string, by: Actor
   if (out.length === 0) return bodies;
   const ousting = new Set(out);
   const next: EventBody[] = [];
-  for (const id of out) {
-    for (const z of ['ready', 'torpor', 'research'] as const) {
-      for (const cardId of zoneCards(after, zoneId(id, z))) {
-        const c = after.cards[cardId];
-        if (!c) continue;
-        next.push(
-          withOptional(
-            {
-              type: 'CardMoved',
-              card: c.id,
-              from: c.zone,
-              to: zoneId(c.owner, 'ashHeap'),
-              position: 'bottom',
-              faceDown: false,
-            } as const,
-            { cardId: c.cardId },
-          ),
-        );
-      }
-    }
-  }
+  next.push(...oustedCards(after, ousting));
   const a = after.action;
   const blockerSeat = a?.blocker ? after.cards[a.blocker]?.controller : undefined;
   const inAction = [a?.seat, a?.target, blockerSeat];
@@ -804,6 +818,53 @@ function withOusts(state: GameState, bodies: EventBody[], now: string, by: Actor
     next.push(...endTurn, ...nextTurn(applyBodies(s, endTurn, now, by)));
   }
   return [...bodies, ...settleWindow(after, next, now, by)];
+}
+
+/**
+ * What happens to the cards in play when Methuselahs are ousted (VTES rulebook, "Ending the game"
+ * and "Card ownership"; zero-vtes rules-qa 7.5):
+ * - every card an ousted Methuselah controls is removed from the game, wherever it is: their
+ *   minions and locations, and master cards they put on other players' minions;
+ * - cards on a removed card are burned, to their owners' ash heaps;
+ * - cards they own that other Methuselahs control stay in play.
+ */
+function oustedCards(state: GameState, ousting: ReadonlySet<SeatId>): EventBody[] {
+  const inPlay = Object.values(state.cards).filter((c) =>
+    IN_PLAY_ZONES.has(parseZoneId(c.zone).name),
+  );
+  const removed = new Set(inPlay.filter((c) => ousting.has(c.controller)).map((c) => c.id));
+  // Anything on a removed card goes with it: burned, even if it would be removed itself.
+  const onRemoved = (c: CardInstance): boolean => {
+    for (let h = c.attachedTo; h !== undefined; h = state.cards[h]?.attachedTo) {
+      if (removed.has(h)) return true;
+    }
+    return false;
+  };
+  const move = (c: CardInstance, to: ZoneId, seat: SeatId): EventBody =>
+    withOptional(
+      {
+        type: 'CardMoved',
+        card: c.id,
+        from: c.zone,
+        to,
+        position: 'bottom',
+        faceDown: false,
+        ousted: seat,
+      } as const,
+      { cardId: c.cardId },
+    );
+  const burned = inPlay.filter(onRemoved);
+  const gone = inPlay.filter((c) => removed.has(c.id) && !onRemoved(c));
+  // Whose oust it was: the removed card's controller, or the controller of what it was on.
+  const cause = (c: CardInstance): SeatId => {
+    let h: CardInstance | undefined = c;
+    while (h && !removed.has(h.id)) h = h.attachedTo ? state.cards[h.attachedTo] : undefined;
+    return (h ?? c).controller;
+  };
+  return [
+    ...burned.map((c) => move(c, zoneId(c.owner, 'ashHeap'), cause(c))),
+    ...gone.map((c) => move(c, zoneId(c.owner, 'removed'), c.controller)),
+  ];
 }
 
 /** The events that end a fully passed window. */

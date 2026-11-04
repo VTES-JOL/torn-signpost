@@ -48,3 +48,12 @@ expect card A:torpor:1 attached none
 B> pool -2 A
 expect pool A 21
 reject:not-enough B> pool -30 A
+
+# Attaching onto an attached card attaches to its host instead (a stack has one host).
+A> move A:uncontrolled:1 ready
+A> attach A:hand:1 A:ready:1
+A> attach A:hand:1 A:ready:2
+expect card A:ready:3 attached A:ready:1
+# A card with cards on it can't itself be attached elsewhere.
+A> move A:uncontrolled:1 ready
+reject:invalid A> attach A:ready:1 A:ready:4

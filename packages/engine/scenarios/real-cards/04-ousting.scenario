@@ -1,4 +1,4 @@
-# Ousting: Bob runs out of pool, leaves the table, and his predator Alice is rewarded.
+# Ousting: what Bob controls leaves the game with him; what he owns but others control stays.
 # Cards are given by VEKN ID; names and images come from the content pack (LEGAL-08).
 seed 3
 seat A alice
@@ -6,39 +6,81 @@ seat B bob
 seat C carol
 seat D dave
 crypt A 200107 *3 200848 *3 200734 *3 200106 *3
-library A 101055 *10 100845 *8 100401 *8 100199 *6 100598 *4 100518 *4
+library A 101055 *10 100845 *8 100401 *8 100984 *6 100598 *4 100518 *4
 crypt B 200534 *4 200842 *4 200117 *4
-library B 100573 *10 100518 *10 100401 *10 100199 *10
+library B 100908 *8 100698 *8 100001 *8 100518 *8 100401 *8
 crypt C 200378 *6 200107 *6
 library C 100001 *10 101321 *10 100845 *10 100984 *10
 crypt D 200106 *6 200848 *6
 library D 100598 *10 102137 *10 101743 *10 100059 *10
 start
 
-# Fast-forward: vampires in play, and Bob is down to his last pool (sped up for the demo).
+# Fast-forward: vampires in play (sped up for the demo).
 A> transfer +7 A:uncontrolled:3
 A> move A:uncontrolled:3 ready
 B> transfer +8 B:uncontrolled:2
 B> move B:uncontrolled:2 ready
+B> transfer +6 B:uncontrolled:1
+B> move B:uncontrolled:1 ready
 C> transfer +5 C:uncontrolled:1
 C> move C:uncontrolled:1 ready
 D> transfer +10 D:uncontrolled:1
 D> move D:uncontrolled:1 ready
-B> pool -21
+
+# Bob's cards, played over earlier turns (sped up for the demo).
+# A location of his own, in his ready region.
+B> play B:hand:1 ready
+# A master card on Alice's vampire: it stays under Bob's control, though it sits with Alice.
+B> play B:hand:3 on A:ready:1
+# Equipment on each of his two vampires.
+B> play B:hand:3 on B:ready:1
+B> play B:hand:3 on B:ready:2
+# Carol's equipment ends up on one of Bob's vampires, so Bob controls it.
+C> play C:hand:7 on B:ready:1
+# Alice's own location.
+A> play A:hand:4 ready
+expect card A:ready:2 controller B
+
+# Control changes hands (as card effects would do it):
+# Alice takes Bob's location...
+A> move B:ready:3 A:ready
+expect card A:ready:4 owner B
+# ...and the equipment on Bob's first vampire, for her own vampire.
+A> attach B:ready:3 A:ready:1
+# Carol takes control of Bob's second vampire, with its equipment.
+C> move B:ready:2 C:ready
+# Bob takes Alice's location.
+B> move A:ready:3 B:ready
+expect card B:ready:3 owner A
+
+# Bob is down to his last pool, and Alice bleeds him for it.
+B> pool -15
 expect pool B 1
 A> next
 A> next
-
-# Alice bleeds Bob for his last pool.
 A> bleed A:ready:1
 B> pass
 A> resolve success 1
-# Bob is ousted: his vampire goes to his ash heap, and Alice gains 1 VP and 6 pool.
 expect ousted B true
 expect vp A 1
-expect pool A 29
+
+# Stays in play: cards Bob owns that others control.
+# Alice keeps his location and the equipment she took.
+expect count A:ready 3
+expect card A:ready:2 owner B
+expect card A:ready:3 owner B
+expect card A:ready:3 attached A:ready:1
+# Carol keeps his vampire, with its equipment.
+expect count C:ready 3
+expect card C:ready:2 owner B
+expect card C:ready:3 attached C:ready:2
+expect card C:ready:3 controller C
+
+# Removed from the game: everything Bob controlled. His vampire, the master card he put on
+# Alice's vampire, and Alice's location that he had taken (to her removed-from-game pile).
 expect count B:ready 0
-# Carol is Alice's prey now.
-A> unlock A:ready:1
-A> bleed A:ready:1
-expect impulse C
+expect count B:removed 2
+expect count A:removed 1
+expect card B:removed:1 blood 0
+# Burned: Carol's equipment was on Bob's removed vampire, so it goes to her ash heap.
+expect count C:ashHeap 1

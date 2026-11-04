@@ -67,6 +67,11 @@ export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOp
       return `Game started with ${ev.seats.map((s) => seatName(s.id)).join(', ')}`;
     case 'CardMoved': {
       const name = ev.faceDown ? 'a face-down card' : cardName(ev.card, ev.cardId);
+      if (ev.ousted !== undefined) {
+        const fate =
+          parseZoneId(ev.to).name === 'removed' ? 'is removed from the game' : 'is burned';
+        return `${capitalize(name)} ${fate}: ${seatName(ev.ousted)} was ousted`;
+      }
       if (ev.played) {
         const into = parseZoneId(ev.to).name === 'ashHeap' ? '' : ` into ${zone(ev.to)}`;
         // Whoever's hand it left: an action card is finished off by whoever ends the action.
@@ -203,4 +208,8 @@ function actorName(by: ActorRef, seatName: (s: SeatId) => string): string {
     case 'system':
       return 'The system';
   }
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

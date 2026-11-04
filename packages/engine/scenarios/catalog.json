@@ -7,7 +7,7 @@
     { "id": "t-feed", "name": "Quick Feed", "kind": "library" },
     { "id": "t-errand", "name": "Night Errand", "kind": "library" },
     { "id": "t-ward", "name": "Iron Ward", "kind": "library" },
-    { "id": "t-signal", "name": "Signal Fire", "kind": "library" },
+    { "id": "t-signal", "name": "Signal Fire", "kind": "library", "types": ["Master"] },
     {
       "id": "t-gaze",
       "name": "Wide Gaze",

@@ -718,17 +718,18 @@ dialog::backdrop {
 .card-stack {
   display: flex;
   flex-direction: column;
-}
-
-.card-stack .attached {
-  margin-top: calc(var(--card-w) * -1.1);
-  margin-left: 0.6rem;
-  z-index: -1;
+  /* Its own stacking context, so attached cards tucked behind the host stay above the seat. */
   position: relative;
+  isolation: isolate;
 }
 
-.card-stack .attached:first-of-type {
-  margin-top: calc(var(--card-w) * -1.15);
+/*
+ * Attached cards sit behind their host, each sticking out above the next by enough to read its
+ * name (cards are about 1.4 widths tall; the name bar is the top ~0.25 of a width).
+ */
+.card-stack .attached + .attached,
+.card-stack .attached + .host {
+  margin-top: calc(var(--card-w) * -1.12);
 }
 
 .card,

@@ -59,6 +59,13 @@ export type EventBody =
       cardId?: CardId;
       /** Played from the hand (PlayCard), rather than moved. */
       played?: true;
+      /**
+       * Who controls the card when it isn't the seat whose zone it's in: a master card played on
+       * another Methuselah's minion stays under the control of whoever played it.
+       */
+      controller?: SeatId;
+      /** Moved because this seat was ousted: removed from the game, or burned (GAME-08). */
+      ousted?: SeatId;
     }
   | { type: 'CardsDrawn'; seat: SeatId; from: 'library' | 'crypt'; cards: Rekey[] }
   | {

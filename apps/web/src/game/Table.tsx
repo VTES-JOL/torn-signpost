@@ -373,15 +373,29 @@ function Zone({ seat, name, label }: { seat: string; name: ZoneName; label: stri
 
 function CardStack({ id }: { id: string }) {
   const { snapshot } = useTable();
-  const children = Object.values(snapshot.view.cards).filter((c) => c.attachedTo === id);
+  // Everything in the stack, including cards attached to attached cards (older games could
+  // nest them; the engine now attaches to the host), so nothing goes missing.
+  const cards = Object.values(snapshot.view.cards);
+  const children: CardInstance[] = [];
+  const collect = (host: string) => {
+    for (const c of cards) {
+      if (c.attachedTo !== host || children.includes(c)) continue;
+      children.push(c);
+      collect(c.id);
+    }
+  };
+  collect(id);
   return (
+    // Attached cards come first, so the host is drawn over them and their names show above it.
     <div className="card-stack">
-      <CardView id={id} />
       {children.map((c) => (
         <div key={c.id} className="attached">
           <CardView id={c.id} />
         </div>
       ))}
+      <div className="host">
+        <CardView id={id} />
+      </div>
     </div>
   );
 }
