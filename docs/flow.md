@@ -31,6 +31,23 @@ Two pieces of state drive the flow:
   the impulse), the number of consecutive `passes`, and the seats that asked it to wait
   (`holds`).
 
+## Who the game waits on
+
+`waitingOn(state)` in `flow.ts` derives it from the state above; prompts, and later deadlines and
+notifications, read only this.
+
+| Situation | Waits on | Kind |
+|---|---|---|
+| A window is open, the impulse holder is an eligible blocker who hasn't declined, no block attempt pending | The impulse holder | `block` |
+| Any other open window | The impulse holder | `impulse` |
+| An action at `resolution` | The acting Methuselah | `resolve` |
+| An action at `combat` | The acting Methuselah and the blocker's controller | `combat` |
+| Otherwise | The acting Methuselah | `phase` |
+
+It's never empty while the game is active and never names a seat that is out. `since` is the event
+that started the wait; it restarts when the seat, the kind, the phase or the turn changes, not when
+the waited-on player does something within the wait.
+
 ## Turn and phases
 
 Phases run `unlock` → `master` → `minion` → `influence` → `discard`, then the next seat's turn

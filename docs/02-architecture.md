@@ -584,8 +584,12 @@ primitives, and corrections are new commands.
   locally and branch the timeline at the current step.
 - **Toolbar**: `availableActions(view, seat, catalog)` returns offers whose steps the web toolbar
   walks, highlighting candidate cards on the table, with a confirm step for anything that reveals
-  information or affects other players (GAME-11). The tab title shows ● while the table waits on
-  you (UX-09). The property tests drive random games through windows, blocks and resolutions with
+  information or affects other players (GAME-11). `waitingOn(state)` (`flow.ts`) says who the game
+  waits on and why (`phase`, `impulse`, `block`, `resolve`, `combat`), and since when: `evolve` keeps
+  `state.waiting`, which restarts when the seat, the kind, the phase or the turn changes. The flow
+  bar turns it into a prompt, "Your decision: Block Julia Prima's bleed?" for that player and
+  "Waiting on Bob (block decision)" for everyone else, announced politely to screen readers; the
+  tab title shows ● while the table waits on you (UX-09). The property tests drive random games through windows, blocks and resolutions with
   a guided policy and check they reach every flow event.
 - **Presence** (TEMPO-06, behind the `presence` flag in the web client): the system command
   `SetPresence` records `PlayerPresent` / `PlayerAbsent` and sets `Seat.present`; every seat starts

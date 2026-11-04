@@ -2,7 +2,14 @@
  * Structured flow helpers (architecture §4.4, GAME-05/06): who holds the impulse, who passes
  * automatically, and who may block. Shared by `decide`, the toolbar offers and the clients.
  */
-import { type GameState, PHASES, type Phase, type Seat, type StopRule } from './model.ts';
+import {
+  type GameState,
+  type Instant,
+  PHASES,
+  type Phase,
+  type Seat,
+  type StopRule,
+} from './model.ts';
 import { predator, prey, type SeatId, type SeatRef } from './seating.ts';
 
 export function seatRefs(state: GameState): SeatRef[] {
@@ -18,6 +25,78 @@ export type Tempo = 'live' | 'async';
 export function tempo(state: GameState): Tempo {
   const live = state.seats.filter((s) => !s.ousted && !s.withdrawn);
   return live.length > 0 && live.every((s) => s.present) ? 'live' : 'async';
+}
+
+/**
+ * What a seat is being waited on for (UX-09):
+ * - `phase`: the acting Methuselah, to act or end the phase;
+ * - `impulse`: the impulse holder in a window, to play a card or pass;
+ * - `block`: an eligible blocker holding the impulse in a block window, to block or not;
+ * - `resolve`: the acting Methuselah, to resolve an unblocked action;
+ * - `combat`: the two Methuselahs in combat, to end it.
+ */
+export type WaitKind = 'phase' | 'impulse' | 'block' | 'resolve' | 'combat';
+
+export interface Wait {
+  seat: SeatId;
+  kind: WaitKind;
+  /** When the current wait began: the event that started it. */
+  since: { seq: number; at?: Instant };
+}
+
+/**
+ * Who the game is waiting on, derived from the flow state (docs/m5b-plan.md, decision 1). Never
+ * empty while the game is active, and never names a seat that is out of the game. Prompts,
+ * deadlines and notifications all read this one function.
+ */
+export function waitingOn(state: GameState): Wait[] {
+  const since = state.waiting
+    ? { seq: state.waiting.seq, at: state.waiting.at }
+    : { seq: state.seq };
+  return currentWaits(state).map((w) => ({ ...w, since }));
+}
+
+/** Whether the game is waiting on `seat`. */
+export function isWaitingOn(state: GameState, seat: SeatId | undefined): boolean {
+  return seat !== undefined && currentWaits(state).some((w) => w.seat === seat);
+}
+
+/**
+ * Identifies the current wait, so `evolve` can tell when a new one begins: a different seat or
+ * kind, or the same seat in a new phase or turn. Playing cards within a wait doesn't restart it.
+ */
+export function waitKey(state: GameState): string {
+  const waits = currentWaits(state);
+  if (!waits.length) return '';
+  const t = state.turn;
+  return [t ? `${t.number}.${t.phase}` : '', ...waits.map((w) => `${w.kind}:${w.seat}`)].join(' ');
+}
+
+function currentWaits(state: GameState): Omit<Wait, 'since'>[] {
+  const t = state.turn;
+  if (state.status !== 'active' || !t) return [];
+  const live = (s: SeatId | undefined): s is SeatId =>
+    s !== undefined && state.seats.some((x) => x.id === s && !x.ousted && !x.withdrawn);
+  const a = state.action;
+  if (state.window) {
+    const holder = impulseHolder(state);
+    if (!live(holder)) return [];
+    const blocking =
+      state.window.kind === 'blocks' &&
+      a !== undefined &&
+      !a.blockAttempt &&
+      a.eligible.includes(holder) &&
+      !a.declined.includes(holder);
+    return [{ seat: holder, kind: blocking ? 'block' : 'impulse' }];
+  }
+  if (a?.stage === 'resolution') return live(a.seat) ? [{ seat: a.seat, kind: 'resolve' }] : [];
+  if (a?.stage === 'combat') {
+    const blocker = a.blocker === undefined ? undefined : state.cards[a.blocker]?.controller;
+    return [a.seat, blocker]
+      .filter((s, i, all): s is SeatId => live(s) && all.indexOf(s) === i)
+      .map((seat) => ({ seat, kind: 'combat' as const }));
+  }
+  return live(t.seat) ? [{ seat: t.seat, kind: 'phase' }] : [];
 }
 
 /** The seat holding the impulse in the open window, if any. */

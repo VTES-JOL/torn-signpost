@@ -15,7 +15,7 @@ import { decide } from './decide.ts';
 import { describeEvent } from './describe.ts';
 import type { GameEvent } from './events.ts';
 import { evolve, newGame } from './evolve.ts';
-import { autoPassPhases, impulseHolder, tempo } from './flow.ts';
+import { autoPassPhases, impulseHolder, tempo, waitingOn } from './flow.ts';
 import type { Actor, CardId, Format, GameState, Viewer } from './model.ts';
 import { project, projectEvent } from './projection.ts';
 import { seededRng } from './rng.ts';
@@ -256,6 +256,14 @@ function check(state: GameState, args: string[], catalog: CardCatalog): string |
       return same(`${rest[0]} ousted`, !!seat(rest[0])?.ousted, rest[1] ?? '');
     case 'present':
       return same(`${rest[0]} present`, seat(rest[0])?.present ? 'yes' : 'no', rest[1] ?? '');
+    case 'waiting':
+      return same(
+        'waiting on',
+        waitingOn(state)
+          .map((w) => `${w.seat}:${w.kind}`)
+          .join(' ') || 'none',
+        rest.join(' '),
+      );
     case 'tempo':
       return same('tempo', tempo(state), rest[0] ?? '');
     case 'edge':

@@ -98,6 +98,7 @@ expect edge A|none
 expect ousted B true|false
 expect present B yes|no
 expect tempo live|async        # live while every Methuselah still in the game is present
+expect waiting B:block         # who the game waits on and why (seat:kind, space-separated), or none
 expect direction prey|predator
 expect turn 2 B unlock
 expect occupant B erin

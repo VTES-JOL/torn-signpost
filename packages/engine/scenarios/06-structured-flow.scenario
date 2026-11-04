@@ -24,6 +24,7 @@ expect autopass B unlock,master,minion,influence,discard
 A> next
 expect turn 1 A master
 expect window none
+expect waiting A:phase
 
 # B wants a say at every phase end now.
 B> autopass none
@@ -31,6 +32,7 @@ expect autopass B none
 A> next
 expect window phase master
 expect impulse B
+expect waiting B:impulse
 log public End of A's master phase: waiting for the other players
 reject:not-now A> next
 reject:not-now C> pass
@@ -53,6 +55,7 @@ A> bleed A:ready:1
 expect action bleed A blocks
 expect card A:ready:1 locked true
 expect impulse B
+expect waiting B:block
 log public A: Vera Nightfall bleeds B
 reject:not-now C> block C:ready:1
 reject:not-now A> next
@@ -61,6 +64,7 @@ B> pass
 log public B declined to block
 expect action bleed A resolution
 expect window none
+expect waiting A:resolve
 reject:forbidden B> resolve success
 A> resolve success 2 edge
 expect pool B 24
@@ -78,6 +82,8 @@ expect impulse B
 B> block B:ready:1
 log public B tries to block with Tomas Grey
 expect impulse A
+# With a block attempt pending, A only has the impulse.
+expect waiting A:impulse
 reject:not-now B> play B:hand:1
 A> play A:hand:1
 expect impulse A
@@ -103,6 +109,7 @@ A> pass
 B> pass
 C> pass
 expect action equip A combat
+expect waiting A:combat B:combat
 expect card B:ready:1 locked true
 log public Tomas Grey blocks: combat
 reject:forbidden C> endcombat

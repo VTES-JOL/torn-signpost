@@ -59,7 +59,10 @@ Built as planned, with a `SetPresence` system command, the `Timers` abstraction 
 - **Tests**: scenario directives `present B no` / `present B yes`; backend integration test for
   the debounce with fake timers.
 
-### M5b.2 Waiting-on and decision prompts (UX-09)
+### M5b.2 Waiting-on and decision prompts (UX-09): done
+
+Built as planned. `since` comes from `state.waiting`, which `evolve` restarts whenever the wait
+changes (a different seat or kind, or a new phase or turn), so M5b.3's deadlines can count from it.
 
 - **Engine**: `waitingOn(state): { seat; kind; since }[]`, where `kind` is `phase`, `impulse`,
   `block`, `resolve`, `combat`; `since` is the seq/time the wait began.

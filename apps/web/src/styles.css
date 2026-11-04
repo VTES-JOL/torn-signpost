@@ -1111,12 +1111,20 @@ body.dragging {
   box-shadow: 0 0 0 1px var(--accent);
 }
 
-.flow-status {
-  margin: 0 0 0.3rem;
-  font-size: 0.9rem;
+.flow-prompt {
+  margin: 0;
+  font-size: 0.95rem;
 }
 
-.flow-bar.yours .flow-status strong {
+.flow-prompt:empty {
+  display: none;
+}
+
+.flow-status {
+  margin: 0 0 0.3rem;
+}
+
+.flow-bar.yours .flow-prompt strong {
   color: var(--accent);
 }
 

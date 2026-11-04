@@ -5,7 +5,7 @@ import type { Command } from './commands.ts';
 import { decide } from './decide.ts';
 import type { GameEvent } from './events.ts';
 import { evolve, newGame } from './evolve.ts';
-import { impulseHolder } from './flow.ts';
+import { impulseHolder, waitingOn, waitKey } from './flow.ts';
 import {
   ACTION_KINDS,
   type Actor,
@@ -377,6 +377,20 @@ describe('hidden information', { timeout: 60_000 }, () => {
 });
 
 describe('engine invariants', { timeout: 60_000 }, () => {
+  it('an active game always waits on someone still in it, and knows since when (UX-09)', () => {
+    forEveryEvent((_, ev, after) => {
+      const waits = waitingOn(after);
+      if (after.status !== 'active') return;
+      expect(waits.length, `nobody to wait on after ${ev.type}`).toBeGreaterThan(0);
+      for (const w of waits) {
+        const seat = after.seats.find((s) => s.id === w.seat);
+        expect(seat && !seat.ousted && !seat.withdrawn, `${w.seat} is out`).toBe(true);
+      }
+      expect(after.waiting?.key).toBe(waitKey(after));
+      expect(after.waiting?.seq).toBeLessThanOrEqual(after.seq);
+    });
+  });
+
   it('evolve never mutates its input (states are deep-frozen) and blood is conserved by transfers', () => {
     forEveryEvent((before, ev, after) => {
       if (ev.type === 'BloodTransferred') expect(totalBlood(after)).toBe(totalBlood(before));

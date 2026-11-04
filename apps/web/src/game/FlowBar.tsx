@@ -10,12 +10,16 @@ import {
   type CardCatalog,
   type GameState,
   impulseHolder,
+  isWaitingOn,
   type Offer,
   type OfferStep,
   type Override,
   PHASES,
   type StepValue,
   stopRules,
+  type Wait,
+  type WaitKind,
+  waitingOn,
 } from '@torn-signpost/engine';
 import type { PlayerCommand } from '@torn-signpost/protocol';
 import { useEffect } from 'react';
@@ -41,16 +45,71 @@ export function currentStep(c: Choosing | undefined): OfferStep | undefined {
   return c?.offer.steps[c.values.length];
 }
 
-/** Whether the table is waiting on this player. */
-export function waitingOnMe(view: GameState, seat: string | undefined): boolean {
-  if (!seat) return false;
-  if (view.window) return impulseHolder(view) === seat;
+/** What an action is called in a prompt ("block Julia Prima's bleed?"). */
+const NOUNS: Record<ActionKind, string> = {
+  bleed: 'bleed',
+  hunt: 'hunt',
+  political: 'political action',
+  equip: 'equip action',
+  recruit: 'recruit action',
+  employ: 'employ action',
+  other: 'action',
+};
+
+/** What everyone else is told the table waits for. */
+const WAIT_LABELS: Record<Exclude<WaitKind, 'phase'>, string> = {
+  impulse: 'impulse',
+  block: 'block decision',
+  resolve: 'resolving the action',
+  combat: 'combat',
+};
+
+/**
+ * The decision prompt (UX-09): the question for the player the table waits on, and for everyone
+ * else who it waits on and why.
+ */
+export function promptFor(
+  view: GameState,
+  seat: string | undefined,
+  waits: Wait[],
+  who: (seat: string) => string,
+  name: (id: string | undefined) => string,
+): { mine: boolean; text: string } | undefined {
+  const turn = view.turn;
+  const first = waits[0];
+  if (!turn || !first) return undefined;
   const a = view.action;
-  if (a?.stage === 'resolution') return a.seat === seat;
-  if (a?.stage === 'combat') {
-    return a.seat === seat || view.cards[a.blocker ?? '']?.controller === seat;
+  const action = a ? `${name(a.minion)}'s ${NOUNS[a.kind]}` : 'the action';
+  if (seat !== undefined && waits.some((w) => w.seat === seat)) {
+    switch (first.kind) {
+      case 'phase':
+        return {
+          mine: true,
+          text:
+            turn.phase === 'discard'
+              ? 'Your discard phase: play cards, then end your turn'
+              : `Your ${turn.phase} phase: act, then end the phase`,
+        };
+      case 'impulse':
+        return {
+          mine: true,
+          text:
+            view.window?.kind === 'blocks'
+              ? `Play a card or pass (${action})`
+              : `Play a card or pass (end of ${who(turn.seat)}'s ${turn.phase} phase)`,
+        };
+      case 'block':
+        return { mine: true, text: `Block ${action}?` };
+      case 'resolve':
+        return { mine: true, text: `Resolve ${action}: did it succeed?` };
+      case 'combat':
+        return { mine: true, text: `Combat (${action}): end combat when it's over` };
+    }
   }
-  return false;
+  const names = waits.map((w) => who(w.seat));
+  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0];
+  const why = first.kind === 'phase' ? `${turn.phase} phase` : WAIT_LABELS[first.kind];
+  return { mine: false, text: `Waiting on ${list} (${why})` };
 }
 
 export function FlowBar(props: {
@@ -64,12 +123,13 @@ export function FlowBar(props: {
   send: (command: PlayerCommand) => void;
 }) {
   const { view, seat, client, catalog, offers, choosing, setChoosing, send } = props;
-  const mine = waitingOnMe(view, seat);
+  const mine = isWaitingOn(view, seat);
   const name = (id: string | undefined) => {
     const cardId = id ? view.cards[id]?.cardId : undefined;
     if (!cardId) return 'a hidden card';
     return catalog.get(cardId)?.name ?? `an unknown card (${cardId})`;
   };
+  const prompt = promptFor(view, seat, waitingOn(view), client.seatName, name);
 
   // Tell the player in the tab title when the table is waiting on them (UX-09).
   useEffect(() => {
@@ -104,10 +164,11 @@ export function FlowBar(props: {
 
   return (
     <section className={['flow-bar', mine ? 'yours' : ''].join(' ')} aria-label="Game flow">
-      <p className="flow-status" aria-live="polite">
-        {mine && <strong>Your move · </strong>}
-        {statusLine(view, client, name)}
+      {/* Announced when it changes, without taking focus: the offers below stay where they are. */}
+      <p className="flow-prompt" aria-live="polite">
+        {prompt && (prompt.mine ? <strong>Your decision: {prompt.text}</strong> : prompt.text)}
       </p>
+      <p className="flow-status muted small">{statusLine(view, client, name)}</p>
       {choosing ? (
         <div className="flow-choose toolbar">
           <strong>{choosing.offer.label}</strong>
@@ -350,10 +411,10 @@ function statusLine(
     const attempt = a.blockAttempt
       ? ` · ${name(a.blockAttempt.minion)} tries to block${overrideNote(a.blockAttempt.override, name)}`
       : '';
-    return `${what}${attempt} · waiting for ${holder ? who(holder) : 'nobody'}${holding}`;
+    return `${what}${attempt}${holding}`;
   }
   if (view.window) {
-    return `End of ${who(turn.seat)}'s ${turn.phase} phase · waiting for ${holder ? who(holder) : 'nobody'}${holding}`;
+    return `End of ${who(turn.seat)}'s ${turn.phase} phase${holding}`;
   }
   const reversed = view.turnDirection === 'toPredator' ? ' · play passes to the predator' : '';
   return `Turn ${turn.number} · ${who(turn.seat)} · ${turn.phase} phase${reversed}`;

@@ -196,6 +196,8 @@ export interface GameState {
   turn?: Turn;
   action?: ActionState;
   window?: ImpulseWindow;
+  /** The current wait (`waitingOn`): its key, and the event that started it. Kept by `evolve`. */
+  waiting?: { key: string; seq: number; at: Instant };
   settings: GameSettings;
   status: 'setup' | 'active' | 'finished';
 }

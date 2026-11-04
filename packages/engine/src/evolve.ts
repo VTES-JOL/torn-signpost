@@ -1,4 +1,5 @@
 import type { GameEvent } from './events.ts';
+import { waitKey } from './flow.ts';
 import {
   type ActionState,
   type CardId,
@@ -332,6 +333,10 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
       }));
       break;
   }
+  // Note when a new wait begins (UX-09); deadlines and prompts count from here.
+  const key = waitKey(d);
+  if (!key) delete d.waiting;
+  else if (d.waiting?.key !== key) d.waiting = { key, seq: ev.seq, at: ev.at };
   return d;
 }
 

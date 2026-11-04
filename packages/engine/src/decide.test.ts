@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Command } from './commands.ts';
 import { type DecideResult, decide } from './decide.ts';
 import { evolve, newGame } from './evolve.ts';
+import { waitingOn } from './flow.ts';
 import type { Actor, GameState } from './model.ts';
 import { seededRng } from './rng.ts';
 import { testCatalog as catalog } from './testing/fixtures.ts';
@@ -227,6 +228,25 @@ describe('SetPresence (TEMPO-06)', () => {
     expect(run(ousted, { ...cmd, present: true }, system)).toMatchObject({
       rejection: { code: 'invalid' },
     });
+  });
+});
+
+describe('waitingOn (UX-09)', () => {
+  it('waits on the acting Methuselah, counting from when the wait began', () => {
+    const state = started();
+    const turnSeat = state.turn?.seat ?? '';
+    const user = state.seats.find((s) => s.id === turnSeat)?.occupant ?? '';
+    const actor: Actor = { kind: 'player', user };
+    expect(waitingOn(state)).toEqual([
+      { seat: turnSeat, kind: 'phase', since: { seq: state.seq, at: 't' } },
+    ]);
+    // Doing things within the wait doesn't restart it…
+    const busy = apply(state, { type: 'AdjustPool', seat: turnSeat, delta: -1 }, actor);
+    expect(waitingOn(busy)[0]?.since.seq).toBe(state.seq);
+    // …a new phase does.
+    const next = apply(busy, { type: 'AdvancePhase' }, actor);
+    expect(next.turn?.phase).toBe('master');
+    expect(waitingOn(next)[0]?.since.seq).toBe(next.seq);
   });
 });
 
