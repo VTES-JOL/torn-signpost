@@ -214,7 +214,8 @@ describe.skipIf(!available)('game service (DynamoDB Local)', () => {
       expect(drawn.cards.every((c) => c.cardId === 't-vera')).toBe(true);
       const bobView = (await games.details(bob, id)).view;
       const zone = bobView?.zones[`${seatOf(alice)}:uncontrolled`] ?? [];
-      expect(zone).toHaveLength(4);
+      // The 4 dealt at the start, plus the 4 just drawn.
+      expect(zone).toHaveLength(8);
       expect(zone.every((c) => bobView?.cards[c]?.cardId === undefined)).toBe(true);
       await expect(games.command(dave, id, cmd({ type: 'AdvancePhase' }))).rejects.toMatchObject({
         code: 'not_playing',
