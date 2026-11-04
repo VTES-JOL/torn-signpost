@@ -163,9 +163,9 @@ M5b, since AWS approval takes a day or more; only the sending code waits for thi
   signed link) and never another player's email address (NFR-06).
 - **Infra** (CDK): an SES domain identity for `tornsignpost.org` with Easy DKIM, a custom MAIL FROM
   domain (`mail.tornsignpost.org`) with its SPF and MX records, and a DMARC record, all in the
-  existing Route 53 zone; a configuration set publishing bounces and complaints to an SNS topic,
-  which a small Lambda turns into a suppression list (no further sends to that address). Sender:
-  `notifications@tornsignpost.org`.
+  existing Route 53 zone; a configuration set that adds bounced and complaining addresses to the
+  SES account suppression list (no further sends to them), with reputation metrics. Sender:
+  `notifications@tornsignpost.org`. Built in `infra/lib/email-stack.ts`.
 - **Manual step (you)**: request SES production access in the AWS console (us-east-1), describing
   transactional game notifications with opt-in preferences and one-click unsubscribe. Until it is
   approved, SES only sends to verified addresses, which is fine for testing.

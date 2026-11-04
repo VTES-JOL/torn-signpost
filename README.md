@@ -82,6 +82,14 @@ pnpm sandbox      # play the engine in the terminal as any seat, judge or admin
 Deploying (maintainers): `pnpm deploy` builds everything and runs `cdk deploy --all` against the
 AWS account in your environment. CI deploys `main` automatically via GitHub OIDC.
 
+Email (maintainers): the `Email` stack sets up SES for `tornsignpost.org` (DKIM, a
+`mail.tornsignpost.org` MAIL FROM domain, DMARC) and sends as `notifications@tornsignpost.org`.
+SES starts in the sandbox, where it only sends to verified addresses. To send to players, request
+production access once: AWS console → SES (us-east-1) → Account dashboard → Request production
+access; mail type *Transactional*, website `https://tornsignpost.org`, and describe game
+notifications that players opt into, sent only while they're away, with one-click unsubscribe,
+and bounces and complaints suppressed automatically.
+
 ## Licence
 
 Code: [AGPL-3.0-only](LICENSE). World of Darkness material is excluded from the licence and from

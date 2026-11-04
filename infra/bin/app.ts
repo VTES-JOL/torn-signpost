@@ -3,6 +3,7 @@ import { App, Tags } from 'aws-cdk-lib';
 import { ApiStack } from '../lib/api-stack.ts';
 import { AuthStack } from '../lib/auth-stack.ts';
 import { beta, hosts, stackName } from '../lib/config.ts';
+import { EmailStack } from '../lib/email-stack.ts';
 import { FoundationStack } from '../lib/foundation-stack.ts';
 import { OpsStack } from '../lib/ops-stack.ts';
 import { WebDeployStack } from '../lib/web-deploy-stack.ts';
@@ -57,6 +58,9 @@ new WebDeployStack(app, stackName(config, 'WebDeploy'), {
     flags: config.flags,
   },
 });
+
+// Email notifications (NOTIF-02): SES identity and DNS. Senders get its outputs when they land.
+new EmailStack(app, stackName(config, 'Email'), config, { env });
 
 new OpsStack(app, stackName(config, 'Ops'), config, {
   env,
