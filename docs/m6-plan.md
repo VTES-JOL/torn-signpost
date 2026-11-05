@@ -87,14 +87,68 @@ once combat or card effects can cause one.
 
 ### M6.2 Withdrawal (GAME-09)
 
-- **Engine**: `Withdraw` in the Methuselah's unlock phase when their library is empty and their
-  hand is short (zero-vtes 95.3). It holds until their next unlock phase unless they lose or spend
-  pool, a vampire of theirs loses or spends blood, or a minion of theirs enters combat (95.1,
-  95.2, 95.4); a broken withdrawal can be announced again. Kept, they leave the game, scoring half
-  a VP (Q1); it isn't an oust (95.5), and the last Methuselah standing scores as after an oust.
-- **Web**: the offer in the unlock phase when allowed, and its state shown to the table.
-- **Tests**: scenarios after zero-vtes's tests (kept, broken by pool, by blood, by combat; an
-  ally's life doesn't break it; re-announced).
+A Methuselah whose library has run out can leave the game with half a victory point instead of
+playing on until ousted (rulebook "Withdrawing from the Game"; zero-vtes rules-qa 90.9 and Batch
+95; Q1: half a VP everywhere). The game state tracks it from start to finish: no judge and no
+calling it off are needed (decided 2026-11-05).
+
+**The rule, as built here:**
+1. **Announcing** (95.3): in their own unlock phase, when their library is empty and they have
+   less than a full hand. "A full hand" is their hand size, cards that raise or lower it included;
+   the engine doesn't enforce hand size yet, so for now it means fewer than 7 cards (see Later).
+   Public, and logged. One withdrawal at a time.
+2. **Holding it** (95.1, 95.2, 95.4): announcing doesn't limit what they do; they play their turn as
+   usual. But it is nullified, and logged, if before their next unlock phase
+   - they lose or spend **pool**: a bleed, a pool adjustment down, blood moved from their pool
+     (influence transfers included); a gain afterwards doesn't repair it;
+   - a **vampire** of theirs in play (ready or torpor) loses or spends **blood**, whatever took it;
+     a minion leaving play with its blood on it doesn't count (95.1), nor does an ally's life
+     (95.2);
+   - a **minion** of theirs **enters combat** (for now: blocked, or blocking; M6.4 adds the
+     other ways in).
+   Their own actions nullify it just as another player's do. Once nullified, they may announce
+   again in a later unlock phase of theirs, if the conditions hold.
+3. **Leaving** (95.4, 95.5): at the moment their next unlock phase would start, a withdrawal still
+   held takes them out of the game. That turn isn't played; the next Methuselah's begins. They gain
+   half a VP; it isn't an oust: their predator gains neither VP nor pool. Their cards leave the game
+   as an ousted Methuselah's do, and predator and prey close up. If one Methuselah is left, they
+   are the last standing and the game ends (M6.1).
+
+**Engine:**
+- `Seat.withdrawing?: { since: Seq }` (pending), alongside the existing `withdrawn?` (gone).
+- One command, `Withdraw`, refused unless the conditions hold.
+- Events: `WithdrawalAnnounced{seat}`, `WithdrawalBroken{seat, reason: 'pool'|'blood'|'combat'}`,
+  `Withdrew{seat, vp: 0.5}`.
+- A `withWithdrawals` post-step after the ousts: scans the command's events for pool decreases,
+  blood decreases on the seat's vampires in play, and the start of a combat with their minions,
+  and appends `WithdrawalBroken`.
+- `nextTurn`: before starting a seat's turn, if it holds a withdrawal, emit `Withdrew` (and its
+  cards' moves, as for an oust) and go on to the next seat; several in a row are each handled.
+- `gameEnded` and `seatRefs` already treat `withdrawn` as out; the result table says "withdrew".
+
+**Web:**
+- A "Withdraw" offer in the flow bar, shown **only** when the player may withdraw: their own unlock
+  phase, an empty library, a short hand, none pending. Otherwise there's no sign of it.
+- It asks for confirmation first, saying what it means: "You'll leave the game at the start of your
+  next turn, with ½ VP, if until then you lose or spend no pool, none of your vampires loses or
+  spends blood, and none of your minions enters combat."
+- A "withdrawing" badge on the seat for the whole table; the log lines.
+
+**Notifications:** the player is told when their withdrawal is nullified (and why), and when it
+takes them out (both in the `game` email category).
+
+**Tests:**
+- Scenarios after zero-vtes's: kept a round (half a VP, the turn skipped, predator unrewarded);
+  nullified by a bleed, by influence transfers, by blood spent, by entering combat (blocking), by
+  the player's own action; an ally losing life doesn't nullify it, nor does a vampire burned with
+  blood on it; refused with a full hand, with cards left in the library, outside their unlock
+  phase, or with one pending; announced again after being nullified; the last two players, one
+  withdrawing, ending the game.
+- Unit tests for each nullifying event and the permissions; the offer appears exactly when
+  `Withdraw` would be accepted.
+- Property tests: a withdrawn seat never gets the turn or acts; a pending withdrawal never
+  survives a pool or blood loss.
+- Browser: the offer, its confirmation, the badge, and a withdrawal taking effect.
 
 ### M6.3 Results and stats (STATS-01..03)
 
@@ -170,6 +224,9 @@ and `docs/roles.md` whenever a role gains or loses a power (every milestone, fro
 
 ## Later (noted, not in M6)
 
+- **Turn limits the engine doesn't enforce yet**: hand size (and the cards that change it), the
+  influence phase's transfer limit, and one master phase action a turn. When hand size is
+  enforced, withdrawal's "less than a full hand" (M6.2) uses it instead of 7.
 - Card-specific automation (GAME-14).
 - Replays of finished games from their event log (GAME-17).
 - Tournament results, standings and the archon export: with tournaments, M7.
