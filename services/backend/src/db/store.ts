@@ -12,6 +12,7 @@
  * | Subscription | `SUB#<gameId>` | `CONN#<connId>` (TTL 3 h) |
  * | A user's connections | `USERCONN#<sub>` | `CONN#<connId>` (TTL 3 h; for notifications) |
  * | Judge queue | `JUDGEQ` | `<openedAt>#<gameId>#<callId>` (open judge calls, oldest first) |
+ * | Admin queue | `ADMINQ` | `<at>#<gameId>#<callId>` (calls judges referred to admins, GAME-19) |
  */
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { TransactionCanceledException } from '@aws-sdk/client-dynamodb';
@@ -31,6 +32,7 @@ import type {
   ChatMessage,
   CreateGameRequest,
   DeckCards,
+  Escalation,
   JudgeQueueEntry,
   LobbyStatus,
 } from '@torn-signpost/protocol';
@@ -499,6 +501,34 @@ export class GameStore {
       tournament: !!i.tournament,
       call: i.call as JudgeCall,
     }));
+  }
+
+  // The admin queue (GAME-19): casual games a judge referred to the admins.
+
+  async putEscalation(e: Escalation): Promise<void> {
+    await this.db.send(
+      new PutCommand({
+        TableName: this.table,
+        Item: { PK: 'ADMINQ', SK: `${e.at}#${e.gameId}#${e.call.id}`, ...e },
+      }),
+    );
+  }
+
+  async escalations(): Promise<Escalation[]> {
+    const items = await this.query({
+      KeyConditionExpression: 'PK = :pk',
+      ExpressionAttributeValues: { ':pk': 'ADMINQ' },
+    });
+    return items.map(({ PK: _pk, SK: _sk, ...e }) => e as unknown as Escalation);
+  }
+
+  async deleteEscalation(e: Pick<Escalation, 'at' | 'gameId' | 'call'>): Promise<void> {
+    await this.db.send(
+      new DeleteCommand({
+        TableName: this.table,
+        Key: { PK: 'ADMINQ', SK: `${e.at}#${e.gameId}#${e.call.id}` },
+      }),
+    );
   }
 
   async subscribers(gameId: string): Promise<Subscriber[]> {

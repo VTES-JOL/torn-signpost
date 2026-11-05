@@ -21,6 +21,8 @@ export const NOTIFICATION_KINDS = [
   'ousted',
   /** A game you joined has started. */
   'started',
+  /** A judge referred a game to the admins (to admins). */
+  'escalation',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 

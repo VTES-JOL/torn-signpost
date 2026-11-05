@@ -8,6 +8,7 @@ import {
   MIN_TOURNAMENT_TIME_LIMIT_MS,
   MINUTE_MS,
   ms,
+  pauseMinutesLeft,
   timeLimit,
 } from './clock.ts';
 import type { BloodHolder, Command } from './commands.ts';
@@ -799,6 +800,17 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
       if (state.pause) reject('no-change', 'The game is already paused');
       if (!Number.isInteger(cmd.minutes) || cmd.minutes < 1 || cmd.minutes > MAX_PAUSE_MINUTES) {
         reject('invalid', `Pause for 1 to ${MAX_PAUSE_MINUTES} minutes`);
+      }
+      if (by.kind === 'seat') {
+        const left = pauseMinutesLeft(state, by.seat);
+        if (cmd.minutes > left) {
+          reject(
+            'not-now',
+            left
+              ? `You have ${left} min of pause left this game`
+              : 'Your pause time for this game is used up; call a judge if you need more',
+          );
+        }
       }
       const now = ms(ctx.now);
       if (Number.isNaN(now)) reject('invalid', 'No clock');

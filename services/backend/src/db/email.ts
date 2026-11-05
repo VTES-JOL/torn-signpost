@@ -6,6 +6,7 @@
  * | Address | `USER#<sub>` | `EMAIL` (the verified sign-in address, refreshed as they sign in) |
  * | Preferences | `USER#<sub>` | `EMAILPREFS` |
  * | Digest queue | `DIGESTQ` | `<sub>#<notificationId>` (TTL 3 days) |
+ * | Last activity | `USER#<sub>` | `ACTIVE` (when they last used the site; TTL 30 days) |
  */
 import {
   BatchWriteCommand,
@@ -63,6 +64,27 @@ export class EmailStore {
         Item: { PK: userKey(sub), SK: 'EMAILPREFS', prefs },
       }),
     );
+  }
+
+  async touch(sub: string, at: Date): Promise<void> {
+    await this.db.send(
+      new PutCommand({
+        TableName: this.table,
+        Item: {
+          PK: userKey(sub),
+          SK: 'ACTIVE',
+          at: at.toISOString(),
+          ttl: Math.floor(at.getTime() / 1000) + 30 * 24 * 60 * 60,
+        },
+      }),
+    );
+  }
+
+  async lastActive(sub: string): Promise<Date | undefined> {
+    const { Item } = await this.db.send(
+      new GetCommand({ TableName: this.table, Key: { PK: userKey(sub), SK: 'ACTIVE' } }),
+    );
+    return typeof Item?.at === 'string' ? new Date(Item.at) : undefined;
   }
 
   async queueDigest(item: DigestItem): Promise<void> {

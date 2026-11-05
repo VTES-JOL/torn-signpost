@@ -80,6 +80,8 @@ export interface Seat {
   present?: true;
   /** When the seat's player was last seen leaving (or the game started without them). */
   awaySince?: Instant;
+  /** How much of their pause allowance the seat's player has used (`MAX_PAUSE_TOTAL_MINUTES`). */
+  pausedMs?: number;
   /**
    * Phases whose end-of-phase pass round this seat passes automatically. Missing means every
    * phase (the default). Private: other viewers' views don't carry it.
@@ -286,7 +288,7 @@ export interface GameState {
   /** Judge calls waiting for a judge's ruling (GAME-18); resolved calls are only in the log. */
   judgeCalls?: JudgeCall[];
   /** A pause (TEMPO-05): nothing happens at the table until it ends or is lifted. */
-  pause?: { seat?: SeatId; until: Instant };
+  pause?: { seat?: SeatId; since: Instant; until: Instant };
   settings: GameSettings;
   status: 'setup' | 'active' | 'finished';
 }

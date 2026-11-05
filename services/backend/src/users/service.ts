@@ -78,6 +78,13 @@ export class ProfileService {
     return { sub: user.sub, name: req.name, chosen: true, groups: user.groups };
   }
 
+  /** The user whose current display name is `name` (ignoring case), if anyone's. */
+  async userByName(name: string): Promise<string | undefined> {
+    const sub = await this.deps.store.ownerOf(name);
+    const current = sub ? await this.deps.store.get(sub) : undefined;
+    return current?.name.toLowerCase() === name.toLowerCase() ? sub : undefined;
+  }
+
   /** Admins only: rename the user who holds `name`. */
   async adminRename(identity: Identity, name: string, req: UpdateProfileRequest): Promise<void> {
     const admin = requireUser(identity);

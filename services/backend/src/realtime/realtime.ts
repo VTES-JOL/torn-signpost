@@ -5,6 +5,7 @@
 import { ClientMessage, type ServerMessage } from '@torn-signpost/protocol';
 import type { Identity } from '../auth.ts';
 import type { GameStore } from '../db/store.ts';
+import type { EmailService } from '../email/service.ts';
 import { ApiError } from '../errors.ts';
 import type { GameService, Publisher } from '../games/service.ts';
 import type { NotificationService } from '../notifications/service.ts';
@@ -45,7 +46,9 @@ export interface RealtimeOptions {
   /** Absence checks (TEMPO-06); without them players are never marked away. */
   timers?: Timers;
   /** Remembers judges as they connect, so judge calls reach them. */
-  notifications?: Pick<NotificationService, 'seen'>;
+  notifications?: Pick<NotificationService, 'seen' | 'openedGame'>;
+  /** Records that the user is using the site, so email waits while they are. */
+  email?: Pick<EmailService, 'active'>;
   now?: () => Date;
 }
 
@@ -131,6 +134,11 @@ export class Realtime {
       case 'ping':
         await reply({ type: 'pong' });
         return;
+      case 'active': {
+        const conn = await this.store.getConnection(connectionId);
+        if (conn) await this.options.email?.active(conn.identity);
+        return;
+      }
       case 'unsubscribe': {
         await this.store.unsubscribe(connectionId, parsed.gameId);
         const conn = await this.store.getConnection(connectionId);
@@ -148,6 +156,8 @@ export class Realtime {
           await this.store.subscribe(connectionId, parsed.gameId, conn.identity);
           await reply({ type: 'subscribed', gameId: parsed.gameId, seq });
           await this.arrived(conn.identity, parsed.gameId);
+          await this.options.notifications?.openedGame(conn.identity, parsed.gameId);
+          await this.options.email?.active(conn.identity);
         } catch (e) {
           if (!(e instanceof ApiError)) throw e;
           await reply({ type: 'error', message: e.message });

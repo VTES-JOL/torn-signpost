@@ -312,7 +312,10 @@ In a game with a table timer, any player or a judge can **pause** for 1–5 minu
 a break away from the table. While paused, the clock stops and every command is refused except
 `Resume`, auto-pass and stop settings, and an admin replacing a player. The pause ends by itself
 when its time is up, or earlier when whoever paused, or a judge, sends `Resume`. Only one pause at a
-time; a player can pause again once it ends.
+time; a player can pause again once it ends, up to **15 minutes in all per game**
+(`MAX_PAUSE_TOTAL_MINUTES`, `Seat.pausedMs`; a pause lifted early counts only for as long as it
+lasted), so pausing can't hold up a round. Judges have no allowance: a player who needs more can
+call one.
 
 ## Judge calls
 

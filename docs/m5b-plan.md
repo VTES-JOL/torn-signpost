@@ -217,6 +217,24 @@ M5b, since AWS approval takes a day or more; only the sending code waits for thi
 - **Tests**: unit tests for preference resolution and the "still away?" check; integration test
   with a fake mailer; local dev logs emails to the console instead of sending.
 
+### Review fixes (after M5b.6)
+
+A review against the plan, the requirements and the original intent found five gaps, now fixed:
+1. **Beta flags**: email reached beta players about deadlines and judge calls while those features
+   were dark there; `presence`, `clock`, `judgeCalls` and `notifications` are now on for the beta.
+2. **Read state**: notifications were only marked read from the bell, so stale turns went out by
+   email. Opening a game now marks its notifications read, and a turn or decision notification is
+   marked read once the game stops waiting on that player (`notifications-read` pushes keep every
+   tab's bell in step).
+3. **Away**: an open tab used to count as present forever. "Away" is now no connection, or none
+   used for 15 minutes (`USER#<sub> / ACTIVE`, from changes over HTTP, opening a game and the web
+   app's `active` messages on input; pings and polling don't count).
+4. **Escalations**: an `escalate` ruling closed the call and went nowhere. It now lands in an
+   admin queue (`ADMINQ`), admins are notified, and the `/admin` page replaces the player by
+   display name or dismisses it (GAME-19).
+5. **Pause allowance**: pauses could be chained without limit. Each player now has 15 minutes of
+   pauses per game; judges can still pause beyond that.
+
 ## Order and size
 
 | # | Increment | Depends on | Rough size |

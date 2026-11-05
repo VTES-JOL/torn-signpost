@@ -9,6 +9,7 @@ import {
   clockRunning,
   type GameState,
   MAX_PAUSE_MINUTES,
+  pauseMinutesLeft,
 } from '@torn-signpost/engine';
 import type { PlayerCommand } from '@torn-signpost/protocol';
 import { useEffect, useState } from 'react';
@@ -67,7 +68,11 @@ export function Clock(props: {
         : clockRunning(view)
           ? undefined
           : 'paused: waiting for players to return';
-  const canPause = view.settings.timeLimitMs !== undefined && (seat !== undefined || judge);
+  // Judges pause as long as needed; players have an allowance per game.
+  const left = seat !== undefined && !judge ? pauseMinutesLeft(view, seat) : MAX_PAUSE_MINUTES;
+  const longest = Math.min(MAX_PAUSE_MINUTES, left);
+  const canPause =
+    view.settings.timeLimitMs !== undefined && (seat !== undefined || judge) && longest > 0;
   const canResume = !!pause && (judge || (seat !== undefined && pause.seat === seat));
   return (
     <span className="clock small">
@@ -84,18 +89,22 @@ export function Clock(props: {
         <>
           <select
             aria-label="Pause length"
-            value={minutes}
+            value={Math.min(minutes, longest)}
             onChange={(e) => setMinutes(Number(e.target.value))}
           >
-            {Array.from({ length: MAX_PAUSE_MINUTES }, (_, i) => i + 1).map((m) => (
+            {Array.from({ length: longest }, (_, i) => i + 1).map((m) => (
               <option key={m} value={m}>
                 {m} min
               </option>
             ))}
           </select>
-          <button type="button" onClick={() => send({ type: 'Pause', minutes })}>
+          <button
+            type="button"
+            onClick={() => send({ type: 'Pause', minutes: Math.min(minutes, longest) })}
+          >
             Pause
           </button>
+          {seat !== undefined && !judge && <span className="muted">{left} min of pauses left</span>}
         </>
       )}
     </span>

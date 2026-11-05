@@ -25,6 +25,7 @@ export const EMAIL_CATEGORY: Record<NotificationKind, EmailCategory> = {
   deadline: 'deadline',
   ousted: 'game',
   started: 'game',
+  escalation: 'judge',
 };
 
 export const EmailMode = z.enum(['immediate', 'digest', 'off']);

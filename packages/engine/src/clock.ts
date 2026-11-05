@@ -17,6 +17,20 @@ export const DEFAULT_DEADLINE_MS = 24 * HOUR_MS;
 export const MIN_TOURNAMENT_TIME_LIMIT_MS = 2 * HOUR_MS;
 /** A pause asked for by a player lasts at most this long; they can pause again afterwards. */
 export const MAX_PAUSE_MINUTES = 5;
+/**
+ * Each player's pauses add up to at most this much per game, so pausing can't hold up the round;
+ * after that, a judge can still pause the game.
+ */
+export const MAX_PAUSE_TOTAL_MINUTES = 15;
+
+/**
+ * Minutes of pause the seat's player has left, to the nearest minute (pauses come in whole
+ * minutes; at most `MAX_PAUSE_MINUTES` at a time).
+ */
+export function pauseMinutesLeft(state: GameState, seat: SeatId): number {
+  const used = state.seats.find((s) => s.id === seat)?.pausedMs ?? 0;
+  return Math.max(0, Math.round((MAX_PAUSE_TOTAL_MINUTES * MINUTE_MS - used) / MINUTE_MS));
+}
 
 /** Milliseconds since the epoch, or NaN for a timestamp that isn't one (some tests use 't'). */
 export const ms = (at: Instant | undefined): number =>

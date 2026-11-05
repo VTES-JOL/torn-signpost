@@ -45,6 +45,21 @@ reject:invalid B> pause 6
 B> pause 5
 B> resume
 log public B resumed the game
+# Each player's pauses add up to 15 minutes a game at most; a pause lifted early only counts for as
+# long as it lasted. Bob has used 3 so far.
+B> pause 5
+wait 5m
+B> pause 5
+wait 5m
+reject:not-now B> pause 3
+B> pause 2
+wait 2m
+reject:not-now B> pause 1
+# A judge can still pause the game, for anyone who needs more.
+judge> pause 1
+wait 1m
+expect paused no
+expect elapsed 30m
 
 # Someone leaves: async, so the clock waits for them.
 present C no

@@ -1,5 +1,5 @@
 import type { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
-import { seededRng } from '@torn-signpost/engine';
+import { seededRng, waitingOn } from '@torn-signpost/engine';
 import type { ServerMessage } from '@torn-signpost/protocol';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Identity } from '../auth.ts';
@@ -24,6 +24,7 @@ const alice = user('alice');
 const bob = user('bob');
 const carol = user('carol');
 const jo = user('jo', ['judge']);
+const ada = user('ada', ['admin']);
 
 let n = 0;
 let clock = Date.parse('2026-11-05T10:00:00Z');
@@ -67,10 +68,12 @@ describe.skipIf(!available)('notifications (DynamoDB Local)', () => {
     const realtime = new Realtime(store, gateway, games, { notifications });
     const pushed = (conn: string) =>
       (sent.get(conn) ?? []).flatMap((m) => (m.type === 'notification' ? [m.notification] : []));
-    return { games, notifications, realtime, pushed };
+    const read = (conn: string) =>
+      (sent.get(conn) ?? []).flatMap((m) => (m.type === 'notifications-read' ? [m] : []));
+    return { games, notifications, realtime, pushed, read };
   }
 
-  async function startedGame(games: GameService) {
+  async function startedGame(games: GameService, starter: Identity = alice) {
     const g = await games.create(alice, {
       name: 'Notified',
       format: 'standard',
@@ -78,7 +81,7 @@ describe.skipIf(!available)('notifications (DynamoDB Local)', () => {
       maxSeats: 3,
     });
     for (const p of [alice, bob, carol]) await games.join(p, g.id, { deck: testDeck });
-    await games.start(alice, g.id);
+    await games.start(starter, g.id);
     return g.id;
   }
 
@@ -126,6 +129,111 @@ describe.skipIf(!available)('notifications (DynamoDB Local)', () => {
       gameId: id,
       text: 'Judge call: a rules question',
     });
+  });
+
+  it('marks a game read when the player opens it, and tells their other connections', async () => {
+    const { games, notifications, realtime, read } = setup();
+    await realtime.connect('carol-1', carol);
+    const id = await startedGame(games);
+    expect((await notifications.list(carol)).items.some((i) => i.gameId === id && !i.read)).toBe(
+      true,
+    );
+    await realtime.connect('carol-2', carol);
+    await realtime.message('carol-2', JSON.stringify({ type: 'subscribe', gameId: id }));
+    const mine = (await notifications.list(carol)).items.filter((i) => i.gameId === id);
+    expect(mine.every((i) => i.read)).toBe(true);
+    expect(read('carol-1').at(-1)?.ids.sort()).toEqual(mine.map((i) => i.id).sort());
+  });
+
+  it('marks a turn or decision read once the game stops waiting on that player', async () => {
+    const { games, notifications } = setup();
+    // Started by an admin, so the first player is told it's their turn whoever they are.
+    const id = await startedGame(games, ada);
+    const view = await games.details(alice, id);
+    const seat = view.view?.turn?.seat;
+    const player = [alice, bob, carol].find(
+      (p) => p.kind === 'user' && view.view?.seats.find((s) => s.id === seat)?.occupant === p.sub,
+    );
+    if (player?.kind !== 'user') throw new Error('no first player');
+    const turn = (await notifications.list(player)).items.find(
+      (i) => i.gameId === id && (i.kind === 'turn' || i.kind === 'decision'),
+    );
+    if (!turn) throw new Error('the first player was not told');
+    expect(turn.read).toBe(false);
+    await games.command(player, id, {
+      commandId: `adv-${Date.now()}`,
+      command: { type: 'AdvancePhase' },
+    });
+    // Still their turn (a new phase), so the turn notification stays until the turn is over.
+    for (let i = 0; i < 12; i++) {
+      const d = await games.details(alice, id);
+      if (d.view?.turn?.seat !== seat) break;
+      const waits = d.view ? waitingOn(d.view) : [];
+      const w = waits[0];
+      const who = [alice, bob, carol].find(
+        (p) => p.kind === 'user' && d.view?.seats.find((s) => s.id === w?.seat)?.occupant === p.sub,
+      );
+      if (!who) break;
+      await games.command(who, id, {
+        commandId: `step-${i}-${Date.now()}`,
+        command: { type: w?.kind === 'phase' ? 'AdvancePhase' : 'Pass' },
+      });
+    }
+    const after = (await notifications.list(player)).items.find((i) => i.id === turn.id);
+    expect(after?.read).toBe(true);
+  });
+
+  it('puts escalations in the admin queue, tells admins, and lets one replace the player', async () => {
+    const { games, notifications, realtime } = setup();
+    await realtime.connect('ada-1', ada);
+    const id = await startedGame(games);
+    await games.command(bob, id, {
+      commandId: `call-${Date.now()}`,
+      command: { type: 'CallJudge', reason: 'slow-play', note: 'Carol has gone' },
+    });
+    const details = await games.details(alice, id);
+    const callId = details.view?.judgeCalls?.[0]?.id ?? '';
+    const carolSeat = details.view?.seats.find((s) => s.occupant === 'carol')?.id ?? '';
+    await games.command(jo, id, {
+      commandId: `rule-${Date.now()}`,
+      command: {
+        type: 'ResolveJudgeCall',
+        id: callId,
+        ruling: { kind: 'escalate' },
+        note: 'Please replace Carol',
+      },
+    });
+
+    const queue = (await games.escalations(ada)).filter((e) => e.gameId === id);
+    expect(queue).toEqual([
+      expect.objectContaining({ gameName: 'Notified', judge: 'jo', note: 'Please replace Carol' }),
+    ]);
+    expect((await notifications.list(ada)).items[0]).toMatchObject({
+      kind: 'escalation',
+      gameId: id,
+    });
+    await expect(games.escalations(bob)).rejects.toMatchObject({ status: 403 });
+
+    const byName = async (name: string) => (name === 'Dana' ? 'dana' : undefined);
+    await expect(
+      games.resolveEscalation(
+        ada,
+        id,
+        callId,
+        { replace: { seat: carolSeat, name: 'Nobody' } },
+        byName,
+      ),
+    ).rejects.toMatchObject({ status: 404 });
+    await games.resolveEscalation(
+      ada,
+      id,
+      callId,
+      { replace: { seat: carolSeat, name: 'Dana' } },
+      byName,
+    );
+    const after = await games.details(alice, id);
+    expect(after.view?.seats.find((s) => s.id === carolSeat)?.occupant).toBe('dana');
+    expect((await games.escalations(ada)).some((e) => e.gameId === id)).toBe(false);
   });
 
   it('marks notifications read, one by one or all, and pages through them', async () => {

@@ -10,6 +10,7 @@ import {
   JoinGameRequest,
   LobbyStatus,
   MarkReadRequest,
+  ResolveEscalationRequest,
   SaveDeckRequest,
   UnsubscribeRequest,
   UpdateProfileRequest,
@@ -51,6 +52,8 @@ export function createApp(config: AppConfig): Hono<Env> {
     const identity = config.auth ? await config.auth(bearer(c.req.header('Authorization'))) : GUEST;
     c.set('identity', config.profiles ? await config.profiles.resolve(identity) : identity);
     await config.email?.seen(identity);
+    // Changes count as using the site; reads don't (pages poll in the background).
+    if (c.req.method !== 'GET') await config.email?.active(identity);
     await next();
   });
 
@@ -127,6 +130,19 @@ export function createApp(config: AppConfig): Hono<Env> {
   );
   // The judge queue (GAME-18): open calls across every game, for judges.
   app.get('/judge/calls', async (c) => c.json(await games().judgeQueue(c.var.identity)));
+  // The admin queue (GAME-19): casual games judges referred to the admins.
+  app.get('/admin/escalations', async (c) => c.json(await games().escalations(c.var.identity)));
+  app.post('/admin/escalations/:gameId/:callId', async (c) => {
+    if (c.var.identity.kind !== 'user') throw new ApiError(401, 'sign_in', 'Sign in first');
+    await games().resolveEscalation(
+      c.var.identity,
+      c.req.param('gameId'),
+      c.req.param('callId'),
+      await body(c.req, ResolveEscalationRequest),
+      (name) => profiles().userByName(name),
+    );
+    return c.body(null, 204);
+  });
   app.get('/games/:id/events', async (c) => {
     const after = z.coerce
       .number()

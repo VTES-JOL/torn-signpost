@@ -201,6 +201,27 @@ export interface JudgeQueueEntry {
   call: JudgeCall;
 }
 
+/**
+ * A casual game a judge referred to the admins (GAME-19): usually a player who has gone, to be
+ * replaced. It stays in the admin queue until an admin replaces the player or dismisses it.
+ */
+export interface Escalation {
+  gameId: string;
+  gameName: string;
+  call: JudgeCall;
+  /** The judge who referred it, and what they said. */
+  judge: string;
+  note?: string;
+  at: string;
+}
+
+/** An admin deals with an escalation: replace a seat's player (by display name), or dismiss it. */
+export const ResolveEscalationRequest = z.union([
+  z.strictObject({ replace: z.strictObject({ seat: Id, name: z.string().trim().min(1).max(24) }) }),
+  z.strictObject({ dismiss: z.literal(true) }),
+]);
+export type ResolveEscalationRequest = z.infer<typeof ResolveEscalationRequest>;
+
 export interface GameDetails {
   game: GameSummary;
   /** The caller's projected view; absent before the game starts. */
@@ -246,6 +267,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('subscribe'), gameId: Id }),
   z.strictObject({ type: z.literal('unsubscribe'), gameId: Id }),
   z.strictObject({ type: z.literal('ping') }),
+  /** The user is using the site (input, or the tab coming back into view); a ping isn't. */
+  z.strictObject({ type: z.literal('active') }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -259,5 +282,7 @@ export type ServerMessage =
   | { type: 'audience'; gameId: string; spectators: number }
   /** A new notification for this user (NOTIF-01), on every connection they have. */
   | { type: 'notification'; notification: Notification }
+  /** Notifications marked read elsewhere (the game was opened, or the wait is over). */
+  | { type: 'notifications-read'; ids: string[]; unread: number }
   | { type: 'pong' }
   | { type: 'error'; message: string };

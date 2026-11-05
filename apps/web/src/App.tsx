@@ -8,6 +8,7 @@ import { CardsProvider, ConfigProvider, useConfig } from './content.tsx';
 import { GamePage } from './game/GamePage.tsx';
 import { NotificationBell, NotificationsProvider } from './notifications.tsx';
 import { AccountPage } from './pages/AccountPage.tsx';
+import { AdminPage } from './pages/AdminPage.tsx';
 import { AuthCallback } from './pages/AuthCallback.tsx';
 import { CardsPage } from './pages/CardsPage.tsx';
 import { DeckEditor } from './pages/DeckEditor.tsx';
@@ -49,6 +50,7 @@ export function App() {
                       </>
                     )}
                     {config.flags.judgeCalls && <Route path="judge" element={<JudgePage />} />}
+                    {config.flags.judgeCalls && <Route path="admin" element={<AdminPage />} />}
                     <Route path="account" element={<AccountPage />} />
                     <Route path="unsubscribe" element={<UnsubscribePage />} />
                     <Route path="auth/callback" element={<AuthCallback />} />
@@ -116,6 +118,9 @@ function Header() {
         {flags.replay && <NavLink to="/replay">Replay</NavLink>}
         {flags.judgeCalls && auth.user?.groups.includes('judge') && (
           <NavLink to="/judge">Judge queue</NavLink>
+        )}
+        {flags.judgeCalls && auth.user?.groups.includes('admin') && (
+          <NavLink to="/admin">Admin queue</NavLink>
         )}
       </nav>
       <div className="account">

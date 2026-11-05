@@ -399,7 +399,9 @@ sequenceDiagram
 | Judge queue | `JUDGEQ` | `<openedAt>#<gameId>#<callId>` | every open judge call, oldest first (GAME-18); put, updated and deleted as the game's calls change |
 | User connections | `USERCONN#<sub>` | `CONN#<connId>` | TTL 3 h; every socket a user has open, so notifications reach them on any page |
 | Notification | `USER#<sub>` | `NOTIF#<id>` | TTL 30 days; the ID starts with the time sent, so the sort key orders them (NOTIF-01) |
-| Judges | `JUDGES` | `USER#<sub>` | TTL 30 days, refreshed when a judge connects; who judge-call notifications go to |
+| Staff | `JUDGES` / `ADMINS` | `USER#<sub>` | TTL 30 days, refreshed when a judge or admin connects; who judge-call and escalation notifications go to |
+| Admin queue | `ADMINQ` | `<at>#<gameId>#<callId>` | casual games a judge referred to the admins (GAME-19), until an admin replaces the player or dismisses it |
+| Last activity | `USER#<sub>` | `ACTIVE` | TTL 30 days; when the user last used the site, so an idle open tab doesn't hold back email |
 | Email address | `USER#<sub>` | `EMAIL` | the verified sign-in address, refreshed as the user makes requests (NOTIF-02) |
 | Email preferences | `USER#<sub>` | `EMAILPREFS` | per category: immediate, digest or off; digest daily or twice daily |
 | Digest queue | `DIGESTQ` | `<sub>#<notificationId>` | TTL 3 days; notifications waiting for the next digest run |
@@ -634,7 +636,9 @@ primitives, and corrections are new commands.
   to a server admin, who can replace the player). An open call stops the table clock. A `deadline`
   call settles itself once that decision is no longer overdue. The game service mirrors open calls
   into the `JUDGEQ` partition, read by `GET /judge/calls` and the web `/judge` page (judges only,
-  refreshed every 15 s).
+  refreshed every 15 s). A judge's `escalate` ruling puts the call in the `ADMINQ` admin queue
+  and notifies admins; on the web `/admin` page an admin replaces the seat's player by display
+  name (`ReplacePlayer`) or dismisses it.
 - Notifications (NOTIF-01, TEMPO-01): after every command the game service compares the game
   before and after (`notifications/triggers.ts`) and notifies: your turn, a new decision waiting
   on you (block, play or pass, resolve, combat, a phase), a deadline reminder, being ousted or
@@ -646,8 +650,10 @@ primitives, and corrections are new commands.
   count in the tab title). Unread counts cover the latest 50.
 - Email (NOTIF-02): a notification whose category the user wants at once is checked again two
   minutes later (a one-off timer) and emailed only if it's still unread and the user has no
-  connection open; digest categories wait in `DIGESTQ` for the 05:00/17:00 UTC runs, which apply
-  the same checks. The timers Lambda sends through SES (the only Lambda allowed to), one recipient
+  connection used in the last 15 minutes (changes over HTTP, opening a game, or the web app
+  reporting input; not pings or polling); digest categories wait in `DIGESTQ` for the 05:00/17:00
+  UTC runs, which apply the same checks. Opening a game marks its notifications read, and a turn
+  or decision notification is marked read once the game stops waiting on that player. The timers Lambda sends through SES (the only Lambda allowed to), one recipient
   per message, with signed one-click unsubscribe links. Switched by `emailEnabled`.
 - Not yet: referendums and combat steps (M6); structural window elision beyond auto-pass.
 

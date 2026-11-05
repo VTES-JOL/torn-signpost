@@ -44,8 +44,9 @@ export const beta: StageConfig = {
   githubOidcSubject: 'repo:VTES-JOL@200019109/torn-signpost@1438320358',
   monthlyBudgetUsd: 50,
   alertEmailParameter: '/torn-signpost/beta/alert-email',
-  // Email settings on the Account page (NOTIF-02), live with email itself.
-  flags: { email: true },
+  // M5b is live on the beta: presence, the table timer and deadlines, judge calls, notifications
+  // and email all reach players, so each part of it is visible to them too.
+  flags: { presence: true, clock: true, judgeCalls: true, notifications: true, email: true },
   // On for the internal alpha (M4).
   gamesEnabled: true,
   // On, so the scheduler and timers Lambda run on the beta while the UI is still dark.

@@ -347,11 +347,23 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
       );
       break;
     case 'Paused':
-      d.pause = ev.seat === undefined ? { until: ev.until } : { seat: ev.seat, until: ev.until };
+      d.pause =
+        ev.seat === undefined
+          ? { since: ev.at, until: ev.until }
+          : { seat: ev.seat, since: ev.at, until: ev.until };
       break;
-    case 'Resumed':
+    case 'Resumed': {
+      // A player's pause counts against their allowance for as long as it actually lasted.
+      const p = d.pause;
+      if (p?.seat !== undefined) {
+        const used = Math.max(0, Math.min(ms(ev.at), ms(p.until)) - ms(p.since));
+        if (!Number.isNaN(used)) {
+          patchSeat(d, p.seat, (s) => ({ pausedMs: (s.pausedMs ?? 0) + used }));
+        }
+      }
       delete d.pause;
       break;
+    }
     case 'DeadlineReminded':
     case 'DeadlineExpired': {
       const w = d.waiting;

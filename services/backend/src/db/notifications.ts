@@ -5,7 +5,8 @@
  * | Item | PK | SK |
  * |---|---|---|
  * | Notification | `USER#<sub>` | `NOTIF#<id>` (TTL 30 days) |
- * | Judge | `JUDGES` | `USER#<sub>` (judges seen recently, TTL 30 days; who judge calls go to) |
+ * | Staff | `JUDGES` / `ADMINS` | `USER#<sub>` (seen recently, TTL 30 days; who judge calls and
+ *   escalations go to) |
  */
 import {
   type DynamoDBDocumentClient,
@@ -20,6 +21,9 @@ const KEEP = 30 * 24 * 60 * 60;
 const epoch = () => Math.floor(Date.now() / 1000);
 const userKey = (sub: string) => `USER#${sub}`;
 const notifKey = (id: string) => `NOTIF#${id}`;
+
+export type Staff = 'judge' | 'admin';
+const STAFF: Record<Staff, string> = { judge: 'JUDGES', admin: 'ADMINS' };
 
 export class NotificationStore {
   constructor(
@@ -116,22 +120,45 @@ export class NotificationStore {
     return (page.Items ?? []).filter((i) => !i.read).map((i) => i.id as string);
   }
 
-  /** Remember a judge, so judge calls reach them (refreshed whenever they connect). */
-  async putJudge(sub: string): Promise<void> {
+  /** Unread notifications about a game among the latest `cap`, optionally only some kinds. */
+  async unreadFor(
+    user: string,
+    gameId: string,
+    cap: number,
+    kinds?: readonly string[],
+  ): Promise<string[]> {
+    const page = await this.db.send(
+      new QueryCommand({
+        TableName: this.table,
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :n)',
+        ExpressionAttributeValues: { ':pk': userKey(user), ':n': 'NOTIF#' },
+        ProjectionExpression: 'id, #r, gameId, kind',
+        ExpressionAttributeNames: { '#r': 'read' },
+        ScanIndexForward: false,
+        Limit: cap,
+      }),
+    );
+    return (page.Items ?? [])
+      .filter((i) => !i.read && i.gameId === gameId && (!kinds || kinds.includes(i.kind as string)))
+      .map((i) => i.id as string);
+  }
+
+  /** Remember a judge or admin, so calls and escalations reach them (refreshed as they connect). */
+  async putStaff(role: Staff, sub: string): Promise<void> {
     await this.db.send(
       new PutCommand({
         TableName: this.table,
-        Item: { PK: 'JUDGES', SK: userKey(sub), sub, ttl: epoch() + KEEP },
+        Item: { PK: STAFF[role], SK: userKey(sub), sub, ttl: epoch() + KEEP },
       }),
     );
   }
 
-  async judges(): Promise<string[]> {
+  async staff(role: Staff): Promise<string[]> {
     const page = await this.db.send(
       new QueryCommand({
         TableName: this.table,
         KeyConditionExpression: 'PK = :pk',
-        ExpressionAttributeValues: { ':pk': 'JUDGES' },
+        ExpressionAttributeValues: { ':pk': STAFF[role] },
       }),
     );
     return (page.Items ?? []).map((i) => i.sub as string);

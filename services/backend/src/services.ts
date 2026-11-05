@@ -92,6 +92,7 @@ export function createServices(opts: {
   const profiles = new ProfileService({ store: new ProfileStore(db, opts.tableName) });
   const realtime = new Realtime(store, opts.gateway, games, {
     notifications,
+    ...(email ? { email } : {}),
     presence: !!opts.presence,
     ...(timers ? { timers } : {}),
   });

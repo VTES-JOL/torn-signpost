@@ -29,6 +29,8 @@ import { setUnreadTitle } from './title.ts';
 /** API Gateway drops idle sockets after 10 minutes. */
 const KEEPALIVE_MS = 5 * 60_000;
 const MAX_BACKOFF_MS = 30_000;
+/** Tell the server the user is here at most this often, so email waits (NOTIF-02). */
+const ACTIVE_EVERY_MS = 2 * 60_000;
 
 interface Notifications {
   items: Notification[];
@@ -91,6 +93,12 @@ function Live({ children }: { children: ReactNode }) {
       };
       socket.onmessage = (e) => {
         const msg = JSON.parse(String(e.data)) as ServerMessage;
+        if (msg.type === 'notifications-read') {
+          const ids = new Set(msg.ids);
+          setItems((list) => list.map((n) => (ids.has(n.id) ? { ...n, read: true } : n)));
+          setUnread(msg.unread);
+          return;
+        }
         if (msg.type !== 'notification') return;
         const n = msg.notification;
         setItems((list) => (list.some((x) => x.id === n.id) ? list : [n, ...list]));
@@ -103,10 +111,22 @@ function Live({ children }: { children: ReactNode }) {
         setTimeout(() => void connect(), delay);
       };
     };
+    // Input, or the tab coming back into view, means the user is here; an idle tab doesn't.
+    let lastActive = 0;
+    const active = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - lastActive < ACTIVE_EVERY_MS)
+        return;
+      if (socket?.readyState !== WebSocket.OPEN) return;
+      lastActive = Date.now();
+      socket.send(JSON.stringify({ type: 'active' }));
+    };
+    const events = ['pointerdown', 'keydown', 'visibilitychange'] as const;
+    for (const e of events) document.addEventListener(e, active, { passive: true });
     void connect();
     return () => {
       stopped = true;
       clearInterval(keepalive);
+      for (const e of events) document.removeEventListener(e, active);
       socket?.close();
     };
   }, [auth, wsUrl, refresh]);

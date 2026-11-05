@@ -3,6 +3,10 @@
  * email waits `EMAIL_DELAY_MS`, then goes out only if it is still unread and they have no
  * connection open: an active player never gets email. Digest notifications wait for the digest
  * run, which checks the same. Every email links to one-click unsubscribe.
+ *
+ * "Away" means no connection open, or none of them used for `IDLE_MS`: a tab left open in the
+ * background doesn't stop email. Activity is a command or other change, opening a game, or the web
+ * app reporting input; keepalive pings and polling don't count.
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import {
@@ -23,6 +27,10 @@ import type { Email, Mailer } from './mailer.ts';
 
 /** Long enough to cover a quick look away; short enough for a deadline to still matter. */
 export const EMAIL_DELAY_MS = 2 * 60_000;
+/** Connected but unused this long counts as away. */
+export const IDLE_MS = 15 * 60_000;
+/** Activity is recorded at most this often per user and process. */
+const TOUCH_EVERY_MS = 60_000;
 
 /** Digest runs: every one for twice-daily, the evening one for daily. */
 export type DigestSlot = 'morning' | 'evening';
@@ -46,6 +54,7 @@ export class EmailService {
   private readonly now: () => Date;
   /** Addresses already recorded by this process, so signing in costs one write per cold start. */
   private readonly known = new Map<string, string>();
+  private readonly touched = new Map<string, number>();
 
   constructor(private readonly deps: EmailServiceDeps) {
     this.now = deps.now ?? (() => new Date());
@@ -62,6 +71,20 @@ export class EmailService {
       this.known.set(identity.sub, identity.email);
     } catch (e) {
       console.warn('email address update failed', { error: String(e) });
+    }
+  }
+
+  /** The user did something on the site. Never fails the request. */
+  async active(identity: Identity): Promise<void> {
+    if (identity.kind !== 'user') return;
+    const now = this.now();
+    if (now.getTime() - (this.touched.get(identity.sub) ?? 0) < TOUCH_EVERY_MS) return;
+    this.touched.set(identity.sub, now.getTime());
+    if (this.touched.size > 10_000) this.touched.clear();
+    try {
+      await this.deps.store.touch(identity.sub, now);
+    } catch (e) {
+      console.warn('activity update failed', { error: String(e) });
     }
   }
 
@@ -105,7 +128,7 @@ export class EmailService {
   /** The delay is over: send if it's still unread and they're still away. */
   async sendNow(user: string, id: string): Promise<void> {
     const n = await this.deps.notifications.get(user, id);
-    if (!n || n.read || (await this.connected(user))) return;
+    if (!n || n.read || !(await this.away(user))) return;
     const to = await this.deps.store.address(user);
     if (!to) return;
     const category = EMAIL_CATEGORY[n.kind];
@@ -143,7 +166,7 @@ export class EmailService {
         const prefs = await this.deps.store.prefs(user);
         if (prefs.digest === 'daily' && slot === 'morning') continue;
         await this.deps.store.clearDigest(user, ids);
-        if (await this.connected(user)) continue;
+        if (!(await this.away(user))) continue;
         const items = (
           await Promise.all(ids.map((id) => this.deps.notifications.get(user, id)))
         ).filter(
@@ -200,8 +223,11 @@ export class EmailService {
     };
   }
 
-  private async connected(user: string): Promise<boolean> {
-    return (await this.deps.games.userConnections(user)).length > 0;
+  /** No connection open, or none used lately. */
+  private async away(user: string): Promise<boolean> {
+    if ((await this.deps.games.userConnections(user)).length === 0) return true;
+    const last = await this.deps.store.lastActive(user);
+    return !last || this.now().getTime() - last.getTime() > IDLE_MS;
   }
 
   private async unsubscribeLinks(user: string, c: EmailCategory | 'all') {

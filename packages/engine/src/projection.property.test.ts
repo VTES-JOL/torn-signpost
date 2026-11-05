@@ -7,6 +7,7 @@ import {
   deadlines,
   HOUR_MS,
   instantFromMs,
+  MAX_PAUSE_TOTAL_MINUTES,
   MINUTE_MS,
   ms,
   timers,
@@ -609,6 +610,15 @@ describe('time and judges', { timeout: 60_000 }, () => {
       const elapsed = clockElapsed(after, ev.at);
       expect(elapsed).toBeGreaterThanOrEqual(clockElapsed(before, ev.at));
       expect(elapsed).toBeLessThanOrEqual(ms(ev.at) - T0);
+    });
+  });
+
+  it('no player pauses for more than their allowance in a game', () => {
+    forEveryEvent((_, __, after) => {
+      for (const s of after.seats) {
+        // Rounded to the nearest minute, so up to half a minute over.
+        expect(s.pausedMs ?? 0).toBeLessThanOrEqual(MAX_PAUSE_TOTAL_MINUTES * MINUTE_MS + 30_000);
+      }
     });
   });
 

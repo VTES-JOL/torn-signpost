@@ -2,7 +2,7 @@
  * In-app notifications (NOTIF-01): stored for 30 days and pushed to every connection the user has
  * open. Sending never fails a command: errors are logged.
  */
-import type { GameEvent, GameState } from '@torn-signpost/engine';
+import { type GameEvent, type GameState, waitingOn } from '@torn-signpost/engine';
 import {
   type MarkReadRequest,
   type Notification,
@@ -18,6 +18,8 @@ import type { ConnectionGateway } from '../realtime/gateway.ts';
 import { type Draft, gameNotifications, mentioned } from './triggers.ts';
 
 const PAGE = 20;
+/** Notifications about a wait, which are done once the wait is. */
+const WAIT_KINDS = ['turn', 'decision', 'deadline'] as const;
 
 /** What the game service tells the notifier; implemented by `NotificationService`. */
 export interface Notifier {
@@ -57,10 +59,19 @@ export class NotificationService implements Notifier {
   async afterCommand(input: Parameters<Notifier['afterCommand']>[0]): Promise<void> {
     try {
       const judges = input.events.some((e) => e.type === 'JudgeCalled')
-        ? await this.deps.store.judges()
+        ? await this.deps.store.staff('judge')
         : [];
-      const drafts = gameNotifications({ ...input, judges });
+      const admins = input.events.some(isEscalation) ? await this.deps.store.staff('admin') : [];
+      const drafts = gameNotifications({ ...input, judges, admins });
       await this.send(input.game, input.after.seq, drafts);
+      // A turn or decision that no longer waits on someone is done: it shouldn't be emailed.
+      const waiting = new Set(waitingOn(input.after).map((w) => w.seat));
+      const done = new Set(
+        waitingOn(input.before)
+          .filter((w) => !waiting.has(w.seat))
+          .flatMap((w) => input.after.seats.find((s) => s.id === w.seat)?.occupant ?? []),
+      );
+      for (const user of done) await this.readGame(user, input.game.id, WAIT_KINDS);
     } catch (e) {
       console.error('notifications failed', { gameId: input.game.id, error: String(e) });
     }
@@ -78,13 +89,42 @@ export class NotificationService implements Notifier {
     }
   }
 
-  /** A judge connected: judge calls reach judges who have been around in the last 30 days. */
-  async seen(identity: Identity): Promise<void> {
-    if (identity.kind !== 'user' || !identity.groups.includes('judge')) return;
+  /** The user opened a game: everything they were told about it is seen. */
+  async openedGame(identity: Identity, gameId: string): Promise<void> {
+    if (identity.kind !== 'user') return;
     try {
-      await this.deps.store.putJudge(identity.sub);
+      await this.readGame(identity.sub, gameId);
     } catch (e) {
-      console.warn('judge registry failed', { error: String(e) });
+      console.warn('marking notifications read failed', { gameId, error: String(e) });
+    }
+  }
+
+  private async readGame(user: string, gameId: string, kinds?: readonly string[]) {
+    const ids = await this.deps.store.unreadFor(user, gameId, UNREAD_CAP, kinds);
+    if (!ids.length) return;
+    await this.deps.store.markRead(user, ids);
+    const unread = await this.deps.store.unread(user, UNREAD_CAP);
+    for (const connectionId of await this.deps.games.userConnections(user)) {
+      try {
+        await this.deps.gateway.post(connectionId, { type: 'notifications-read', ids, unread });
+      } catch (e) {
+        console.warn('notification push failed', { connectionId, error: String(e) });
+      }
+    }
+  }
+
+  /**
+   * A judge or admin connected: judge calls reach judges, and escalations admins, who have been
+   * around in the last 30 days.
+   */
+  async seen(identity: Identity): Promise<void> {
+    if (identity.kind !== 'user') return;
+    try {
+      for (const role of ['judge', 'admin'] as const) {
+        if (identity.groups.includes(role)) await this.deps.store.putStaff(role, identity.sub);
+      }
+    } catch (e) {
+      console.warn('staff registry failed', { error: String(e) });
     }
   }
 
@@ -143,6 +183,9 @@ export class NotificationService implements Notifier {
     }
   }
 }
+
+const isEscalation = (e: GameEvent) =>
+  e.type === 'JudgeCallResolved' && e.ruling.kind === 'escalate';
 
 function requireUser(identity: Identity): string {
   if (identity.kind !== 'user') throw new ApiError(401, 'unauthenticated', 'Sign in first');

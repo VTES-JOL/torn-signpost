@@ -8,7 +8,7 @@ import type { GameStore } from '../db/store.ts';
 import { dynamoAvailable, testStore } from '../testing/dynamo.ts';
 import type { TimerPayload, Timers } from '../timers/timers.ts';
 import type { Email } from './mailer.ts';
-import { EMAIL_DELAY_MS, EmailService } from './service.ts';
+import { EMAIL_DELAY_MS, EmailService, IDLE_MS } from './service.ts';
 
 const available = await dynamoAvailable();
 
@@ -37,7 +37,10 @@ describe.skipIf(!available)('email notifications (DynamoDB Local)', () => {
   beforeAll(async () => ({ store: games, db, tableName, cleanup } = await testStore()));
   afterAll(() => cleanup?.());
 
+  let clock = new Date(at);
+
   function setup() {
+    clock = new Date(at);
     const sent: Email[] = [];
     const scheduled = new Map<string, { at: Date; payload: TimerPayload }>();
     const timers: Timers = {
@@ -59,7 +62,7 @@ describe.skipIf(!available)('email notifications (DynamoDB Local)', () => {
       secret: async () => 'test-secret',
       webUrl: 'https://web.example',
       apiUrl: 'https://api.example',
-      now: () => new Date(at),
+      now: () => clock,
     });
     /** A new user with an address on file, and a notification sent to them. */
     const player = async (name: string) => {
@@ -83,7 +86,7 @@ describe.skipIf(!available)('email notifications (DynamoDB Local)', () => {
 
   it('emails deadlines after a delay, only if still unread and the player is away', async () => {
     const { email, notifications, sent, scheduled, player, notify } = setup();
-    const { sub } = await player('ana');
+    const { sub, identity } = await player('ana');
     const due = notification('deadline');
     await notify(sub, due);
     const timer = scheduled.get(`email:${sub}:${due.id}`);
@@ -107,12 +110,18 @@ describe.skipIf(!available)('email notifications (DynamoDB Local)', () => {
     await notify(sub, read);
     await notifications.markRead(sub, [read.id]);
     await email.sendNow(sub, read.id);
-    // On the site in the meantime: nothing.
+    // On the site and using it in the meantime: nothing.
     const seen = notification('deadline');
     await notify(sub, seen);
     await games.putConnection(`c-${sub}`, { kind: 'user', sub, name: 'ana', groups: [] });
+    await email.active(identity);
     await email.sendNow(sub, seen.id);
     expect(sent).toHaveLength(1);
+
+    // A tab left open but unused for a while doesn't count: the email goes out.
+    clock = new Date(Date.parse(at) + IDLE_MS + 60_000);
+    await email.sendNow(sub, seen.id);
+    expect(sent).toHaveLength(2);
   });
 
   it('collects the rest for the digest: evenings for daily, both runs for twice daily', async () => {

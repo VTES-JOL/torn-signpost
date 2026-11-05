@@ -30,12 +30,14 @@ import type {
   CommandResponse,
   CreateGameRequest,
   DeckCards,
+  Escalation,
   EventsResponse,
   GameDetails,
   GameSummary,
   JoinGameRequest,
   JudgeQueueEntry,
   LobbyStatus,
+  ResolveEscalationRequest,
   ServerMessage,
 } from '@torn-signpost/protocol';
 import type { Identity } from '../auth.ts';
@@ -294,6 +296,60 @@ export class GameService {
     }
   }
 
+  /** A judge referred a call to the admins: it waits in the admin queue (GAME-19). */
+  private async syncEscalations(meta: GameMeta, before: GameState, events: readonly GameEvent[]) {
+    try {
+      for (const ev of events) {
+        if (ev.type !== 'JudgeCallResolved' || ev.ruling.kind !== 'escalate') continue;
+        const call = before.judgeCalls?.find((c) => c.id === ev.id);
+        if (!call) continue;
+        await this.deps.store.putEscalation({
+          gameId: meta.id,
+          gameName: meta.name,
+          call,
+          judge: ev.by.kind === 'judge' ? ev.by.user : '',
+          ...(ev.note ? { note: ev.note } : {}),
+          at: ev.at,
+        });
+      }
+    } catch (e) {
+      console.error('admin queue sync failed', { id: meta.id, error: String(e) });
+    }
+  }
+
+  /** Every escalation waiting for an admin, oldest first: admins only. */
+  async escalations(identity: Identity): Promise<Escalation[]> {
+    requireAdmin(identity);
+    return this.deps.store.escalations();
+  }
+
+  /**
+   * An admin deals with an escalation: replaces the seat's player with `user` (found by name by
+   * the caller), or dismisses it. Either way it leaves the queue.
+   */
+  async resolveEscalation(
+    identity: Identity,
+    gameId: string,
+    callId: string,
+    req: ResolveEscalationRequest,
+    userByName: (name: string) => Promise<string | undefined>,
+  ): Promise<void> {
+    requireAdmin(identity);
+    const entry = (await this.deps.store.escalations()).find(
+      (e) => e.gameId === gameId && e.call.id === callId,
+    );
+    if (!entry) throw new ApiError(404, 'not_found', 'No such escalation');
+    if ('replace' in req) {
+      const user = await userByName(req.replace.name);
+      if (!user) throw new ApiError(404, 'not_found', `Nobody is called “${req.replace.name}”`);
+      await this.command(identity, gameId, {
+        commandId: `replace-${callId}-${this.deps.newId()}`.slice(0, 64),
+        command: { type: 'ReplacePlayer', seat: req.replace.seat, user },
+      });
+    }
+    await this.deps.store.deleteEscalation(entry);
+  }
+
   /** A player's last connection to the game closed a while ago: away, unless they came back. */
   async checkAbsence(id: string, user: string): Promise<void> {
     if ((await this.watchingUsers(id)).has(user)) return;
@@ -356,6 +412,7 @@ export class GameService {
         this.remember(after);
         await this.syncTimers(id, state, after);
         await this.syncJudgeQueue(meta, state, after);
+        await this.syncEscalations(meta, state, result.events);
         await this.publishSteps(id, steps);
         await this.deps.notifier?.afterCommand({
           game: meta,
@@ -497,6 +554,7 @@ export class GameService {
         this.remember(after);
         await this.syncTimers(id, state, after);
         await this.syncJudgeQueue(meta, state, after);
+        await this.syncEscalations(meta, state, result.events);
         await this.publishSteps(id, steps);
         await this.deps.notifier?.afterCommand({
           game: meta,
@@ -631,6 +689,12 @@ export function viewerOf(identity: Identity, state: GameState): Viewer {
 }
 
 /** Admins replace players; seated users act as their seat; judges act as judges. */
+function requireAdmin(identity: Identity): User {
+  const user = requireUser(identity);
+  if (!user.groups.includes('admin')) throw new ApiError(403, 'forbidden', 'Admins only');
+  return user;
+}
+
 function actorFor(user: User, state: GameState, type: CommandRequest['command']['type']): Actor {
   if (type === 'ReplacePlayer') {
     if (!user.groups.includes('admin'))

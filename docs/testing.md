@@ -26,6 +26,7 @@ deploys only when they pass.
    - while paused, only settings, judges and the server act;
    - a timer check only reminds, flags and calls a judge; it never acts for a player (DQ6);
    - a timer that fires early does nothing;
+   - no player pauses for more than their allowance in a game;
    - judge calls stay consistent: unique, one open per player, deadline calls still overdue.
 
    Property checks look at the state between events and after commands. Between the events of one

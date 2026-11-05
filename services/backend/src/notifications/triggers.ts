@@ -44,6 +44,8 @@ export function gameNotifications(input: {
   actor?: string | undefined;
   /** Judges to tell about new judge calls. */
   judges?: readonly string[];
+  /** Admins to tell about escalations (GAME-19). */
+  admins?: readonly string[];
 }): Draft[] {
   const { before, after, events, actor } = input;
   const out: Draft[] = [];
@@ -82,6 +84,11 @@ export function gameNotifications(input: {
         if (ev.auto) break;
         const call: JudgeCall | undefined = before.judgeCalls?.find((c) => c.id === ev.id);
         add(occupant(call?.by), 'ruling', 'A judge ruled on your call');
+        if (ev.ruling.kind === 'escalate') {
+          for (const a of input.admins ?? []) {
+            add(a, 'escalation', 'A judge referred a game to the admins');
+          }
+        }
         break;
       }
     }
