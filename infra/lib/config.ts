@@ -44,7 +44,8 @@ export const beta: StageConfig = {
   githubOidcSubject: 'repo:VTES-JOL@200019109/torn-signpost@1438320358',
   monthlyBudgetUsd: 50,
   alertEmailParameter: '/torn-signpost/beta/alert-email',
-  flags: {},
+  // Email settings on the Account page (NOTIF-02), live with email itself.
+  flags: { email: true },
   // On for the internal alpha (M4).
   gamesEnabled: true,
   // On, so the scheduler and timers Lambda run on the beta while the UI is still dark.
