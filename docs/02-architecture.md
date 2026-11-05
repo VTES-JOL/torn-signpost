@@ -397,12 +397,14 @@ sequenceDiagram
 | Connection | `CONN#<connId>` | `META` | identity, subscribed games, TTL 3 h |
 | Subscription | `SUB#<game\|channel>` | `CONN#<connId>` | identity, TTL 3 h; one Query per fan-out, so no GSI is needed |
 | Judge queue | `JUDGEQ` | `<openedAt>#<gameId>#<callId>` | every open judge call, oldest first (GAME-18); put, updated and deleted as the game's calls change |
+| User connections | `USERCONN#<sub>` | `CONN#<connId>` | TTL 3 h; every socket a user has open, so notifications reach them on any page |
+| Notification | `USER#<sub>` | `NOTIF#<id>` | TTL 30 days; the ID starts with the time sent, so the sort key orders them (NOTIF-01) |
+| Judges | `JUDGES` | `USER#<sub>` | TTL 30 days, refreshed when a judge connects; who judge-call notifications go to |
 | Profile | `USER#<sub>` | `PROFILE` | display name, avatar, prefs. Unique handles via `HANDLE#<lower>` items (AUTH-05) |
 | Stats | `USER#<sub>` | `STATS#<season>` | aggregates (STATS-02). GSI3 `LB#<season>#<metric>` / zero-padded score (STATS-03) |
 | Deck | `DECK#<id>` | `META`, `V#<n>` | versions immutable (DECK-07). GSI1 `OWNER#<sub>` for my decks; GSI4 `PUBLIC#<format>` / `<updatedAt>` for public listings |
 | Tournament | `TOURN#<id>` | `META`, `REG#<sub>`, `ROUND#<n>`, `TABLE#<n>#<k>` | GSI1 `TOURN#<status>` |
 | Global chat | `CHAT#<channel>#<yyyymmdd>` | `<ts>#<id>` | partitioned by day; TTL for chat retention (NFR-11) |
-| Notification | `USER#<sub>` | `NOTIF#<ts>` | inbox (NOTIF-01), TTL 90 days |
 | Push device | `USER#<sub>` | `PUSH#<deviceId>` | APNs token / Web Push subscription |
 | Report / audit | `REPORT#<id>` / `AUDIT#<yyyymm>` | … | GSI1 `REPORT#open` (LOBBY-05) |
 
@@ -630,8 +632,17 @@ primitives, and corrections are new commands.
   call settles itself once that decision is no longer overdue. The game service mirrors open calls
   into the `JUDGEQ` partition, read by `GET /judge/calls` and the web `/judge` page (judges only,
   refreshed every 15 s).
-- Not yet: referendums and combat steps (M6); notifications (M5b); structural window elision
-  beyond auto-pass.
+- Notifications (NOTIF-01, TEMPO-01): after every command the game service compares the game
+  before and after (`notifications/triggers.ts`) and notifies: your turn, a new decision waiting
+  on you (block, play or pass, resolve, combat, a phase), a deadline reminder, being ousted or
+  disqualified, a game starting, a ruling on your call, and judge calls (to judges); chat
+  `@name` mentions too. Nobody is told about their own doing, players at the table aren't told
+  about their turn or decisions, and a wait that ends within the same command never notifies.
+  They are stored per user and pushed as `notification` messages to every socket the user has;
+  the web app keeps a socket of its own for them, so they arrive on any page (the bell, and the
+  count in the tab title). Unread counts cover the latest 50.
+- Not yet: referendums and combat steps (M6); email notifications (M5b.6); structural window
+  elision beyond auto-pass.
 
 ## 7. macOS client (`apps/apple`)
 

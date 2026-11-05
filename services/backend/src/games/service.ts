@@ -43,6 +43,7 @@ import type { Content } from '../content/catalog.ts';
 import type { GameMeta, GameStore } from '../db/store.ts';
 import type { DeckService } from '../decks/service.ts';
 import { ApiError } from '../errors.ts';
+import type { Notifier } from '../notifications/service.ts';
 import type { GameTimerCommand, Timers } from '../timers/timers.ts';
 
 /** Delivers a message, built per recipient, to everyone watching a game. */
@@ -63,6 +64,8 @@ export interface GameServiceDeps {
   presence?: boolean;
   /** Schedules the checks the engine asks for: deadlines, the time limit, the end of a pause. */
   timers?: Timers;
+  /** In-app notifications (NOTIF-01); none in some tests. */
+  notifier?: Notifier;
 }
 
 const SNAPSHOT_EVERY = 25;
@@ -200,6 +203,13 @@ export class GameService {
     if (appended !== 'ok') throw new ApiError(409, 'not_open', 'The game has already started');
     this.remember(after);
     await this.syncTimers(id, newGame(id), after);
+    await this.deps.notifier?.afterCommand({
+      game: meta,
+      before: newGame(id),
+      after,
+      events: result.events,
+      actor: user.sub,
+    });
     const game = summary(await this.meta(id));
     await this.publishSteps(id, steps);
     await this.deps.publisher.publish(id, () => ({ type: 'lobby', game }));
@@ -347,6 +357,12 @@ export class GameService {
         await this.syncTimers(id, state, after);
         await this.syncJudgeQueue(meta, state, after);
         await this.publishSteps(id, steps);
+        await this.deps.notifier?.afterCommand({
+          game: meta,
+          before: state,
+          after,
+          events: result.events,
+        });
         return;
       }
       this.cache.delete(id);
@@ -390,6 +406,13 @@ export class GameService {
     };
     await this.deps.store.putChat(id, message);
     await this.deps.publisher.publish(id, () => ({ type: 'chat', gameId: id, message }));
+    await this.deps.notifier?.chat({
+      game: meta,
+      text: req.text,
+      author: user.sub,
+      authorName: user.name,
+      people: meta.players,
+    });
     return message;
   }
 
@@ -475,6 +498,13 @@ export class GameService {
         await this.syncTimers(id, state, after);
         await this.syncJudgeQueue(meta, state, after);
         await this.publishSteps(id, steps);
+        await this.deps.notifier?.afterCommand({
+          game: meta,
+          before: state,
+          after,
+          events: result.events,
+          actor: user.sub,
+        });
         const viewer = viewerOf(identity, after);
         return {
           seq: after.seq,

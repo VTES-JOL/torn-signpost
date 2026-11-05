@@ -1311,3 +1311,66 @@ body.dragging {
 .judge-tools {
   margin-top: 0.3rem;
 }
+
+/* Notifications (NOTIF-01): the bell and its list. */
+.bell {
+  position: relative;
+}
+
+.bell-count {
+  margin-left: 0.25rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--surface);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.bell-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 20;
+  width: min(24rem, 90vw);
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.2);
+}
+
+.bell-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 0.5rem;
+}
+
+.bell-panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bell-panel li a {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.25rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.bell-panel li a:hover,
+.bell-panel li a:focus-visible {
+  background: var(--bg);
+}
+
+.bell-panel li.unread a {
+  border-left: 3px solid var(--accent);
+  font-weight: 600;
+}

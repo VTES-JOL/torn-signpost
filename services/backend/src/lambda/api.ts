@@ -11,6 +11,7 @@ const app = createApp({
   auth,
   decks: services.decks,
   profiles: services.profiles,
+  notifications: services.notifications,
   ...(gamesEnabled ? { games: services.games } : {}),
 });
 

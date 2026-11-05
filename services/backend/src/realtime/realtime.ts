@@ -7,6 +7,7 @@ import type { Identity } from '../auth.ts';
 import type { GameStore } from '../db/store.ts';
 import { ApiError } from '../errors.ts';
 import type { GameService, Publisher } from '../games/service.ts';
+import type { NotificationService } from '../notifications/service.ts';
 import { presenceKey, type Timers } from '../timers/timers.ts';
 import type { ConnectionGateway } from './gateway.ts';
 
@@ -43,6 +44,8 @@ export interface RealtimeOptions {
   presence?: boolean;
   /** Absence checks (TEMPO-06); without them players are never marked away. */
   timers?: Timers;
+  /** Remembers judges as they connect, so judge calls reach them. */
+  notifications?: Pick<NotificationService, 'seen'>;
   now?: () => Date;
 }
 
@@ -60,8 +63,9 @@ export class Realtime {
     this.now = options.now ?? (() => new Date());
   }
 
-  connect(connectionId: string, identity: Identity): Promise<void> {
-    return this.store.putConnection(connectionId, identity);
+  async connect(connectionId: string, identity: Identity): Promise<void> {
+    await this.store.putConnection(connectionId, identity);
+    await this.options.notifications?.seen(identity);
   }
 
   async disconnect(connectionId: string): Promise<void> {

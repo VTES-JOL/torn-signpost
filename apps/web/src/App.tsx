@@ -6,6 +6,7 @@ import { DarkPackFooter } from './components/DarkPackFooter.tsx';
 import { loadConfig } from './config.ts';
 import { CardsProvider, ConfigProvider, useConfig } from './content.tsx';
 import { GamePage } from './game/GamePage.tsx';
+import { NotificationBell, NotificationsProvider } from './notifications.tsx';
 import { AccountPage } from './pages/AccountPage.tsx';
 import { AuthCallback } from './pages/AuthCallback.tsx';
 import { CardsPage } from './pages/CardsPage.tsx';
@@ -28,31 +29,33 @@ export function App() {
     <ConfigProvider config={config}>
       <AuthProvider config={config}>
         <ProfileProvider>
-          <CardsProvider>
-            <BrowserRouter>
-              <Routes>
-                <Route element={<Layout />}>
-                  <Route index element={<Home />} />
-                  <Route path="cards" element={<CardsPage />} />
-                  <Route path="decks" element={<DecksPage />} />
-                  <Route path="decks/new" element={<DeckEditor />} />
-                  <Route path="decks/:id" element={<DeckEditor />} />
-                  <Route path="games" element={<GamesPage />} />
-                  <Route path="games/:id" element={<GamePage />} />
-                  {config.flags.replay && (
-                    <>
-                      <Route path="replay" element={<ReplayListPage />} />
-                      <Route path="replay/:name" element={<ReplayPage />} />
-                    </>
-                  )}
-                  {config.flags.judgeCalls && <Route path="judge" element={<JudgePage />} />}
-                  <Route path="account" element={<AccountPage />} />
-                  <Route path="auth/callback" element={<AuthCallback />} />
-                  <Route path="*" element={<p className="notice">Page not found.</p>} />
-                </Route>
-              </Routes>
-            </BrowserRouter>
-          </CardsProvider>
+          <NotificationsProvider>
+            <CardsProvider>
+              <BrowserRouter>
+                <Routes>
+                  <Route element={<Layout />}>
+                    <Route index element={<Home />} />
+                    <Route path="cards" element={<CardsPage />} />
+                    <Route path="decks" element={<DecksPage />} />
+                    <Route path="decks/new" element={<DeckEditor />} />
+                    <Route path="decks/:id" element={<DeckEditor />} />
+                    <Route path="games" element={<GamesPage />} />
+                    <Route path="games/:id" element={<GamePage />} />
+                    {config.flags.replay && (
+                      <>
+                        <Route path="replay" element={<ReplayListPage />} />
+                        <Route path="replay/:name" element={<ReplayPage />} />
+                      </>
+                    )}
+                    {config.flags.judgeCalls && <Route path="judge" element={<JudgePage />} />}
+                    <Route path="account" element={<AccountPage />} />
+                    <Route path="auth/callback" element={<AuthCallback />} />
+                    <Route path="*" element={<p className="notice">Page not found.</p>} />
+                  </Route>
+                </Routes>
+              </BrowserRouter>
+            </CardsProvider>
+          </NotificationsProvider>
         </ProfileProvider>
       </AuthProvider>
     </ConfigProvider>
@@ -116,6 +119,7 @@ function Header() {
       <div className="account">
         {auth.user ? (
           <>
+            <NotificationBell />
             <NavLink to="/account" className="muted" title="Account">
               {profile?.name ?? auth.user.name}
             </NavLink>

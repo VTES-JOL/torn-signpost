@@ -25,6 +25,7 @@ import {
 import type { PlayerCommand } from '@torn-signpost/protocol';
 import { useEffect } from 'react';
 import { useConfig } from '../content.tsx';
+import { setWaitingTitle } from '../title.ts';
 import { Clock, formatLeft, useNow } from './Clock.tsx';
 import type { TableClient } from './client.ts';
 
@@ -144,11 +145,8 @@ export function FlowBar(props: {
   // Tell the player in the tab title when the table is waiting on them (UX-09).
   useEffect(() => {
     if (!mine) return;
-    const title = document.title;
-    document.title = `● ${title}`;
-    return () => {
-      document.title = title;
-    };
+    setWaitingTitle(true);
+    return () => setWaitingTitle(false);
   }, [mine]);
 
   const start = (offer: Offer) => {

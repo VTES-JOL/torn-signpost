@@ -42,6 +42,7 @@ const app = createApp({
   games: services.games,
   decks: services.decks,
   profiles: services.profiles,
+  notifications: services.notifications,
 });
 
 const server = serve({ fetch: app.fetch, port: local.port }, ({ port }) => {

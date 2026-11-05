@@ -8,6 +8,7 @@ import {
   type HealthResponse,
   JoinGameRequest,
   LobbyStatus,
+  MarkReadRequest,
   SaveDeckRequest,
   UpdateProfileRequest,
 } from '@torn-signpost/protocol';
@@ -18,6 +19,7 @@ import { type Authenticator, bearer, GUEST, type Identity } from './auth.ts';
 import type { DeckService } from './decks/service.ts';
 import { ApiError } from './errors.ts';
 import type { GameService } from './games/service.ts';
+import type { NotificationService } from './notifications/service.ts';
 import type { ProfileService } from './users/service.ts';
 
 export interface AppConfig {
@@ -29,6 +31,7 @@ export interface AppConfig {
   games?: GameService;
   decks?: DeckService;
   profiles?: ProfileService;
+  notifications?: NotificationService;
 }
 
 type Env = { Variables: { identity: Identity } };
@@ -170,6 +173,20 @@ export function createApp(config: AppConfig): Hono<Env> {
     if (c.var.identity.kind !== 'user') throw new ApiError(401, 'sign_in', 'Sign in first');
     return c.json(await profiles().choose(c.var.identity, await body(c.req, UpdateProfileRequest)));
   });
+
+  // Notifications (NOTIF-01): your own, newest first.
+  const notifications = () => {
+    if (!config.notifications)
+      throw new ApiError(503, 'notifications_disabled', 'Notifications are not available');
+    return config.notifications;
+  };
+  app.get('/me/notifications', async (c) => {
+    const before = z.string().min(1).max(64).optional().parse(c.req.query('before'));
+    return c.json(await notifications().list(c.var.identity, before));
+  });
+  app.post('/me/notifications/read', async (c) =>
+    c.json(await notifications().markRead(c.var.identity, await body(c.req, MarkReadRequest))),
+  );
   app.put('/users/:name/name', async (c) => {
     if (c.var.identity.kind !== 'user') throw new ApiError(401, 'sign_in', 'Sign in first');
     const req = await body(c.req, UpdateProfileRequest);

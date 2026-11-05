@@ -10,6 +10,7 @@
  * | Membership | `USER#<sub>` | `GAME#<id>` |
  * | Connection | `CONN#<connId>` | `META` (TTL 3 h) |
  * | Subscription | `SUB#<gameId>` | `CONN#<connId>` (TTL 3 h) |
+ * | A user's connections | `USERCONN#<sub>` | `CONN#<connId>` (TTL 3 h; for notifications) |
  * | Judge queue | `JUDGEQ` | `<openedAt>#<gameId>#<callId>` (open judge calls, oldest first) |
  */
 import { gunzipSync, gzipSync } from 'node:zlib';
@@ -377,6 +378,28 @@ export class GameStore {
         },
       }),
     );
+    if (identity.kind === 'user') {
+      await this.db.send(
+        new PutCommand({
+          TableName: this.table,
+          Item: {
+            PK: `USERCONN#${identity.sub}`,
+            SK: `CONN#${connectionId}`,
+            connectionId,
+            ttl: epoch() + CONNECTION_TTL,
+          },
+        }),
+      );
+    }
+  }
+
+  /** Every connection a user has open, in any game or none (notifications, NOTIF-01). */
+  async userConnections(sub: string): Promise<string[]> {
+    const items = await this.query({
+      KeyConditionExpression: 'PK = :pk',
+      ExpressionAttributeValues: { ':pk': `USERCONN#${sub}` },
+    });
+    return items.map((i) => i.connectionId as string);
   }
 
   async getConnection(
@@ -432,6 +455,14 @@ export class GameStore {
   async deleteConnection(connectionId: string): Promise<void> {
     const conn = await this.getConnection(connectionId);
     for (const gameId of new Set(conn?.games ?? [])) await this.unsubscribe(connectionId, gameId);
+    if (conn?.identity.kind === 'user') {
+      await this.db.send(
+        new DeleteCommand({
+          TableName: this.table,
+          Key: { PK: `USERCONN#${conn.identity.sub}`, SK: `CONN#${connectionId}` },
+        }),
+      );
+    }
     await this.db.send(
       new DeleteCommand({ TableName: this.table, Key: { PK: `CONN#${connectionId}`, SK: 'META' } }),
     );

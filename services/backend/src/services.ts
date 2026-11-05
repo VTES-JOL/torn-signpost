@@ -2,11 +2,13 @@ import { randomBytes } from 'node:crypto';
 import { type Content, cdnContent } from './content/catalog.ts';
 import { documentClient } from './db/client.ts';
 import { DeckStore } from './db/decks.ts';
+import { NotificationStore } from './db/notifications.ts';
 import { ProfileStore } from './db/profiles.ts';
 import { GameStore } from './db/store.ts';
 import { DeckService } from './decks/service.ts';
 import { cryptoRng } from './games/rng.ts';
 import { GameService } from './games/service.ts';
+import { NotificationService } from './notifications/service.ts';
 import type { ConnectionGateway } from './realtime/gateway.ts';
 import { Fanout, Realtime } from './realtime/realtime.ts';
 import type { TimerHandler, TimerPayload, Timers } from './timers/timers.ts';
@@ -17,6 +19,7 @@ export interface Services {
   games: GameService;
   decks: DeckService;
   profiles: ProfileService;
+  notifications: NotificationService;
   realtime: Realtime;
 }
 
@@ -46,6 +49,12 @@ export function createServices(opts: {
   const content = opts.content ?? cdnContent(opts.contentUrl);
   const decks = new DeckService({ store: new DeckStore(db, opts.tableName), content, newId });
   const timers = opts.timers?.(() => (payload) => fireTimer(services, payload));
+  const notifications = new NotificationService({
+    store: new NotificationStore(db, opts.tableName),
+    games: store,
+    gateway: opts.gateway,
+    newId,
+  });
   const games = new GameService({
     store,
     content,
@@ -54,14 +63,16 @@ export function createServices(opts: {
     publisher: new Fanout(store, opts.gateway),
     newId,
     presence: !!opts.presence,
+    notifier: notifications,
     ...(timers ? { timers } : {}),
   });
   const profiles = new ProfileService({ store: new ProfileStore(db, opts.tableName) });
   const realtime = new Realtime(store, opts.gateway, games, {
+    notifications,
     presence: !!opts.presence,
     ...(timers ? { timers } : {}),
   });
-  const services: Services = { store, games, decks, profiles, realtime };
+  const services: Services = { store, games, decks, profiles, notifications, realtime };
   return services;
 }
 

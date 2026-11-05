@@ -152,7 +152,15 @@ calls live in a queue that judges can see and work through together.
 - **Tests**: scenarios for each reason, claiming, clock pausing, each ruling, disqualification
   (no VP, no pool, cards removed, seating closes up) and permissions; service tests for the queue.
 
-### M5b.5 In-app notifications (NOTIF-01, TEMPO-01)
+### M5b.5 In-app notifications (NOTIF-01, TEMPO-01): done
+
+Built as planned, with: the unread count is counted from the latest 50 notifications rather than
+kept as a counter on the profile (always right, and shown as "50+" beyond that); judge-call
+notifications go to judges seen in the last 30 days (`JUDGES` items, refreshed as they connect),
+since judges are a Cognito group the backend can't list; players at the table get no turn or
+decision notifications (they can see them); and the web app opens a socket of its own for
+notifications. Behind the `notifications` flag in the web app; the backend always records them.
+
 
 - **Store**: `USER#<sub> / NOTIF#<ts>#<id>` (TTL 30 days), with an unread counter on the profile;
   `USERCONN#<sub> / CONN#<id>` so a user's open connections can be reached from any game.

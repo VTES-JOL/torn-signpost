@@ -15,6 +15,7 @@ import {
 } from '@torn-signpost/engine';
 import { z } from 'zod';
 import { DeckCards } from './decks.ts';
+import type { Notification } from './notifications.ts';
 
 const Id = z.string().min(1).max(64);
 const ZoneId = z.templateLiteral([z.string().min(1).max(64), ':', z.enum(ZONE_NAMES)]);
@@ -256,5 +257,7 @@ export type ServerMessage =
   | { type: 'chat'; gameId: string; message: ChatMessage }
   /** Who else is watching (TEMPO-06): signed-in users who aren't seated. Seated presence is in the game. */
   | { type: 'audience'; gameId: string; spectators: number }
+  /** A new notification for this user (NOTIF-01), on every connection they have. */
+  | { type: 'notification'; notification: Notification }
   | { type: 'pong' }
   | { type: 'error'; message: string };
