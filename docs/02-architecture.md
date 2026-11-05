@@ -196,8 +196,10 @@ Every input method produces the same `Command` objects (D10):
 | **Primitives** (always available; GAME-10 permissions) | `MoveCard`, `SetLocked`, `AdjustCounter`, `TransferBlood`, `Draw`, `Shuffle`, `Flip`, `Attach`, `AdjustPool`, `Reveal`, `SetTurnDirection` | Drag-and-drop, context menu, console |
 | **Structured flow** | `AdvancePhase`, `DeclareAction{kind: bleed\|hunt\|political\|equip\|…}`, `Block`, `DeclineBlock`, `PlayCard`, `Pass`, `Wait`, `ChooseRange`, `Strike`, `CastVotes`, `Confirm`/`Cancel` | Action toolbar and prompts |
 | **Judge** | `CallJudge` (any seated player), `ResolveJudgeCall`, `JudgeReveal`, `JudgeCorrect` | Players, judges |
-| **Admin** | `ReplacePlayer` (non-tournament games only, §4.1.2) | Admins |
-| **System** | `DeadlineExpired`, `PlayerPresent`/`PlayerAbsent`, `Oust`, `EndGame` | Scheduler, WebSocket presence, the engine itself |
+| **Admin** | `ReplacePlayer` (non-tournament games only, §4.1.2), `EndGame` | Admins |
+| **System** | `DeadlineExpired`, `PlayerPresent`/`PlayerAbsent`, `Oust`, `GameEnded` | Scheduler, WebSocket presence, the engine itself |
+
+What each role (player, spectator, judge, admin, system) may do is listed in `docs/roles.md`.
 
 **Confirmation instead of undo (GAME-11).** A command that reveals information or affects another
 player is first *staged* locally (the client previews it with the engine) and only sent after the
@@ -575,8 +577,13 @@ primitives, and corrections are new commands.
   passes so far. An action it acts in, is the target of or blocks in ends (`ActionEnded{ousted}`),
   and if it was its turn, the turn passes on from its seat. It can't act, and nobody can act on it,
   except that cards it owns can still go to its ash heap. The table hides ousted seats, and an
-  ousted player watches like a spectator. The last survivor's VP and the end of the game come with
-  M6.
+  ousted player watches like a spectator.
+- **Game end** (GAME-08/09, `docs/flow.md`): a `withGameEnd` post-step after the ousts ends the
+  game with one Methuselah left (+1 VP) or none, and at the time limit once the action or phase
+  under way then is over (½ VP each); admins end games with `EndGame`, and casual players by
+  agreement. `GameEnded` carries the awards, the winner and any game win; `status: 'finished'`
+  then refuses every command, and the lobby lists the game as finished. The turn never passes to
+  a seat that is out.
 - **Control**: a card is controlled by the seat whose zone it's in, except a master card put on
   another Methuselah's minion, which stays under the control of whoever played it
   (`CardMoved.controller`). Equipment and other minion cards follow their host's controller. A

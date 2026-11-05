@@ -349,6 +349,16 @@ function check(
           .join(' ') || 'none',
         rest.join(' '),
       );
+    // The game's end (GAME-08/09): `status active|finished`, `ended <reason>`, `winner A|none`,
+    // `gamewin A|none`.
+    case 'status':
+      return same('status', state.status, rest[0] ?? '');
+    case 'ended':
+      return same('end', state.result?.reason ?? 'no', rest[0] ?? '');
+    case 'winner':
+      return same('winner', state.result?.winner ?? 'none', rest[0] ?? '');
+    case 'gamewin':
+      return same('game win', state.result?.gameWin ?? 'none', rest[0] ?? '');
     case 'disqualified':
       return same(`${rest[0]} disqualified`, !!seat(rest[0])?.disqualified, rest[1] ?? '');
     case 'waiting':

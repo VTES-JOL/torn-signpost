@@ -82,6 +82,17 @@ describe('parseConsole', () => {
     if (!r.ok) expect(r.error).toMatch(/matches several cards/);
   });
 
+  it('ends games: judges with a note, players by agreement', () => {
+    expect(parse('endgame The venue is closing')).toMatchObject({
+      ok: true,
+      command: { type: 'EndGame', note: 'The venue is closing' },
+    });
+    expect(parse('endgame')).toMatchObject({ ok: true, command: { type: 'EndGame' } });
+    expect(parse('propose')).toMatchObject({ ok: true, command: { type: 'ProposeEnd' } });
+    expect(parse('agree')).toMatchObject({ ok: true, command: { type: 'AgreeEnd' } });
+    expect(parse('decline')).toMatchObject({ ok: true, command: { type: 'DeclineEnd' } });
+  });
+
   it('cannot name cards the actor cannot see', () => {
     expect(parse('lock "Iron Ward"', asB)).toMatchObject({ ok: false });
     expect(parse('reveal "Iron Ward"')).toMatchObject({ ok: true, command: { type: 'Reveal' } });

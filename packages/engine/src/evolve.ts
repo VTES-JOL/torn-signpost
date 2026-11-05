@@ -372,12 +372,40 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
       d.waiting = { ...w, [field]: [...(w[field] ?? []), ev.seat] };
       break;
     }
+    case 'GameEnded':
+      for (const a of ev.awards) patchSeat(d, a.seat, (s) => ({ vp: s.vp + a.vp }));
+      d.status = 'finished';
+      d.result = {
+        reason: ev.reason,
+        at: ev.at,
+        ...(ev.winner !== undefined ? { winner: ev.winner } : {}),
+        ...(ev.gameWin !== undefined ? { gameWin: ev.gameWin } : {}),
+      };
+      delete d.window;
+      delete d.action;
+      delete d.pause;
+      delete d.endProposal;
+      delete d.judgeCalls;
+      delete d.waiting;
+      break;
+    case 'EndProposed':
+      d.endProposal = { by: ev.seat, agreed: [ev.seat] };
+      break;
+    case 'EndAgreed':
+      if (d.endProposal)
+        d.endProposal = { ...d.endProposal, agreed: [...d.endProposal.agreed, ev.seat] };
+      break;
+    case 'EndDeclined':
+      delete d.endProposal;
+      break;
     case 'TimeLimitReached':
-      if (d.clock) d.clock = { ...d.clock, limitReachedAt: ev.at };
+      if (d.clock) {
+        d.clock = { ...d.clock, limitReachedAt: ev.at, endsWith: d.action ? 'action' : 'phase' };
+      }
       break;
     case 'TimeExtended': {
       // Time added after the limit was reached reopens it.
-      const { limitReachedAt: _, ...c } = d.clock ?? { elapsedMs: 0 };
+      const { limitReachedAt: _, endsWith: __, ...c } = d.clock ?? { elapsedMs: 0 };
       d.clock = { ...c, extendedMs: (c.extendedMs ?? 0) + ev.ms };
       break;
     }

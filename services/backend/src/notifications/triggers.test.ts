@@ -124,6 +124,21 @@ describe('game notifications', () => {
   });
 });
 
+describe('the end of a game', () => {
+  it('tells every player it is over, and the winner that they won', () => {
+    let s = started();
+    s = apply(s, { type: 'AdjustVp', seat: '2', delta: 2 }, { kind: 'judge', user: 'jo' }).after;
+    const end = apply(s, { type: 'EndGame' }, { kind: 'admin', user: 'ada' });
+    const drafts = gameNotifications({ before: s, ...end, actor: 'ada' });
+    const ended = drafts.filter((d) => d.kind === 'ended');
+    expect(ended).toHaveLength(3);
+    expect(ended.find((d) => d.user === 'bob')?.text).toBe(
+      'The game is over: you won (a game win)',
+    );
+    expect(ended.find((d) => d.user === 'alice')?.text).toBe('The game is over');
+  });
+});
+
 describe('mentions', () => {
   const people = [
     { user: 'u1', name: 'Alice' },

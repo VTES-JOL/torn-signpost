@@ -18,7 +18,7 @@ const LABELS: Record<EmailCategory, string> = {
   mention: 'Mentions in chat',
   judge: 'Judge calls and rulings',
   deadline: 'Deadline reminders',
-  game: 'Games starting, and being ousted',
+  game: 'Games starting and ending, and being ousted',
 };
 
 const MODES: [EmailMode, string][] = [

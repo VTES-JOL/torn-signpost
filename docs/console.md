@@ -93,6 +93,8 @@ A> draw crypt 4                # a command by seat A's player; also judge> and a
 present B no                   # the server records B's player as away (yes: at the table)
 wait 13h                       # time passes; due checks (deadlines, time limit, pause end) run
 A> pause 3                     # pause a timed game for 1–5 minutes; resume lifts it early
+admin> endgame "Venue closing" # an admin ends the game, scored as a timeout (½ VP to each survivor)
+A> propose                     # casual games: propose ending early; `agree` / `decline` answer it
 B> call rules Does it stack?   # call a judge: slow-play|rules|dispute|other [seat] [note]
 judge> claim                   # judges take the oldest call (or claim c42); judge2> is another judge
 judge> rule passfor B          # answered|escalate|extend B 12|passfor B|time 10|disqualify B [note]
@@ -107,6 +109,10 @@ expect tempo live|async        # live while every Methuselah still in the game i
 expect waiting B:block         # who the game waits on and why (seat:kind, space-separated), or none
 expect elapsed 30m             # table clock, whole minutes played while live
 expect paused yes|no
+expect status active|finished  # the game's status
+expect ended <reason>|no       # last-standing, no-survivors, time-limit, judge or agreement
+expect winner A|none           # the most VP alone, ousted or not
+expect gamewin A|none          # a winner with at least 2 VP
 expect timeup yes|no           # the time limit was reached
 expect deadline A pending      # an away player's deadline: none, pending, reminded or expired
 expect calls rules:B@judge     # open judge calls: reason[:about][@claimed by], or none

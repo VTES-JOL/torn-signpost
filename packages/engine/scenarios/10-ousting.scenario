@@ -100,7 +100,14 @@ A> pool -38
 expect ousted A true
 expect action none
 expect turn 3 D minion
-expect vp D 1
+# Dave is the last Methuselah standing: a VP for that, and the game is over. Alice, ousted, also
+# has 2 VP: a tie, so nobody wins (zero-vtes rules-qa 6.9).
+expect vp D 2
+expect status finished
+expect ended last-standing
+expect winner none
+expect gamewin none
+log public Game over. D is the last Methuselah standing (+1 VP). Nobody wins
 expect pool D 32
 expect count A:ready 0
 expect count A:removed 2

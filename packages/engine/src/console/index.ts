@@ -87,6 +87,10 @@ export const CONSOLE_COMMANDS: Record<string, Syntax> = {
   hold: { args: [], usage: 'hold  (ask the open window to wait for you)' },
   pause: { args: ['count'], usage: 'pause [minutes]  (1–5, games with a table timer)' },
   resume: { args: [], usage: 'resume  (lift your pause early)' },
+  endgame: { args: [], usage: 'endgame ["note"]  (admins: end the game, scored as a timeout)' },
+  propose: { args: [], usage: 'propose  (casual games: propose ending the game early)' },
+  agree: { args: [], usage: 'agree  (agree to end the game)' },
+  decline: { args: [], usage: 'decline  (play on instead)' },
   play: {
     args: ['card', 'options'],
     usage: 'play <card> [ready] [on <host>] [noreplace]',
@@ -328,6 +332,19 @@ function parse(tokens: string[], ctx: ConsoleContext): Command {
     case 'resume':
       extra(0);
       return { type: 'Resume' };
+    case 'endgame': {
+      const note = args.join(' ').trim();
+      return note ? { type: 'EndGame', note } : { type: 'EndGame' };
+    }
+    case 'propose':
+      extra(0);
+      return { type: 'ProposeEnd' };
+    case 'agree':
+      extra(0);
+      return { type: 'AgreeEnd' };
+    case 'decline':
+      extra(0);
+      return { type: 'DeclineEnd' };
     case 'call': {
       const [reason = '', ...rest] = args;
       if (!(PLAYER_CALL_REASONS as readonly string[]).includes(reason)) usage();

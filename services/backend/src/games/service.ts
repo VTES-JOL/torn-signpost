@@ -406,7 +406,10 @@ export class GameService {
         events: result.events,
         commandId: `system-${this.deps.newId()}`,
         user: 'system',
-        ...(crossesSnapshot(state, after) ? { snapshot: after } : {}),
+        ...(crossesSnapshot(state, after) || ended(state, after) ? { snapshot: after } : {}),
+        ...(ended(state, after)
+          ? { meta: { status: 'finished' }, listed: meta.visibility === 'public' }
+          : {}),
       });
       if (appended === 'ok') {
         this.remember(after);
@@ -548,7 +551,11 @@ export class GameService {
         events: result.events,
         commandId: req.commandId,
         user: user.sub,
-        ...(crosses ? { snapshot: after } : {}),
+        ...(crosses || ended(state, after) ? { snapshot: after } : {}),
+        // A finished game moves to the lobby's finished list (GAME-09).
+        ...(ended(state, after)
+          ? { meta: { status: 'finished' }, listed: meta.visibility === 'public' }
+          : {}),
       });
       if (appended === 'ok') {
         this.remember(after);
@@ -689,6 +696,10 @@ export function viewerOf(identity: Identity, state: GameState): Viewer {
 }
 
 /** Admins replace players; seated users act as their seat; judges act as judges. */
+/** The command ended the game (GAME-09). */
+const ended = (before: GameState, after: GameState) =>
+  before.status === 'active' && after.status === 'finished';
+
 function requireAdmin(identity: Identity): User {
   const user = requireUser(identity);
   if (!user.groups.includes('admin')) throw new ApiError(403, 'forbidden', 'Admins only');
@@ -696,9 +707,13 @@ function requireAdmin(identity: Identity): User {
 }
 
 function actorFor(user: User, state: GameState, type: CommandRequest['command']['type']): Actor {
-  if (type === 'ReplacePlayer') {
+  if (type === 'ReplacePlayer' || type === 'EndGame') {
     if (!user.groups.includes('admin'))
-      throw new ApiError(403, 'forbidden', 'Only admins can replace players');
+      throw new ApiError(
+        403,
+        'forbidden',
+        type === 'EndGame' ? 'Only admins can end games' : 'Only admins can replace players',
+      );
     return { kind: 'admin', user: user.sub };
   }
   if (state.seats.some((s) => s.occupant === user.sub)) return { kind: 'player', user: user.sub };

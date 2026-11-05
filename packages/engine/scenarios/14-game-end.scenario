@@ -1,0 +1,40 @@
+# Game end at the time limit (GAME-09, docs/m6-plan.md M6.1). Once time is up, the game ends with
+# the action under way then, or at the end of the phase if none was (Tournament Rules 3.1.1), and
+# everyone still in it gains half a VP (3.7.2). The winner has the most VP alone, ousted or not; a
+# game win also needs 2 VP (zero-vtes rules-qa 6.9).
+seed 14
+timelimit 10m
+seat A alice
+seat B bob
+seat C carol
+crypt A "Vera Nightfall" *8
+library A "Iron Ward" *20
+crypt B "Tomas Grey" *8
+library B "Signal Fire" *20
+crypt C "Ilse Várga" *8
+library C "Quick Feed" *20
+start
+present A yes
+present B yes
+present C yes
+
+# Alice scored a VP earlier (a judge's correction stands in for an oust here).
+judge> vp +1 A
+expect vp A 1
+
+# Time runs out in Alice's unlock phase, with no action under way: the phase is the last.
+wait 10m
+expect timeup yes
+expect status active
+A> next
+expect status finished
+expect ended time-limit
+expect vp A 1.5
+expect vp B 0.5
+expect vp C 0.5
+# Alice has the most VP, but under 2: she wins, without a game win.
+expect winner A
+expect gamewin none
+log public Game over. Time is up: everyone still in the game gains ½ VP. A wins
+# A finished game takes no more commands.
+reject:wrong-status B> next

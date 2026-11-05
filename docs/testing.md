@@ -27,6 +27,8 @@ deploys only when they pass.
    - a timer check only reminds, flags and calls a judge; it never acts for a player (DQ6);
    - a timer that fires early does nothing;
    - no player pauses for more than their allowance in a game;
+   - the turn of an active game always belongs to someone still in it;
+   - a game ends only for a reason the rules give, and never awards more VP than there are seats;
    - judge calls stay consistent: unique, one open per player, deadline calls still overdue.
 
    Property checks look at the state between events and after commands. Between the events of one

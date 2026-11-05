@@ -152,7 +152,13 @@ export type Command =
   /** A judge takes a call. */
   | { type: 'ClaimJudgeCall'; id: string }
   /** A judge rules on a call (taking it first if nobody has). */
-  | { type: 'ResolveJudgeCall'; id: string; ruling: Ruling; note?: string };
+  | { type: 'ResolveJudgeCall'; id: string; ruling: Ruling; note?: string }
+  /** An admin ends the game, scored as a timeout (docs/m6-plan.md, M6.1). */
+  | { type: 'EndGame'; note?: string }
+  /** Casual games: propose ending early; it ends once everyone still in it agrees (Q3). */
+  | { type: 'ProposeEnd' }
+  | { type: 'AgreeEnd' }
+  | { type: 'DeclineEnd' };
 
 export type CommandType = Command['type'];
 

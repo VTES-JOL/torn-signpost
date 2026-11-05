@@ -120,6 +120,10 @@ export const PlayerCommand = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('ReplacePlayer'), seat: Id, user: Id }),
   z.strictObject({ type: z.literal('Pause'), minutes: z.number().int().min(1).max(5) }),
   z.strictObject({ type: z.literal('Resume') }),
+  z.strictObject({ type: z.literal('EndGame'), note: opt(Note) }),
+  z.strictObject({ type: z.literal('ProposeEnd') }),
+  z.strictObject({ type: z.literal('AgreeEnd') }),
+  z.strictObject({ type: z.literal('DeclineEnd') }),
   z.strictObject({
     type: z.literal('CallJudge'),
     reason: z.enum(PLAYER_CALL_REASONS),

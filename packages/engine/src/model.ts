@@ -191,6 +191,28 @@ export interface JudgeCall {
 }
 
 /** What a judge decided (GAME-18). Every ruling is logged, by the judge. */
+/** Why a game ended (GAME-08/09). */
+export type GameEndReason =
+  /** One Methuselah left in the game: they gain a VP for it. */
+  | 'last-standing'
+  /** Everyone left was ousted at once (zero-vtes rules-qa 6.9). */
+  | 'no-survivors'
+  /** The time limit: half a VP to each Methuselah still in the game. */
+  | 'time-limit'
+  /** An admin ended it, scored as a timeout. */
+  | 'admin'
+  /** The players of a casual game agreed to end it, scored as a timeout. */
+  | 'agreement';
+
+export interface GameResult {
+  reason: GameEndReason;
+  /** The most VP, alone; ties have no winner (rulebook), ousted or not. */
+  winner?: SeatId;
+  /** A game win: the winner with at least 2 VP (VEKN Tournament Rules). */
+  gameWin?: SeatId;
+  at: Instant;
+}
+
 export type Ruling =
   /** Answered at the table (a rules question, a dispute settled with the usual tools). */
   | { kind: 'answered' }
@@ -283,10 +305,19 @@ export interface GameState {
     elapsedMs: number;
     runningSince?: Instant;
     limitReachedAt?: Instant;
+    /**
+     * Once time is up, the game ends with the action that was under way then, or at the end of the
+     * phase if none was (Tournament Rules 3.1.1, docs/m6-plan.md Q2).
+     */
+    endsWith?: 'action' | 'phase';
     extendedMs?: number;
   };
   /** Judge calls waiting for a judge's ruling (GAME-18); resolved calls are only in the log. */
   judgeCalls?: JudgeCall[];
+  /** A casual game's players agreeing to end it early (docs/m6-plan.md Q3). */
+  endProposal?: { by: SeatId; agreed: SeatId[] };
+  /** How a finished game ended (GAME-09). */
+  result?: GameResult;
   /** A pause (TEMPO-05): nothing happens at the table until it ends or is lifted. */
   pause?: { seat?: SeatId; since: Instant; until: Instant };
   settings: GameSettings;

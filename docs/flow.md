@@ -338,6 +338,22 @@ nobody had). Rulings, all logged:
 A `deadline` call settles itself when that decision stops being overdue: the player came back, or
 the game moved on.
 
+## The end of the game
+
+After every command the engine checks whether the game is over (`GameEnded`, GAME-08/09):
+
+| Ending | When | Score |
+|---|---|---|
+| Last standing | One Methuselah left | They gain 1 VP |
+| Nobody left | Everyone left ousted at once (zero-vtes rules-qa 6.9) | Each still scores the VP for an ousted prey |
+| Time limit | Time was up, and the action under way then has ended, or (with none) the phase has (Tournament Rules 3.1.1) | ½ VP to everyone still in the game (3.7.2) |
+| An admin | `EndGame` (admins only), with an optional note | As at the time limit |
+| Agreement | Casual games: `ProposeEnd`, then `AgreeEnd` from everyone still in it; `DeclineEnd` drops the proposal | As at the time limit |
+
+The **winner** has the most VP alone, ousted or not; a tie has no winner. A **game win** also needs
+at least 2 VP. A finished game takes no more commands; its timers, deadlines and judge calls stop,
+and the lobby lists it as finished.
+
 ## How windows close
 
 After each command the engine runs the open window forward: it records automatic passes for the

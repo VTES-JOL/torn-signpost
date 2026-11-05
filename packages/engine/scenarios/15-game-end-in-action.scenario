@@ -1,0 +1,34 @@
+# Time runs out during an action (GAME-09, docs/m6-plan.md M6.1): play goes on until that action
+# is over, and the game ends with it (Tournament Rules 3.1.1).
+seed 15
+timelimit 10m
+seat A alice
+seat B bob
+seat C carol
+crypt A "Vera Nightfall" *8
+library A "Iron Ward" *20
+crypt B "Tomas Grey" *8
+library B "Signal Fire" *20
+crypt C "Ilse Várga" *8
+library C "Quick Feed" *20
+start
+present A yes
+present B yes
+present C yes
+A> move A:uncontrolled:1 ready
+A> next
+A> next
+expect turn 1 A minion
+A> bleed A:ready:1 B
+expect impulse B
+
+# Time is up while Bob decides whether to block.
+wait 10m
+expect timeup yes
+B> pass
+expect status active
+A> resolve failure
+expect status finished
+expect ended time-limit
+expect vp A 0.5
+expect winner none

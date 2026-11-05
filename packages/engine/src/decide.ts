@@ -25,6 +25,7 @@ import type {
   Actor,
   ActorRef,
   CardInstance,
+  GameEndReason,
   GameSettings,
   GameState,
   InstanceId,
@@ -87,7 +88,8 @@ function reject(code: RejectionCode, message: string): never {
  * Validate a command against the current state and turn it into events (architecture §4.2).
  * Permissions follow GAME-10: players may change anything on their own zones and anything public;
  * other players' hidden zones are off limits. Judges may use every primitive (audited through the
- * event's `by`), admins may only replace players, and the system starts games.
+ * event's `by`), admins may only replace players and end games, and the system starts games.
+ * docs/roles.md lists every role's powers.
  */
 export function decide(state: GameState, cmd: Command, ctx: DecideContext): DecideResult {
   try {
@@ -96,9 +98,14 @@ export function decide(state: GameState, cmd: Command, ctx: DecideContext): Deci
       cmd.type === 'ResolveJudgeCall' && cmd.ruling.kind === 'disqualify'
         ? cmd.ruling.seat
         : undefined;
-    const bodies = settleCalls(
+    const bodies = withGameEnd(
       state,
-      withOusts(state, bodiesFor(state, cmd, ctx, by), ctx.now, by, dq),
+      settleCalls(
+        state,
+        withOusts(state, bodiesFor(state, cmd, ctx, by), ctx.now, by, dq),
+        ctx.now,
+        by,
+      ),
       ctx.now,
       by,
     );
@@ -130,6 +137,10 @@ const ALLOWED_WHILE_PAUSED: ReadonlySet<Command['type']> = new Set([
   'CallJudge',
   'ClaimJudgeCall',
   'ResolveJudgeCall',
+  'EndGame',
+  'ProposeEnd',
+  'AgreeEnd',
+  'DeclineEnd',
 ]);
 
 const MAX_CALL_NOTE = 500;
@@ -143,6 +154,12 @@ function actorRef(state: GameState, cmd: Command, actor: Actor): ActorRef {
   if (state.status !== 'active') reject('wrong-status', 'The game is not in progress');
   if (cmd.type === 'ReplacePlayer') {
     if (actor.kind !== 'admin') reject('forbidden', 'Only admins can replace players');
+    return { kind: 'admin', user: actor.user };
+  }
+  if (cmd.type === 'EndGame') {
+    if (actor.kind !== 'admin') {
+      reject('forbidden', 'Only admins end games; players of a casual game can agree to end it');
+    }
     return { kind: 'admin', user: actor.user };
   }
   if (SYSTEM_COMMANDS.has(cmd.type)) {
@@ -891,6 +908,30 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
       if (c.claimedBy !== undefined) reject('forbidden', 'Another judge has this call');
       return [{ type: 'JudgeCallClaimed', id: c.id, judge: by.user }];
     }
+    case 'EndGame': {
+      const note = cmd.note?.trim();
+      if (note && note.length > MAX_CALL_NOTE) reject('invalid', 'The note is too long');
+      return [gameEnded(state, 'admin', note || undefined)];
+    }
+    case 'ProposeEnd': {
+      const s = mySeat ?? reject('not-seated', 'Only players can propose ending the game');
+      if (state.settings.tournament) {
+        reject('forbidden', 'Tournament games end at the time limit, or when an admin ends them');
+      }
+      if (state.endProposal) reject('no-change', 'Ending the game has already been proposed');
+      return [{ type: 'EndProposed', seat: s }];
+    }
+    case 'AgreeEnd': {
+      const s = mySeat ?? reject('not-seated', 'Only players can agree to end the game');
+      const p = state.endProposal ?? reject('not-now', 'Nobody has proposed ending the game');
+      if (p.agreed.includes(s)) reject('no-change', 'You have already agreed');
+      return [{ type: 'EndAgreed', seat: s }];
+    }
+    case 'DeclineEnd': {
+      const s = mySeat ?? reject('not-seated', 'Only players can decline');
+      if (!state.endProposal) reject('not-now', 'Nobody has proposed ending the game');
+      return [{ type: 'EndDeclined', seat: s }];
+    }
     case 'ResolveJudgeCall': {
       const c = openCall(cmd.id);
       if (by.kind !== 'judge') return reject('forbidden', 'Only judges');
@@ -1009,6 +1050,60 @@ function settleWindow(
   return out;
 }
 
+/**
+ * End the game when its time has come (GAME-08/09, docs/m6-plan.md M6.1): one Methuselah left or
+ * none, the end of the action or phase under way when time ran out (Q2), or everyone still in a
+ * casual game agreeing (Q3). Admins end games with `EndGame`.
+ */
+function withGameEnd(
+  state: GameState,
+  bodies: EventBody[],
+  now: string,
+  by: ActorRef,
+): EventBody[] {
+  if (state.status !== 'active' || bodies.some((b) => b.type === 'GameEnded')) return bodies;
+  const after = applyBodies(state, bodies, now, by);
+  if (after.status !== 'active') return bodies;
+  const live = after.seats.filter((s) => !s.ousted && !s.withdrawn);
+  if (live.length <= 1) {
+    return [...bodies, gameEnded(after, live.length ? 'last-standing' : 'no-survivors')];
+  }
+  // Only once time was up before this command: the check that finds it up ends nothing.
+  const ends = after.clock?.endsWith === 'action' ? 'ActionEnded' : 'PhaseAdvanced';
+  if (state.clock?.limitReachedAt && after.clock?.limitReachedAt) {
+    if (bodies.some((b) => b.type === ends)) return [...bodies, gameEnded(after, 'time-limit')];
+  }
+  const agreed = after.endProposal?.agreed;
+  if (agreed && live.every((s) => agreed.includes(s.id))) {
+    return [...bodies, gameEnded(after, 'agreement')];
+  }
+  return bodies;
+}
+
+/**
+ * The end of the game and its score (zero-vtes rules-qa 6.9): the last Methuselah standing gains a
+ * VP; otherwise, unless nobody is left, everyone still in it gains half a VP, as at the time limit
+ * (Tournament Rules 3.7.2). The winner has the most VP alone, ousted or not; a game win also needs
+ * at least 2 VP.
+ */
+function gameEnded(state: GameState, reason: GameEndReason, note?: string): EventBody {
+  const live = state.seats.filter((s) => !s.ousted && !s.withdrawn);
+  const each = reason === 'last-standing' ? 1 : reason === 'no-survivors' ? 0 : 0.5;
+  const awards = each ? live.map((s) => ({ seat: s.id, vp: each })) : [];
+  const final = state.seats.map((s) => ({
+    seat: s.id,
+    vp: s.vp + (awards.find((a) => a.seat === s.id)?.vp ?? 0),
+  }));
+  const top = Math.max(...final.map((f) => f.vp));
+  const leaders = final.filter((f) => f.vp === top);
+  const winner = leaders.length === 1 && top > 0 ? leaders[0]?.seat : undefined;
+  return withOptional({ type: 'GameEnded', reason, awards } as const, {
+    winner,
+    gameWin: winner !== undefined && top >= 2 ? winner : undefined,
+    note,
+  });
+}
+
 /** Pool and VP for ousting your prey (GAME-08). */
 export const OUST_REWARD = { vp: 1, pool: 6 } as const;
 
@@ -1068,7 +1163,9 @@ function withOusts(
   }
   const s = applyBodies(after, next, now, by);
   const turn = s.turn;
-  if (turn && ousting.has(turn.seat)) {
+  // With one Methuselah left, or none, the game is over (withGameEnd): no turn passes.
+  const left = s.seats.filter((x) => !x.ousted && !x.withdrawn).length;
+  if (turn && ousting.has(turn.seat) && left >= 2) {
     const endTurn: EventBody[] = [
       ...(s.window ? [{ type: 'WindowClosed' } as const] : []),
       ...(s.action ? [{ type: 'ActionEnded', outcome: 'ousted' } as const] : []),

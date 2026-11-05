@@ -292,3 +292,72 @@ describe('AdvancePhase', () => {
     expect(state.turn).toEqual({ number: 2, seat: 'C', phase: 'unlock' });
   });
 });
+
+describe('game end (GAME-08/09, docs/m6-plan.md M6.1)', () => {
+  const judge: Actor = { kind: 'judge', user: 'jo' };
+  const admin: Actor = { kind: 'admin', user: 'ada' };
+  const as = (user: string): Actor => ({ kind: 'player', user });
+
+  it('an admin ends the game, scored as a timeout; players and judges cannot', () => {
+    const s = apply(started(), { type: 'AdjustVp', seat: 'B', delta: 2 }, judge);
+    for (const who of [as('a'), judge]) {
+      expect(run(s, { type: 'EndGame' }, who)).toMatchObject({
+        ok: false,
+        rejection: { code: 'forbidden' },
+      });
+    }
+    const done = apply(s, { type: 'EndGame', note: 'Out of time at the venue' }, admin);
+    expect(done.status).toBe('finished');
+    expect(done.result).toMatchObject({ reason: 'admin', winner: 'B', gameWin: 'B' });
+    expect(done.seats.map((x) => x.vp)).toEqual([0.5, 2.5, 0.5]);
+    // Nothing more happens in a finished game.
+    expect(run(done, { type: 'AdvancePhase' }, as('a'))).toMatchObject({ ok: false });
+  });
+
+  it('a casual game ends when everyone still in it agrees; anyone can say no', () => {
+    let s = apply(started(), { type: 'ProposeEnd' }, as('a'));
+    s = apply(s, { type: 'AgreeEnd' }, as('b'));
+    expect(s.status).toBe('active');
+    const declined = apply(s, { type: 'DeclineEnd' }, as('c'));
+    expect(declined.endProposal).toBeUndefined();
+    s = apply(s, { type: 'AgreeEnd' }, as('c'));
+    expect(s.status).toBe('finished');
+    // Everyone at ½ VP: a tie, so nobody wins.
+    expect(s.result).toEqual({ reason: 'agreement', at: 't' });
+  });
+
+  it('tournament games cannot end by agreement', () => {
+    const r = start({ settings: { tournament: true } });
+    if (!r.ok) throw new Error(r.rejection.message);
+    const s = r.events.reduce(evolve, newGame('g'));
+    expect(run(s, { type: 'ProposeEnd' }, as('a'))).toMatchObject({
+      ok: false,
+      rejection: { code: 'forbidden' },
+    });
+  });
+
+  it('an ousted winner still wins; a game win needs 2 VP', () => {
+    let s = apply(started(), { type: 'AdjustVp', seat: 'A', delta: 1 }, judge);
+    s = apply(s, { type: 'EndGame' }, admin);
+    // A: 1.5, B and C 0.5: A wins, but with under 2 VP it isn't a game win.
+    expect(s.result).toMatchObject({ winner: 'A' });
+    expect(s.result?.gameWin).toBeUndefined();
+  });
+
+  it('never passes the turn to a seat that is out: the last oust ends the game', () => {
+    // The beta's "every seat ousted, turn passed to an ousted seat" game: here the player whose
+    // turn it is goes out last, leaving one Methuselah.
+    let s = started();
+    const first = s.turn?.seat ?? 'A';
+    const [other, last] = s.seats.map((x) => x.id).filter((x) => x !== first);
+    s = apply(s, { type: 'AdjustPool', seat: other ?? '', delta: -30 }, judge);
+    expect(s.status).toBe('active');
+    const pool = s.seats.find((x) => x.id === first)?.pool ?? 0;
+    s = apply(s, { type: 'AdjustPool', seat: first, delta: -pool }, judge);
+    expect(s.status).toBe('finished');
+    expect(s.result?.reason).toBe('last-standing');
+    expect(s.seats.find((x) => x.id === last)?.ousted).toBeUndefined();
+    // The turn didn't move on to anyone: the game was over.
+    expect(s.turn?.seat).toBe(first);
+  });
+});

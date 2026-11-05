@@ -540,6 +540,7 @@ describe('hidden information', { timeout: 60_000 }, () => {
       'JudgeCallClaimed',
       'JudgeCallResolved',
       'Ousted',
+      'GameEnded',
     ]) {
       expect(seen, type).toContain(type);
     }
@@ -667,6 +668,44 @@ describe('time and judges', { timeout: 60_000 }, () => {
       expect(new Set(callers).size).toBe(callers.length);
       for (const s of after.seats) if (s.disqualified) expect(s.ousted).toBeDefined();
       if (after.status !== 'active') expect(after.pause).toBeUndefined();
+    });
+  });
+});
+
+describe('game end (GAME-08/09)', { timeout: 60_000 }, () => {
+  it('the turn of an active game always belongs to someone still in it', () => {
+    forEveryCommand(({ command, after }) => {
+      if (after.status !== 'active' || !after.turn) return;
+      const seat = after.seats.find((s) => s.id === after.turn?.seat);
+      expect(seat && !seat.ousted && !seat.withdrawn, `after ${command.type}`).toBe(true);
+    });
+  });
+
+  it('a game ends only for a reason the rules give, and never awards more VP than seats', () => {
+    forEveryCommand(({ before, command, events, after }) => {
+      const total = after.seats.reduce((n, s) => n + s.vp, 0);
+      expect(total).toBeLessThanOrEqual(after.seats.length);
+      const ended = events.find((e) => e.type === 'GameEnded');
+      if (ended?.type !== 'GameEnded') return;
+      const live = after.seats.filter((s) => !s.ousted && !s.withdrawn).length;
+      switch (ended.reason) {
+        case 'last-standing':
+          expect(live).toBe(1);
+          break;
+        case 'no-survivors':
+          expect(live).toBe(0);
+          break;
+        case 'time-limit':
+          expect(before.clock?.limitReachedAt).toBeDefined();
+          break;
+        case 'admin':
+          expect(command.type).toBe('EndGame');
+          break;
+        case 'agreement':
+          expect(after.settings.tournament).toBe(false);
+          break;
+      }
+      expect(after.status).toBe('finished');
     });
   });
 });

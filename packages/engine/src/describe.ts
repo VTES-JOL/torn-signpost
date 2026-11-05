@@ -177,6 +177,25 @@ export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOp
       return `${seatName(ev.seat)} ran out of time for a decision (${WAIT_NAMES[ev.kind]}); a judge will step in`;
     case 'TimeLimitReached':
       return 'Time is up: the game ends with the current action, or at the end of this phase';
+    case 'GameEnded': {
+      const why: Record<typeof ev.reason, string> = {
+        'last-standing': `${seatName(ev.awards[0]?.seat ?? '')} is the last Methuselah standing (+1 VP)`,
+        'no-survivors': 'Nobody is left standing',
+        'time-limit': 'Time is up: everyone still in the game gains ½ VP',
+        admin: `${who} ended the game; everyone still in it gains ½ VP`,
+        agreement: 'The players agreed to end the game; everyone still in it gains ½ VP',
+      };
+      const end = ev.winner
+        ? `${seatName(ev.winner)} wins${ev.gameWin ? ' (a game win)' : ''}`
+        : 'Nobody wins';
+      return `Game over. ${why[ev.reason]}${ev.note ? ` (“${ev.note}”)` : ''}. ${end}`;
+    }
+    case 'EndProposed':
+      return `${seatName(ev.seat)} proposes ending the game; everyone still in it must agree`;
+    case 'EndAgreed':
+      return `${seatName(ev.seat)} agrees to end the game`;
+    case 'EndDeclined':
+      return `${seatName(ev.seat)} wants to play on`;
     // Bookkeeping with nothing to tell (auto-pass settings and stops are private): no log line.
     case 'AutoPassSet':
     case 'StopsSet':

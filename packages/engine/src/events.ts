@@ -11,6 +11,7 @@ import type {
   CardId,
   Counter,
   Format,
+  GameEndReason,
   GameId,
   GameSettings,
   ImpulseWindow,
@@ -118,6 +119,18 @@ export type EventBody =
   | { type: 'JudgeCallResolved'; id: string; ruling: Ruling; note?: string; auto?: true }
   | { type: 'DeadlineExtended'; seat: SeatId; ms: number }
   | { type: 'TimeExtended'; ms: number }
+  /** The game is over: `awards` are the VP for surviving it (last standing, or a timeout's half). */
+  | {
+      type: 'GameEnded';
+      reason: GameEndReason;
+      awards: { seat: SeatId; vp: number }[];
+      winner?: SeatId;
+      gameWin?: SeatId;
+      note?: string;
+    }
+  | { type: 'EndProposed'; seat: SeatId }
+  | { type: 'EndAgreed'; seat: SeatId }
+  | { type: 'EndDeclined'; seat: SeatId }
   /** `phases` is private to the seat. */
   | { type: 'AutoPassSet'; seat: SeatId; phases?: Phase[] }
   /** `stops` is private to the seat. */

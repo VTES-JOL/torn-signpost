@@ -254,7 +254,7 @@ const CATEGORY_LABEL: Record<EmailCategory, string> = {
   mention: 'mention emails',
   judge: 'judge emails',
   deadline: 'deadline emails',
-  game: 'game start and oust emails',
+  game: 'game start, end and oust emails',
 };
 
 function footerText(webUrl: string, unsubscribe: string, what: string): string {

@@ -31,7 +31,7 @@ Increment 1 fixes it.
 
 1. **Game end is part of the engine's post-steps**, like ousting: after every command, if one live
    Methuselah or none is left, the engine appends `GameEnded` with the result. No command ends a
-   natural game; judges (and, if decision Q3 says so, players by agreement) end the others.
+   natural game; admins (and, if decision Q3 says so, players by agreement) end the others.
 2. **The result is an event**: `GameEnded{reason, vp, gw?, survivors}`. Scoring, stats and
    tournament results all read that one event, so a replay gives the same result.
 3. **Stats come from the event**, written by the game service when it appends `GameEnded`
@@ -48,15 +48,22 @@ Increment 1 fixes it.
 | # | Question | Sources | Recommendation |
 |---|---|---|---|
 | Q1 | How much is a withdrawal worth? | Rulebook: 1 VP. VEKN Tournament Rules and zero-vtes 90.9: half a VP | **Half a VP everywhere**, as zero-vtes rules (one scoring rule for every game) |
-| Q2 | When does a game at its time limit end? | M5b plan, from Tournament Rules 3.1.1: with the current minion action, if any, or at the end of the current phase | As in the M5b plan: the engine ends it there; a judge can end it at once |
-| Q3 | Can a casual game end early by agreement? | Not in the rules; tournaments allow no such thing | **Yes for casual games**: every Methuselah still in the game agrees, scored as a timeout. Tournament games end only naturally, at the time limit, or by a judge |
+| Q2 | When does a game at its time limit end? | M5b plan, from Tournament Rules 3.1.1: with the current minion action, if any, or at the end of the current phase | As in the M5b plan: the engine ends it there; an admin can end it at once |
+| Q3 | Can a casual game end early by agreement? | Not in the rules; tournaments allow no such thing | **Yes for casual games**: every Methuselah still in the game agrees, scored as a timeout. Tournament games end only naturally, at the time limit, or by an admin |
 | Q4 | How far does combat go? | GAME-07 is a "should"; zero-vtes batches 4, 21, 22, 29 | **Guided steps** (range, strikes chosen each round, damage, prevention, presses, torpor), with card effects by hand. No card-specific automation |
 | Q5 | Where do votes come from? | Titles, the Edge, political action cards, Prisci ballots (zero-vtes 5.1–5.4, Batch 19) | Players **declare** their votes from those sources; the engine checks what it can know (the Edge, the calling card's vote, titles printed on vampires in play) and tallies. Unknown sources are accepted as overrides, like grants |
 | Q6 | What do stats count? | STATS-01..03, DQ8 | Every finished game, casual and tournament, by format; leaderboards per calendar-year season, from games with at least 4 players; replaced players as DQ8 |
 
 ## Increments
 
-### M6.1 Game end and scoring (GAME-08/09)
+### M6.1 Game end and scoring (GAME-08/09): done
+
+Built as planned, except that **admins**, not judges, end games early (decided 2026-11-05).
+Players are notified when a game ends (`ended`, in the `game` email category).
+A simultaneous oust of everyone left can't be produced with the primitives yet (one command changes
+one pool), so it is covered by the rules in `gameEnded` and the property test, and gets a scenario
+once combat or card effects can cause one.
+
 
 - **Engine**: a `withGameEnd` post-step after `withOusts`:
   - one live Methuselah left: they gain 1 VP for being the last standing, and the game ends
@@ -68,14 +75,14 @@ Increment 1 fixes it.
 - **Time limit** (Q2): after `TimeLimitReached`, the game ends when the current minion action
   ends, or at the end of the current phase with none; survivors get half a VP each, a lone
   survivor the full survivor VP (Tournament Rules 3.7.2) (`reason: 'time-limit'`).
-- **Ending by judges**, and by agreement in casual games (Q3): `EndGame{reason}` from a judge, or
+- **Ending by admins**, and by agreement in casual games (Q3): `EndGame{reason}` from an admin, or
   `ProposeEnd` / `AgreeEnd` from the players, scored as a timeout.
 - **The bug**: `nextTurn` never hands the turn to a seat that is out; with nobody left, the game
   has ended first. A property test: an active game's turn always belongs to a live seat.
 - **Backend and web**: the lobby shows finished games and their result; the table shows the final
   standings to everyone, spectators included; timers, deadlines and judge calls stop.
 - **Tests**: scenarios for each ending (last standing, simultaneous, time limit in and out of an
-  action, judge, agreement), GW edge cases (an ousted winner, draws); property tests (games end
+  action, admin, agreement), GW edge cases (an ousted winner, draws); property tests (games end
   only by these rules; VP never exceeds the table's maximum, timeouts aside).
 
 ### M6.2 Withdrawal (GAME-09)
@@ -158,7 +165,8 @@ and the largest; they could go either way.
 
 `docs/flow.md` (game end, withdrawal, combat steps, referendums), `docs/console.md` (new commands
 and scenario expectations: `result`, `gw`, `withdrawing`, combat and polling steps),
-`docs/02-architecture.md` (§4.4, §5.3 store keys, §5.8 stats), `docs/testing.md` (new properties).
+`docs/02-architecture.md` (§4.4, §5.3 store keys, §5.8 stats), `docs/testing.md` (new properties),
+and `docs/roles.md` whenever a role gains or loses a power (every milestone, from now on).
 
 ## Later (noted, not in M6)
 

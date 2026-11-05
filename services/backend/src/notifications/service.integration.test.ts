@@ -236,6 +236,30 @@ describe.skipIf(!available)('notifications (DynamoDB Local)', () => {
     expect((await games.escalations(ada)).some((e) => e.gameId === id)).toBe(false);
   });
 
+  it('moves a finished game to the finished list, and takes no more commands', async () => {
+    const { games, notifications } = setup();
+    const id = await startedGame(games);
+    await expect(
+      games.command(jo, id, { commandId: `end-j-${Date.now()}`, command: { type: 'EndGame' } }),
+    ).rejects.toMatchObject({ status: 403 });
+    await games.command(ada, id, {
+      commandId: `end-${Date.now()}`,
+      command: { type: 'EndGame', note: 'Closing time' },
+    });
+    expect((await games.list(alice, 'finished')).map((g) => g.id)).toContain(id);
+    expect((await games.list(alice, 'active')).map((g) => g.id)).not.toContain(id);
+    const d = await games.details(alice, id);
+    expect(d.game.status).toBe('finished');
+    expect(d.view?.result?.reason).toBe('admin');
+    await expect(
+      games.command(alice, id, {
+        commandId: `late-${Date.now()}`,
+        command: { type: 'AdvancePhase' },
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect((await notifications.list(bob)).items[0]).toMatchObject({ kind: 'ended', gameId: id });
+  });
+
   it('marks notifications read, one by one or all, and pages through them', async () => {
     const { games, notifications } = setup();
     for (let i = 0; i < 3; i++) await startedGame(games);

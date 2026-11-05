@@ -75,6 +75,18 @@ export function gameNotifications(input: {
           ev.disqualified ? 'A judge disqualified you' : 'You were ousted',
         );
         break;
+      case 'GameEnded':
+        for (const s of after.seats) {
+          const won = ev.winner === s.id;
+          add(
+            s.occupant,
+            'ended',
+            won
+              ? `The game is over: you won${ev.gameWin ? ' (a game win)' : ''}`
+              : 'The game is over',
+          );
+        }
+        break;
       case 'JudgeCalled':
         for (const j of input.judges ?? []) {
           add(j, 'judge-call', `Judge call: ${REASON_TEXT[ev.call.reason]}`);

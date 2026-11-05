@@ -14,7 +14,7 @@ const WHAT: Record<string, string> = {
   mention: 'mention emails',
   judge: 'judge emails',
   deadline: 'deadline emails',
-  game: 'game start and oust emails',
+  game: 'game start, end and oust emails',
 };
 
 export function UnsubscribePage() {

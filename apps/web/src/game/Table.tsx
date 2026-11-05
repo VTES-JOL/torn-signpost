@@ -34,6 +34,7 @@ import { cardActions, type MenuItem } from './actions.ts';
 import type { GameSnapshot, TableClient } from './client.ts';
 import { DragProvider, type DragSource, type DropTarget, useDrag } from './drag.tsx';
 import { type Choosing, currentStep, FlowBar } from './FlowBar.tsx';
+import { EndGameControls, GameOver } from './GameEnd.tsx';
 import { JudgeCalls } from './JudgeCalls.tsx';
 import { seatLayout } from './seatLayout.ts';
 
@@ -202,8 +203,16 @@ export function Table(props: {
             send={send}
           />
         )}
+        <GameOver view={view} seatName={client.seatName} />
+        <EndGameControls
+          view={view}
+          seat={seat}
+          admin={!!user?.groups.includes('admin')}
+          seatName={client.seatName}
+          send={send}
+        />
         <TurnBar zoom={zoom} setZoom={setZoom} />
-        {outOfGame && (
+        {outOfGame && view.status === 'active' && (
           <p className="notice small" role="status">
             You have been ousted. You can keep watching the game.
           </p>
