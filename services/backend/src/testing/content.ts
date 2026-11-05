@@ -3,6 +3,13 @@ import type { CardRecord } from '@torn-signpost/cards';
 import testCards from '@torn-signpost/engine/test-catalog.json' with { type: 'json' };
 import { staticContent } from '../content/catalog.ts';
 
+/** Invented clans for the invented crypt cards (stats tests). */
+const TEST_CLANS: Record<string, string> = {
+  't-vera': 'Toreador',
+  't-tomas': 'Brujah',
+  't-ilse': 'Tremere',
+};
+
 export const testRecords: CardRecord[] = testCards.cards.map((c) => ({
   id: c.id,
   name: c.name,
@@ -10,7 +17,11 @@ export const testRecords: CardRecord[] = testCards.cards.map((c) => ({
   kind: c.kind as 'crypt' | 'library',
   types: [c.kind === 'crypt' ? 'Vampire' : 'Master'],
   ...(c.kind === 'crypt'
-    ? { group: '2', capacity: 'capacity' in c ? (c.capacity as number) : 5 }
+    ? {
+        group: '2',
+        capacity: 'capacity' in c ? (c.capacity as number) : 5,
+        clans: [TEST_CLANS[c.id] ?? 'Caitiff'],
+      }
     : {}),
   text: '',
   sets: ['Test Set'],

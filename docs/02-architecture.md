@@ -408,7 +408,8 @@ sequenceDiagram
 | Email preferences | `USER#<sub>` | `EMAILPREFS` | per category: immediate, digest or off; digest daily or twice daily |
 | Digest queue | `DIGESTQ` | `<sub>#<notificationId>` | TTL 3 days; notifications waiting for the next digest run |
 | Profile | `USER#<sub>` | `PROFILE` | display name, avatar, prefs. Unique handles via `HANDLE#<lower>` items (AUTH-05) |
-| Stats | `USER#<sub>` | `STATS#<season>` | aggregates (STATS-02). GSI3 `LB#<season>#<metric>` / zero-padded score (STATS-03) |
+| Stats | `USER#<sub>` | `STATS#<season>`, `STATS#all` | counters (STATS-02), flat attributes per format; the season item on GSI1 `STATS#<season>` / sub for the leaderboards (STATS-03) |
+| Result | `GAME#<id>` | `RESULT` | a counted game's result (STATS-01): casual games of 5 players and tournament games only |
 | Deck | `DECK#<id>` | `META`, `V#<n>` | versions immutable (DECK-07). GSI1 `OWNER#<sub>` for my decks; GSI4 `PUBLIC#<format>` / `<updatedAt>` for public listings |
 | Tournament | `TOURN#<id>` | `META`, `REG#<sub>`, `ROUND#<n>`, `TABLE#<n>#<k>` | GSI1 `TOURN#<status>` |
 | Global chat | `CHAT#<channel>#<yyyymmdd>` | `<ts>#<id>` | partitioned by day; TTL for chat retention (NFR-11) |
@@ -506,9 +507,15 @@ shows as "Player 1a2b" and the web app asks for one.
 
 ### 5.8 Stats (STATS-*)
 
-On `GameEnded`, the stream Lambda writes a result record and updates aggregate items per player
-(and per season) atomically. Leaderboards query GSI3. Card and deck meta stats (STATS-04, later)
-use the same stream.
+Only **counted** games have results: casual games of 5 players and tournament games
+(`docs/m6-plan.md` M6.3). When a command ends one, the game service writes its result
+(`GAME#<id> / RESULT`), every player's season and all-time stats (counters `ADD`ed) and their
+history (the `USER#<sub> / GAME#<id>` membership item's `result`), in one transaction conditional
+on the result not existing yet, so a retry never counts a game twice. The finisher of a seat is
+credited; anyone they replaced gets a game played with no GW or VP (DQ8). A season's stats are one
+GSI1 query (`STATS#<season>`), ranked in memory and cached for the leaderboards; a dedicated index
+can come with scale. `pnpm --filter @torn-signpost/backend stats:rebuild` recomputes everything
+from the event logs. Card and deck meta stats (STATS-04) come later.
 
 ## 6. Web client (`apps/web`)
 

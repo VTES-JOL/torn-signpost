@@ -1382,6 +1382,45 @@ body.dragging {
   padding: 0.25rem 1rem 0.25rem 0;
 }
 
+/* Results and stats (STATS-01..03). */
+.stat-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-block: 1rem;
+}
+
+.stat-card {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  min-width: 14rem;
+}
+
+.stat-card h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.stat-card dl {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0.25rem 1rem;
+  margin: 0;
+}
+
+.stat-card dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.stats-table th,
+.stats-table td {
+  text-align: left;
+  padding: 0.25rem 1rem 0.25rem 0;
+}
+
 /* The end of a game (GAME-08/09). */
 .game-over {
   margin-block: 0.5rem;

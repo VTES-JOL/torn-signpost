@@ -23,6 +23,8 @@ what the API or engine would refuse anyway).
 
 - Browse cards and public decks; watch public games, seeing only public information (GAME-16)
   [API, engine projection].
+- See results and stats: players' pages and the leaderboards, for counted games (casual games of
+  5 players, tournament games), private ones included (STATS-01..03) [API].
 - Nothing else: every change needs a signed-in user [API].
 
 ## Players (signed in)

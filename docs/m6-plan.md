@@ -150,7 +150,11 @@ takes them out (both in the `game` email category).
   survives a pool or blood loss.
 - Browser: the offer, its confirmation, the badge, and a withdrawal taking effect.
 
-### M6.3 Results and stats (STATS-01..03)
+### M6.3 Results and stats (STATS-01..03): done
+
+Built as planned. Players' pages are reached by display name, or by their user key when they
+haven't chosen one.
+
 
 Counted games leave a result, and every player gets stats, a history and a place on the
 leaderboards (STATS-01..03; architecture §5.8; replaced players as DQ8). Card and deck meta stats

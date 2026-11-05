@@ -68,6 +68,11 @@ export interface GameServiceDeps {
   timers?: Timers;
   /** In-app notifications (NOTIF-01); none in some tests. */
   notifier?: Notifier;
+  /** Results and stats of counted games (STATS-01..03); none in some tests. */
+  results?: {
+    gameEnded(meta: GameMeta, state: GameState): Promise<void>;
+    joined(user: string, gameId: string): Promise<void>;
+  };
 }
 
 const SNAPSHOT_EVERY = 25;
@@ -296,6 +301,28 @@ export class GameService {
     }
   }
 
+  /**
+   * Results (STATS-01): a game that just ended is recorded if it counts; a player brought in by a
+   * replacement joins the game's players (their games list).
+   */
+  private async afterEnd(
+    meta: GameMeta,
+    before: GameState,
+    after: GameState,
+    events: readonly GameEvent[],
+  ): Promise<void> {
+    const results = this.deps.results;
+    if (!results) return;
+    try {
+      for (const ev of events) {
+        if (ev.type === 'PlayerReplaced') await results.joined(ev.user, meta.id);
+      }
+    } catch (e) {
+      console.error('adding a replacement to the game failed', { id: meta.id, error: String(e) });
+    }
+    if (ended(before, after)) await results.gameEnded(meta, after);
+  }
+
   /** A judge referred a call to the admins: it waits in the admin queue (GAME-19). */
   private async syncEscalations(meta: GameMeta, before: GameState, events: readonly GameEvent[]) {
     try {
@@ -416,6 +443,7 @@ export class GameService {
         await this.syncTimers(id, state, after);
         await this.syncJudgeQueue(meta, state, after);
         await this.syncEscalations(meta, state, result.events);
+        await this.afterEnd(meta, state, after, result.events);
         await this.publishSteps(id, steps);
         await this.deps.notifier?.afterCommand({
           game: meta,
@@ -562,6 +590,7 @@ export class GameService {
         await this.syncTimers(id, state, after);
         await this.syncJudgeQueue(meta, state, after);
         await this.syncEscalations(meta, state, result.events);
+        await this.afterEnd(meta, state, after, result.events);
         await this.publishSteps(id, steps);
         await this.deps.notifier?.afterCommand({
           game: meta,

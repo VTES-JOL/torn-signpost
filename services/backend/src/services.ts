@@ -5,6 +5,7 @@ import { DeckStore } from './db/decks.ts';
 import { EmailStore } from './db/email.ts';
 import { NotificationStore } from './db/notifications.ts';
 import { ProfileStore } from './db/profiles.ts';
+import { StatsStore } from './db/stats.ts';
 import { GameStore } from './db/store.ts';
 import { DeckService } from './decks/service.ts';
 import type { Mailer } from './email/mailer.ts';
@@ -14,6 +15,7 @@ import { GameService } from './games/service.ts';
 import { NotificationService } from './notifications/service.ts';
 import type { ConnectionGateway } from './realtime/gateway.ts';
 import { Fanout, Realtime } from './realtime/realtime.ts';
+import { ResultsService } from './stats/service.ts';
 import type { TimerHandler, TimerPayload, Timers } from './timers/timers.ts';
 import { ProfileService } from './users/service.ts';
 
@@ -23,6 +25,7 @@ export interface Services {
   decks: DeckService;
   profiles: ProfileService;
   notifications: NotificationService;
+  results: ResultsService;
   /** Missing while email is switched off for the stage. */
   email?: EmailService;
   realtime: Realtime;
@@ -59,7 +62,16 @@ export function createServices(opts: {
   );
   const store = new GameStore(db, opts.tableName);
   const content = opts.content ?? cdnContent(opts.contentUrl);
-  const decks = new DeckService({ store: new DeckStore(db, opts.tableName), content, newId });
+  const deckStore = new DeckStore(db, opts.tableName);
+  const decks = new DeckService({ store: deckStore, content, newId });
+  const profileStore = new ProfileStore(db, opts.tableName);
+  const results = new ResultsService({
+    store: new StatsStore(db, opts.tableName),
+    games: store,
+    profiles: profileStore,
+    decks: deckStore,
+    content,
+  });
   const timers = opts.timers?.(() => (payload) => fireTimer(services, payload));
   const notificationStore = new NotificationStore(db, opts.tableName);
   const email = opts.email
@@ -87,9 +99,10 @@ export function createServices(opts: {
     newId,
     presence: !!opts.presence,
     notifier: notifications,
+    results,
     ...(timers ? { timers } : {}),
   });
-  const profiles = new ProfileService({ store: new ProfileStore(db, opts.tableName) });
+  const profiles = new ProfileService({ store: profileStore });
   const realtime = new Realtime(store, opts.gateway, games, {
     notifications,
     ...(email ? { email } : {}),
@@ -102,6 +115,7 @@ export function createServices(opts: {
     decks,
     profiles,
     notifications,
+    results,
     realtime,
     ...(email ? { email } : {}),
   };

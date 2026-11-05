@@ -24,6 +24,7 @@ import type { EmailService } from './email/service.ts';
 import { ApiError } from './errors.ts';
 import type { GameService } from './games/service.ts';
 import type { NotificationService } from './notifications/service.ts';
+import type { ResultsService } from './stats/service.ts';
 import type { ProfileService } from './users/service.ts';
 
 export interface AppConfig {
@@ -38,6 +39,7 @@ export interface AppConfig {
   notifications?: NotificationService;
   /** Missing while email is switched off for the stage. */
   email?: EmailService;
+  results?: ResultsService;
 }
 
 type Env = { Variables: { identity: Identity } };
@@ -223,6 +225,35 @@ export function createApp(config: AppConfig): Hono<Env> {
   app.post('/email/unsubscribe', async (c) => {
     await email().unsubscribe(UnsubscribeRequest.parse(c.req.query()));
     return c.body(null, 204);
+  });
+  // Results and stats (STATS-01..03): public, for counted games.
+  const results = () => {
+    if (!config.results) throw new ApiError(503, 'stats_disabled', 'Stats are not available yet');
+    return config.results;
+  };
+  app.get('/users/:key', async (c) => c.json(await results().profile(c.req.param('key'))));
+  app.get('/users/:key/games', async (c) => {
+    const before = z.string().min(1).max(64).optional().parse(c.req.query('before'));
+    return c.json(await results().history(c.req.param('key'), before));
+  });
+  app.get('/leaderboards', async (c) => {
+    const q = z
+      .object({
+        season: z
+          .string()
+          .regex(/^\d{4}$/)
+          .optional(),
+        format: z.enum(['standard', 'v5', 'duel']).optional(),
+        by: z.enum(['gw', 'vp', 'winrate']).optional(),
+      })
+      .parse(c.req.query());
+    return c.json(
+      await results().leaderboard({
+        ...(q.season ? { season: q.season } : {}),
+        ...(q.format ? { format: q.format } : {}),
+        ...(q.by ? { by: q.by } : {}),
+      }),
+    );
   });
   app.put('/users/:name/name', async (c) => {
     if (c.var.identity.kind !== 'user') throw new ApiError(401, 'sign_in', 'Sign in first');

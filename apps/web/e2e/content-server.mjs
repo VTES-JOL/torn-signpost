@@ -10,13 +10,16 @@ const port = Number(process.env.PORT ?? 3102);
 const catalog = JSON.parse(
   readFileSync(new URL('../../../packages/engine/scenarios/catalog.json', import.meta.url), 'utf8'),
 );
+const CLANS = { 't-vera': 'Toreador', 't-tomas': 'Brujah', 't-ilse': 'Tremere' };
 const cards = catalog.cards.map((c) => ({
   id: c.id,
   name: c.name,
   printedName: c.name,
   kind: c.kind,
   types: c.types ?? [c.kind === 'crypt' ? 'Vampire' : 'Master'],
-  ...(c.kind === 'crypt' ? { group: '2', capacity: c.capacity ?? 5 } : {}),
+  ...(c.kind === 'crypt'
+    ? { group: '2', capacity: c.capacity ?? 5, clans: [CLANS[c.id] ?? 'Caitiff'] }
+    : {}),
   text: '',
   sets: ['Test Set'],
   legalFrom: '2000-01-01',

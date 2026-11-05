@@ -15,6 +15,8 @@ import { DeckEditor } from './pages/DeckEditor.tsx';
 import { DecksPage } from './pages/DecksPage.tsx';
 import { GamesPage } from './pages/GamesPage.tsx';
 import { JudgePage } from './pages/JudgePage.tsx';
+import { LeaderboardsPage } from './pages/LeaderboardsPage.tsx';
+import { PlayerPage } from './pages/PlayerPage.tsx';
 import { UnsubscribePage } from './pages/UnsubscribePage.tsx';
 import { NameForm, ProfileProvider, useProfile } from './profile.tsx';
 import { ReplayListPage, ReplayPage } from './replay/ReplayPage.tsx';
@@ -51,6 +53,12 @@ export function App() {
                     )}
                     {config.flags.judgeCalls && <Route path="judge" element={<JudgePage />} />}
                     {config.flags.judgeCalls && <Route path="admin" element={<AdminPage />} />}
+                    {config.flags.stats && (
+                      <>
+                        <Route path="players/:key" element={<PlayerPage />} />
+                        <Route path="leaderboards" element={<LeaderboardsPage />} />
+                      </>
+                    )}
                     <Route path="account" element={<AccountPage />} />
                     <Route path="unsubscribe" element={<UnsubscribePage />} />
                     <Route path="auth/callback" element={<AuthCallback />} />
@@ -115,6 +123,7 @@ function Header() {
         <NavLink to="/games">Games</NavLink>
         <NavLink to="/cards">Cards</NavLink>
         <NavLink to="/decks">Decks</NavLink>
+        {flags.stats && <NavLink to="/leaderboards">Leaderboards</NavLink>}
         {flags.replay && <NavLink to="/replay">Replay</NavLink>}
         {flags.judgeCalls && auth.user?.groups.includes('judge') && (
           <NavLink to="/judge">Judge queue</NavLink>

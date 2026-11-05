@@ -27,6 +27,7 @@ function localConfig(): Plugin {
         judgeCalls: true,
         notifications: true,
         email: true,
+        stats: true,
       },
     };
     server.middlewares.use('/config.json', (_req, res) => {

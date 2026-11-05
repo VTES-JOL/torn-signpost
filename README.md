@@ -77,8 +77,12 @@ pnpm sandbox      # play the engine in the terminal as any seat, judge or admin
   at the table, `clock`, the table timer, pauses, deadline countdowns and the timer settings
   when creating a game, and `judgeCalls`, calling a judge, the ruling tools and the judge queue at
   /judge (sign in as `jo:judge` to try it), `notifications`, the bell in the header, and `email`,
-  the email settings on the Account page. Locally, emails are printed by the API process (dev users
+  the email settings on the Account page, and `stats`, players' pages and the leaderboards. Locally, emails are printed by the API process (dev users
   are `<name>@example.test`), never sent. Locally, timers (such as the 30 s absence check) run in the API process.
+- Results and stats can be rebuilt from the finished games' event logs (after a change to how they
+  are counted, or to backfill): `TABLE_NAME=ts-local-main DYNAMODB_ENDPOINT=http://localhost:8000
+  pnpm --filter @torn-signpost/backend stats:rebuild`; against the beta, set `TABLE_NAME=ts-beta-main`
+  and leave out `DYNAMODB_ENDPOINT` (it uses your AWS credentials).
 - To point the local web client at the live beta API instead:
   `TS_API_URL=https://api.tornsignpost.org pnpm dev:web`.
 - The sandbox starts a three-player table with invented test cards. Type `.help` for commands,

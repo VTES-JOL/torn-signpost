@@ -5,6 +5,9 @@
 import type { GameState } from '@torn-signpost/engine';
 import type { PlayerCommand } from '@torn-signpost/protocol';
 import { useState } from 'react';
+import { Link } from 'react-router';
+import { useConfig } from '../content.tsx';
+import { counted, vp } from '../stats/format.ts';
 
 const REASONS = {
   'last-standing': 'Last Methuselah standing',
@@ -14,8 +17,6 @@ const REASONS = {
   agreement: 'Ended by agreement',
 } as const;
 
-const vp = (n: number) => (Number.isInteger(n) ? String(n) : `${Math.floor(n) || ''}½`);
-
 export function GameOver({
   view,
   seatName,
@@ -24,7 +25,10 @@ export function GameOver({
   seatName: (seat: string) => string;
 }) {
   const r = view.result;
+  const stats = !!useConfig().flags.stats;
   if (view.status !== 'finished' || !r) return null;
+  // Counted games have results on each player's page (docs/m6-plan.md M6.3).
+  const linked = stats && counted(view);
   const standings = [...view.seats].sort((a, b) => b.vp - a.vp);
   return (
     <section className="game-over" aria-label="Game over">
@@ -50,7 +54,13 @@ export function GameOver({
         <tbody>
           {standings.map((s) => (
             <tr key={s.id} className={s.id === r.winner ? 'winner' : undefined}>
-              <th scope="row">{seatName(s.id)}</th>
+              <th scope="row">
+                {linked ? (
+                  <Link to={`/players/${encodeURIComponent(s.occupant)}`}>{seatName(s.id)}</Link>
+                ) : (
+                  seatName(s.id)
+                )}
+              </th>
               <td>{vp(s.vp)}</td>
               <td className="muted">
                 {s.disqualified

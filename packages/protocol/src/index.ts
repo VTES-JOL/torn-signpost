@@ -34,4 +34,5 @@ export * from './decks.ts';
 export * from './email.ts';
 export * from './games.ts';
 export * from './notifications.ts';
+export * from './stats.ts';
 export * from './users.ts';
