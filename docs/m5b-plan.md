@@ -73,7 +73,14 @@ changes (a different seat or kind, or a new phase or turn), so M5b.3's deadlines
 - **Tests**: unit tests over the flow states; the property tests check `waitingOn` is never empty
   while the game is active and never names an ousted seat.
 
-### M5b.3 Table timer and async deadlines (TEMPO-03/04/05)
+### M5b.3 Table timer and async deadlines (TEMPO-03/04/05): done
+
+Built with these decisions: an expired deadline **never acts for the player**; it's logged and
+flags the game for a judge (the judge call itself comes with increment 4). Games with a table timer
+can be **paused** by any player or a judge for 1–5 minutes at a time; play stops while paused, and
+the pause ends by itself or is lifted early by whoever paused or a judge. Deadlines are derived
+(`deadlines(state)`) rather than stored as `DeadlineSet`/`DeadlineCleared` events; only reminders,
+expiries and the time limit are events. Checks are one `timers(state)` list the server diffs.
 
 - **Engine state**:
   - `clock: { limitMs, elapsedMs, runningSince? }`: runs while the game is `live`, active, and no

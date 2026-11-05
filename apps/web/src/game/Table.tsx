@@ -186,6 +186,7 @@ export function Table(props: {
           choosing={choosing}
           setChoosing={setChoosing}
           send={send}
+          judge={judge}
         />
         <TurnBar zoom={zoom} setZoom={setZoom} />
         {outOfGame && (
@@ -684,7 +685,7 @@ function TurnBar({ zoom, setZoom }: { zoom: number; setZoom: (z: number) => void
           Next phase (judge)
         </button>
       )}
-      {seat && (
+      {seat && !view.pause && (
         <>
           <button type="button" onClick={() => send({ type: 'Draw', seat })}>
             Draw

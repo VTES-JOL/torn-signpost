@@ -514,4 +514,86 @@ describe.skipIf(!available)('game service (DynamoDB Local)', () => {
       expect((await games.details(alice, open.id)).game.seq).toBe(0);
     });
   });
+
+  describe('table timer, pauses and deadlines (TEMPO-03/04/05)', () => {
+    it('schedules the checks the engine asks for, and runs them when they fire', async () => {
+      const rec = recordingGateway();
+      const manual = manualTimers();
+      let now = Date.parse('2026-11-05T10:00:00Z');
+      const games = new GameService({
+        store,
+        content: testContent,
+        rng: seededRng(3),
+        publisher: new Fanout(store, rec.gateway),
+        newId: () => `t${++n}`,
+        now: () => new Date(now),
+        presence: true,
+        timers: manual.timers,
+      });
+      const realtime = new Realtime(store, rec.gateway, games, {
+        presence: true,
+        timers: manual.timers,
+        now: () => new Date(now),
+      });
+      const g = await games.create(alice, {
+        name: 'Timed',
+        format: 'standard',
+        visibility: 'public',
+        maxSeats: 3,
+        timeLimitMinutes: 120,
+        deadlineHours: 24,
+      });
+      expect(g).toMatchObject({ timeLimitMinutes: 120, deadlineHours: 24 });
+      for (const p of [alice, bob, carol]) {
+        await games.join(p, g.id, { deck });
+        await realtime.connect(`t-${p.kind === 'user' ? p.sub : ''}`, p);
+        await realtime.message(
+          `t-${p.kind === 'user' ? p.sub : ''}`,
+          JSON.stringify({ type: 'subscribe', gameId: g.id }),
+        );
+      }
+      await games.start(alice, g.id);
+      const key = (k: string) => `game:${g.id}:${k}`;
+      const view = async () => (await games.details(judge, g.id)).view;
+      // Everyone is at the table: the clock runs, and the time limit is two hours away.
+      expect(manual.scheduled.get(key('clock'))?.at).toEqual(new Date(now + 120 * 60_000));
+
+      // A pause stops the clock, and ends by itself.
+      now += 60_000;
+      await games.command(bob, g.id, cmd({ type: 'Pause', minutes: 5 }));
+      expect(manual.scheduled.has(key('clock'))).toBe(false);
+      const pause = manual.scheduled.get(key('pause'));
+      expect(pause).toEqual({
+        at: new Date(now + 5 * 60_000),
+        payload: { kind: 'game', gameId: g.id, command: { type: 'EndPause' } },
+      });
+      await games.runTimer(g.id, { type: 'EndPause' });
+      expect((await view())?.pause).toBeDefined();
+      now += 5 * 60_000;
+      await games.runTimer(g.id, { type: 'EndPause' });
+      expect((await view())?.pause).toBeUndefined();
+      expect(manual.scheduled.get(key('clock'))?.at).toEqual(new Date(now + 119 * 60_000));
+
+      // The player whose turn it is leaves: their decision gets a deadline.
+      const state = await view();
+      const turnSeat = state?.turn?.seat ?? '';
+      const turnUser = state?.seats.find((s) => s.id === turnSeat)?.occupant ?? '';
+      await realtime.disconnect(`t-${turnUser}`);
+      await games.checkAbsence(g.id, turnUser);
+      const deadline = manual.scheduled.get(key(`deadline:${turnSeat}`));
+      expect(deadline?.at).toEqual(new Date(now + 12 * 3_600_000));
+      now += 12 * 3_600_000;
+      await games.runTimer(g.id, { type: 'CheckDeadline', seat: turnSeat });
+      expect(manual.scheduled.get(key(`deadline:${turnSeat}`))?.at).toEqual(
+        new Date(now + 12 * 3_600_000),
+      );
+      now += 12 * 3_600_000;
+      await games.runTimer(g.id, { type: 'CheckDeadline', seat: turnSeat });
+      const { events } = await games.events(judge, g.id, 0);
+      expect(events.map((e) => e.type)).toEqual(
+        expect.arrayContaining(['Paused', 'Resumed', 'DeadlineReminded', 'DeadlineExpired']),
+      );
+      expect(manual.scheduled.has(key(`deadline:${turnSeat}`))).toBe(false);
+    });
+  });
 });

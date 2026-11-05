@@ -207,10 +207,13 @@ export class ApiStack extends Stack {
       ),
     );
 
+    // Commands schedule deadline, time-limit and pause checks (docs/m5b-plan.md increment 3).
     this.apiFunction = fn('Api', 'services/backend/src/lambda/api.ts', {
       ALLOWED_ORIGINS: [`https://${h.web}`, 'http://localhost:5173'].join(','),
       WS_CALLBACK_URL: wsStage.callbackUrl,
+      ...timerEnv,
     });
+    canSchedule(this.apiFunction);
     this.apiFunction.addToRolePolicy(
       manageConnections(
         this.formatArn({

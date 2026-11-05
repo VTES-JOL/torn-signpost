@@ -76,6 +76,8 @@ export interface Seat {
    * away until the server sees its player at the table.
    */
   present?: true;
+  /** When the seat's player was last seen leaving (or the game started without them). */
+  awaySince?: Instant;
   /**
    * Phases whose end-of-phase pass round this seat passes automatically. Missing means every
    * phase (the default). Private: other viewers' views don't carry it.
@@ -108,6 +110,13 @@ export const STOP_ACTORS = ['neighbours', 'anyone'] as const satisfies readonly 
 export interface GameSettings {
   tournament: boolean;
   startingPool: number;
+  /**
+   * The table timer (TEMPO-05): how long the game may take, counting only while it's live. None
+   * for a casual game without one; tournament games always have one (at least 2 h).
+   */
+  timeLimitMs?: number;
+  /** How long a player who is away has for each decision (TEMPO-04); 24 h when missing. */
+  deadlineMs?: number;
 }
 
 export interface Turn {
@@ -196,8 +205,15 @@ export interface GameState {
   turn?: Turn;
   action?: ActionState;
   window?: ImpulseWindow;
-  /** The current wait (`waitingOn`): its key, and the event that started it. Kept by `evolve`. */
-  waiting?: { key: string; seq: number; at: Instant };
+  /**
+   * The current wait (`waitingOn`): its key, and the event that started it, kept by `evolve`; and
+   * the seats in it already reminded of their deadline, or past it (`clock.ts`).
+   */
+  waiting?: { key: string; seq: number; at: Instant; reminded?: SeatId[]; expired?: SeatId[] };
+  /** The table clock: time played while live, and since when it has been running. */
+  clock?: { elapsedMs: number; runningSince?: Instant; limitReachedAt?: Instant };
+  /** A pause (TEMPO-05): nothing happens at the table until it ends or is lifted. */
+  pause?: { seat?: SeatId; until: Instant };
   settings: GameSettings;
   status: 'setup' | 'active' | 'finished';
 }

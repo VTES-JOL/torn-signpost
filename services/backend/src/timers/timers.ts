@@ -12,11 +12,17 @@ import {
   SchedulerClient,
   UpdateScheduleCommand,
 } from '@aws-sdk/client-scheduler';
+import type { Timer } from '@torn-signpost/engine';
+
+/** The game checks the engine asks the server to schedule (`timers` in the engine's clock.ts). */
+export type GameTimerCommand = Timer['command'];
 
 /** What a timer does when it fires. */
 export type TimerPayload =
   /** A seated player's last connection to the game closed: mark them away if still gone. */
-  { kind: 'presence'; gameId: string; user: string };
+  | { kind: 'presence'; gameId: string; user: string }
+  /** A deadline, the time limit or the end of a pause may be due: let the engine check. */
+  | { kind: 'game'; gameId: string; command: GameTimerCommand };
 
 export interface Timers {
   /** Fire `payload` at `at`; scheduling the same key again moves it. */
@@ -69,7 +75,8 @@ export function schedulerTimers(config: SchedulerConfig, client = new SchedulerC
       const input = {
         Name: scheduleName(key),
         GroupName: config.group,
-        ScheduleExpression: `at(${at.toISOString().slice(0, 19)})`,
+        // Whole seconds only: round up, so the check never runs before it's due.
+        ScheduleExpression: `at(${new Date(Math.ceil(at.getTime() / 1000) * 1000).toISOString().slice(0, 19)})`,
         ScheduleExpressionTimezone: 'UTC',
         FlexibleTimeWindow: { Mode: 'OFF' as const },
         ActionAfterCompletion: 'DELETE' as const,

@@ -82,7 +82,8 @@ any step.
 # comment
 seed 7                         # deterministic shuffles
 format standard|v5|duel
-tournament                     # mark the game as a tournament game
+tournament                     # mark the game as a tournament game (2 h timer unless set)
+timelimit 2h                   # the table timer; deadline 24h: time per decision while away
 seat A alice                   # seats in clockwise order
 crypt A "Vera Nightfall" *12   # deck lists by name or card ID; *n repeats the previous card
 library A "Iron Ward" *40
@@ -90,6 +91,8 @@ start
 
 A> draw crypt 4                # a command by seat A's player; also judge> and admin>
 present B no                   # the server records B's player as away (yes: at the table)
+wait 13h                       # time passes; due checks (deadlines, time limit, pause end) run
+A> pause 3                     # pause a timed game for 1–5 minutes; resume lifts it early
 reject A> look A:library:1     # the command must fail; reject:<code> pins the rejection code
 
 expect pool A 30
@@ -99,6 +102,10 @@ expect ousted B true|false
 expect present B yes|no
 expect tempo live|async        # live while every Methuselah still in the game is present
 expect waiting B:block         # who the game waits on and why (seat:kind, space-separated), or none
+expect elapsed 30m             # table clock, whole minutes played while live
+expect paused yes|no
+expect timeup yes|no           # the time limit was reached
+expect deadline A pending      # an away player's deadline: none, pending, reminded or expired
 expect direction prey|predator
 expect turn 2 B unlock
 expect occupant B erin

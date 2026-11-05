@@ -45,6 +45,7 @@ export function createServices(opts: {
   const store = new GameStore(db, opts.tableName);
   const content = opts.content ?? cdnContent(opts.contentUrl);
   const decks = new DeckService({ store: new DeckStore(db, opts.tableName), content, newId });
+  const timers = opts.timers?.(() => (payload) => fireTimer(services, payload));
   const games = new GameService({
     store,
     content,
@@ -53,9 +54,9 @@ export function createServices(opts: {
     publisher: new Fanout(store, opts.gateway),
     newId,
     presence: !!opts.presence,
+    ...(timers ? { timers } : {}),
   });
   const profiles = new ProfileService({ store: new ProfileStore(db, opts.tableName) });
-  const timers = opts.timers?.(() => (payload) => fireTimer(services, payload));
   const realtime = new Realtime(store, opts.gateway, games, {
     presence: !!opts.presence,
     ...(timers ? { timers } : {}),
@@ -69,6 +70,9 @@ export async function fireTimer(services: Services, payload: TimerPayload): Prom
   switch (payload.kind) {
     case 'presence':
       await services.games.checkAbsence(payload.gameId, payload.user);
+      return;
+    case 'game':
+      await services.games.runTimer(payload.gameId, payload.command);
       return;
   }
 }

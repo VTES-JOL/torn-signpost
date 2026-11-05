@@ -8,8 +8,15 @@ import { fireTimer } from '../services.ts';
 import type { TimerPayload } from '../timers/timers.ts';
 import { servicesFor } from './env.ts';
 
+const GameCommand = z.discriminatedUnion('type', [
+  z.strictObject({ type: z.literal('CheckDeadline'), seat: z.string() }),
+  z.strictObject({ type: z.literal('CheckTimeLimit') }),
+  z.strictObject({ type: z.literal('EndPause') }),
+]);
+
 const Payload = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('presence'), gameId: z.string(), user: z.string() }),
+  z.object({ kind: z.literal('game'), gameId: z.string(), command: GameCommand }),
 ]) satisfies z.ZodType<TimerPayload>;
 
 const services = servicesFor(process.env.WS_CALLBACK_URL ?? '');

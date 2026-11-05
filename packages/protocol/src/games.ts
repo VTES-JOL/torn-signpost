@@ -102,6 +102,8 @@ export const PlayerCommand = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('EndCombat') }),
   z.strictObject({ type: z.literal('CancelAction') }),
   z.strictObject({ type: z.literal('ReplacePlayer'), seat: Id, user: Id }),
+  z.strictObject({ type: z.literal('Pause'), minutes: z.number().int().min(1).max(5) }),
+  z.strictObject({ type: z.literal('Resume') }),
 ]);
 export type PlayerCommand = ClientCommand;
 
@@ -123,6 +125,10 @@ export const CreateGameRequest = z.strictObject({
   format: Format,
   visibility: Visibility,
   maxSeats: z.number().int().min(2).max(5),
+  /** The table timer (TEMPO-05); none for an untimed casual game. */
+  timeLimitMinutes: opt(z.number().int().min(10).max(600)),
+  /** How long a player who is away has for each decision (TEMPO-04); 24 h by default. */
+  deadlineHours: opt(z.number().int().min(1).max(168)),
 });
 export type CreateGameRequest = z.infer<typeof CreateGameRequest>;
 
@@ -149,6 +155,8 @@ export interface GameSummary {
   visibility: z.infer<typeof Visibility>;
   status: LobbyStatus;
   maxSeats: number;
+  timeLimitMinutes?: number;
+  deadlineHours?: number;
   players: { user: string; name: string }[];
   createdBy: string;
   createdAt: string;

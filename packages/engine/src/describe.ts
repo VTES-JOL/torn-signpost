@@ -6,6 +6,7 @@
 import type { CardCatalog } from './catalog.ts';
 import type { BloodHolder } from './commands.ts';
 import type { GameEvent } from './events.ts';
+import type { WaitKind } from './flow.ts';
 import type {
   ActionKind,
   ActorRef,
@@ -18,6 +19,14 @@ import type {
 } from './model.ts';
 import type { SeatId } from './seating.ts';
 import { parseZoneId } from './zones.ts';
+
+const WAIT_NAMES: Record<WaitKind, string> = {
+  phase: 'their turn',
+  impulse: 'the impulse',
+  block: 'a block',
+  resolve: 'resolving an action',
+  combat: 'combat',
+};
 
 const ZONE_LABELS: Record<ZoneName, string> = {
   crypt: 'crypt',
@@ -127,12 +136,26 @@ export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOp
         : `${seatName(ev.turn.seat)}'s ${ev.turn.phase} phase`;
     case 'PlayerReplaced':
       return `${who} replaced the player in seat ${seatName(ev.seat)}`;
+    case 'Paused': {
+      const minutes = Math.round((Date.parse(ev.until) - Date.parse(ev.at)) / 60_000);
+      const span = Number.isFinite(minutes)
+        ? ` for ${minutes} minute${minutes === 1 ? '' : 's'}`
+        : '';
+      return `${who} paused the game${span}`;
+    }
+    case 'Resumed':
+      return ev.by.kind === 'system' ? 'The pause is over' : `${who} resumed the game`;
+    case 'DeadlineExpired':
+      return `${seatName(ev.seat)} ran out of time for a decision (${WAIT_NAMES[ev.kind]}); a judge will step in`;
+    case 'TimeLimitReached':
+      return 'Time is up: the game ends with the current action, or at the end of this phase';
     // Bookkeeping with nothing to tell (auto-pass settings and stops are private): no log line.
     case 'AutoPassSet':
     case 'StopsSet':
-    // Presence shows on the seats, not in the log (TEMPO-06).
+    // Presence shows on the seats, not in the log (TEMPO-06); reminders go to the player.
     case 'PlayerPresent':
     case 'PlayerAbsent':
+    case 'DeadlineReminded':
     case 'ImpulseReset':
     case 'WindowClosed':
       return '';

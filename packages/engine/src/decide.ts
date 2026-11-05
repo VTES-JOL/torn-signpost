@@ -1,4 +1,13 @@
 import type { CardCatalog, Grant } from './catalog.ts';
+import {
+  clockElapsed,
+  deadlines,
+  instantFromMs,
+  MAX_PAUSE_MINUTES,
+  MIN_TOURNAMENT_TIME_LIMIT_MS,
+  MINUTE_MS,
+  ms,
+} from './clock.ts';
 import type { BloodHolder, Command } from './commands.ts';
 import type { EventBody, GameEvent } from './events.ts';
 import { evolve } from './evolve.ts';
@@ -93,6 +102,21 @@ export function decide(state: GameState, cmd: Command, ctx: DecideContext): Deci
   }
 }
 
+/** Commands only the server issues, for the system actor. */
+const SYSTEM_COMMANDS: ReadonlySet<Command['type']> = new Set([
+  'SetPresence',
+  'CheckDeadline',
+  'CheckTimeLimit',
+  'EndPause',
+]);
+
+const ALLOWED_WHILE_PAUSED: ReadonlySet<Command['type']> = new Set([
+  'Resume',
+  'SetAutoPass',
+  'SetStops',
+  'ReplacePlayer',
+]);
+
 function actorRef(state: GameState, cmd: Command, actor: Actor): ActorRef {
   if (cmd.type === 'StartGame') {
     if (actor.kind !== 'system') reject('forbidden', 'Only the system starts games');
@@ -104,9 +128,13 @@ function actorRef(state: GameState, cmd: Command, actor: Actor): ActorRef {
     if (actor.kind !== 'admin') reject('forbidden', 'Only admins can replace players');
     return { kind: 'admin', user: actor.user };
   }
-  if (cmd.type === 'SetPresence') {
-    if (actor.kind !== 'system') reject('forbidden', 'Only the server records presence');
+  if (SYSTEM_COMMANDS.has(cmd.type)) {
+    if (actor.kind !== 'system') reject('forbidden', 'Only the server does that');
     return { kind: 'system' };
+  }
+  // A pause stops play; settings can still change, and a judge or the pauser can lift it.
+  if (state.pause && !ALLOWED_WHILE_PAUSED.has(cmd.type)) {
+    reject('not-now', 'The game is paused');
   }
   if (cmd.type === 'JudgeReveal' && actor.kind !== 'judge') {
     reject('forbidden', 'Only judges can look at hidden cards');
@@ -739,6 +767,53 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
       }
       return [{ type: cmd.present ? 'PlayerPresent' : 'PlayerAbsent', seat: s.id }];
     }
+    case 'Pause': {
+      if (state.settings.timeLimitMs === undefined) {
+        reject('invalid', 'Only games with a table timer can be paused');
+      }
+      if (by.kind !== 'seat' && by.kind !== 'judge') reject('forbidden', 'Only players and judges');
+      if (state.pause) reject('no-change', 'The game is already paused');
+      if (!Number.isInteger(cmd.minutes) || cmd.minutes < 1 || cmd.minutes > MAX_PAUSE_MINUTES) {
+        reject('invalid', `Pause for 1 to ${MAX_PAUSE_MINUTES} minutes`);
+      }
+      const now = ms(ctx.now);
+      if (Number.isNaN(now)) reject('invalid', 'No clock');
+      return [
+        withOptional(
+          { type: 'Paused', until: instantFromMs(now + cmd.minutes * MINUTE_MS) } as const,
+          { seat: mySeat },
+        ),
+      ];
+    }
+    case 'Resume': {
+      const p = state.pause ?? reject('no-change', 'The game is not paused');
+      if (by.kind !== 'judge' && (mySeat === undefined || p.seat !== mySeat)) {
+        reject('forbidden', 'Only whoever paused the game, or a judge, can resume it early');
+      }
+      return [{ type: 'Resumed' }];
+    }
+    case 'EndPause': {
+      const p = state.pause ?? reject('no-change', 'The game is not paused');
+      if (!(ms(ctx.now) >= ms(p.until))) reject('not-now', 'The pause is not over yet');
+      return [{ type: 'Resumed' }];
+    }
+    case 'CheckDeadline': {
+      const d = deadlines(state).find((x) => x.seat === cmd.seat);
+      const now = ms(ctx.now);
+      if (d && !d.expired && now >= ms(d.dueAt)) {
+        return [{ type: 'DeadlineExpired', seat: d.seat, kind: d.kind }];
+      }
+      if (d && !d.reminded && !d.expired && now >= ms(d.remindAt)) {
+        return [{ type: 'DeadlineReminded', seat: d.seat }];
+      }
+      return reject('no-change', 'Nothing is due');
+    }
+    case 'CheckTimeLimit': {
+      const limit = state.settings.timeLimitMs;
+      if (limit === undefined || state.clock?.limitReachedAt) reject('no-change', 'No time limit');
+      if (clockElapsed(state, ctx.now) < limit) reject('no-change', 'Time is not up yet');
+      return [{ type: 'TimeLimitReached' }];
+    }
   }
 }
 
@@ -943,6 +1018,17 @@ function startGame(
   if (new Set(cmd.seats.map((s) => s.id)).size !== n) reject('invalid', 'Duplicate seat');
   if (new Set(cmd.seats.map((s) => s.user)).size !== n) reject('invalid', 'Duplicate player');
   const settings: GameSettings = { tournament: false, startingPool: 30, ...cmd.settings };
+  // Tournament rounds always run against the clock: at least two hours (Tournament Rules 3.1.1).
+  if (settings.tournament) settings.timeLimitMs ??= MIN_TOURNAMENT_TIME_LIMIT_MS;
+  for (const [key, min] of [
+    ['timeLimitMs', settings.tournament ? MIN_TOURNAMENT_TIME_LIMIT_MS : 10 * MINUTE_MS],
+    ['deadlineMs', 10 * MINUTE_MS],
+  ] as const) {
+    const v = settings[key];
+    if (v !== undefined && (!Number.isInteger(v) || v < min)) {
+      reject('invalid', `${key} must be at least ${min / MINUTE_MS} minutes`);
+    }
+  }
   const cards: Extract<EventBody, { type: 'GameStarted' }>['cards'] = [];
   for (const s of cmd.seats) {
     for (const kind of ['crypt', 'library'] as const) {

@@ -8,6 +8,7 @@ import {
   type ActionKind,
   autoPassPhases,
   type CardCatalog,
+  deadlines,
   type GameState,
   impulseHolder,
   isWaitingOn,
@@ -23,6 +24,8 @@ import {
 } from '@torn-signpost/engine';
 import type { PlayerCommand } from '@torn-signpost/protocol';
 import { useEffect } from 'react';
+import { useConfig } from '../content.tsx';
+import { Clock, formatLeft, useNow } from './Clock.tsx';
 import type { TableClient } from './client.ts';
 
 export interface Choosing {
@@ -121,8 +124,11 @@ export function FlowBar(props: {
   choosing: Choosing | undefined;
   setChoosing: (c: Choosing | undefined) => void;
   send: (command: PlayerCommand) => void;
+  judge?: boolean;
 }) {
   const { view, seat, client, catalog, offers, choosing, setChoosing, send } = props;
+  const clock = !!useConfig().flags.clock;
+  const now = useNow(60_000);
   const mine = isWaitingOn(view, seat);
   const name = (id: string | undefined) => {
     const cardId = id ? view.cards[id]?.cardId : undefined;
@@ -130,6 +136,10 @@ export function FlowBar(props: {
     return catalog.get(cardId)?.name ?? `an unknown card (${cardId})`;
   };
   const prompt = promptFor(view, seat, waitingOn(view), client.seatName, name);
+  // An away player's time to decide (TEMPO-04), shown to everyone.
+  const due = clock ? deadlines(view).find((d) => !d.expired) : undefined;
+  const dueNote = due ? ` · ${formatLeft(Date.parse(due.dueAt) - now)} to decide` : '';
+  const paused = !!view.pause;
 
   // Tell the player in the tab title when the table is waiting on them (UX-09).
   useEffect(() => {
@@ -165,9 +175,27 @@ export function FlowBar(props: {
   return (
     <section className={['flow-bar', mine ? 'yours' : ''].join(' ')} aria-label="Game flow">
       {/* Announced when it changes, without taking focus: the offers below stay where they are. */}
-      <p className="flow-prompt" aria-live="polite">
-        {prompt && (prompt.mine ? <strong>Your decision: {prompt.text}</strong> : prompt.text)}
-      </p>
+      <div className="flow-head">
+        <p className="flow-prompt" aria-live="polite">
+          {paused
+            ? 'The game is paused'
+            : prompt &&
+              (prompt.mine ? (
+                <strong>Your decision: {prompt.text}</strong>
+              ) : (
+                `${prompt.text}${dueNote}`
+              ))}
+        </p>
+        {clock && (
+          <Clock
+            view={view}
+            seat={seat}
+            judge={!!props.judge}
+            seatName={client.seatName}
+            send={send}
+          />
+        )}
+      </div>
       <p className="flow-status muted small">{statusLine(view, client, name)}</p>
       {choosing ? (
         <div className="flow-choose toolbar">
@@ -200,7 +228,7 @@ export function FlowBar(props: {
         </div>
       ) : (
         <div className="flow-offers toolbar">
-          {offers.map((o) => (
+          {(paused ? [] : offers).map((o) => (
             <button
               key={o.id}
               type="button"

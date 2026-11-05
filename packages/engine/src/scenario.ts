@@ -4,6 +4,7 @@
  * JavaScriptCore. Format: docs/console.md#scenarios.
  */
 import { type CardCatalog, normalizeName } from './catalog.ts';
+import { clockElapsed, deadlines, timers } from './clock.ts';
 import {
   type ConsoleContext,
   parseConsole,
@@ -16,7 +17,7 @@ import { describeEvent } from './describe.ts';
 import type { GameEvent } from './events.ts';
 import { evolve, newGame } from './evolve.ts';
 import { autoPassPhases, impulseHolder, tempo, waitingOn } from './flow.ts';
-import type { Actor, CardId, Format, GameState, Viewer } from './model.ts';
+import type { Actor, CardId, Format, GameSettings, GameState, Viewer } from './model.ts';
 import { project, projectEvent } from './projection.ts';
 import { seededRng } from './rng.ts';
 import type { SeatId } from './seating.ts';
@@ -37,16 +38,37 @@ export interface ScenarioRun {
   failure?: ScenarioFailure;
 }
 
-const SETUP_DIRECTIVES = new Set(['seed', 'format', 'tournament', 'seat', 'crypt', 'library']);
+const SETUP_DIRECTIVES = new Set([
+  'seed',
+  'format',
+  'tournament',
+  'timelimit',
+  'deadline',
+  'seat',
+  'crypt',
+  'library',
+]);
 
 const START = Date.parse('2026-01-01T00:00:00.000Z');
-/** A fixed clock that ticks one second per script line, so each command has its own timestamp. */
-const clock = (line: number) => new Date(START + line * 1000).toISOString();
+
+/** "25h", "90m", "1h30m", "45s" in milliseconds. */
+export function parseDuration(text: string): number {
+  const m = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(text);
+  if (!text || !m) throw new Error(`Bad duration "${text}": use e.g. 25h, 90m, 1h30m`);
+  return (Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0)) * 1000;
+}
 
 export function runScenario(source: string, catalog: CardCatalog): ScenarioRun {
   let rng = seededRng(1);
   let format: Format = 'standard';
   let tournament = false;
+  const settings: Partial<GameSettings> = {};
+  /**
+   * A fixed clock that ticks one second per script line, so each command has its own timestamp;
+   * `wait` moves it on further.
+   */
+  let waited = 0;
+  const clock = (line: number) => new Date(START + line * 1000 + waited).toISOString();
   const seats: { id: SeatId; user: string; crypt: CardId[]; library: CardId[] }[] = [];
   let state = newGame('scenario');
   const events: GameEvent[] = [];
@@ -61,7 +83,7 @@ export function runScenario(source: string, catalog: CardCatalog): ScenarioRun {
     const isCommand = /^(reject(?::[\w-]+)?\s+)?\w+>/.test(text);
     const step: TimelineStep = {
       kind:
-        isCommand || head === 'start' || head === 'present'
+        isCommand || head === 'start' || head === 'present' || head === 'wait'
           ? 'command'
           : SETUP_DIRECTIVES.has(head)
             ? 'setup'
@@ -122,6 +144,43 @@ export function runScenario(source: string, catalog: CardCatalog): ScenarioRun {
         case 'tournament':
           tournament = true;
           break;
+        case 'timelimit':
+          settings.timeLimitMs = parseDuration(rest[0] ?? '');
+          break;
+        case 'deadline':
+          settings.deadlineMs = parseDuration(rest[0] ?? '');
+          break;
+        // Time passes; the checks the server would have scheduled run when they fall due.
+        case 'wait': {
+          const from = Date.parse(clock(i + 1));
+          const to = from + parseDuration(rest[0] ?? '');
+          const fired = new Set<string>();
+          lastEvents = [];
+          for (;;) {
+            const due = timers(state)
+              .filter((t) => Date.parse(t.at) <= to && !fired.has(`${t.key}@${t.at}`))
+              .sort((a, b) => Date.parse(a.at) - Date.parse(b.at))[0];
+            if (!due) break;
+            fired.add(`${due.key}@${due.at}`);
+            const at = new Date(Math.max(from, Date.parse(due.at))).toISOString();
+            const result = decide(state, due.command, {
+              actor: { kind: 'system' },
+              now: at,
+              rng,
+              catalog,
+            });
+            if (!result.ok) continue;
+            for (const ev of result.events) {
+              const before = state;
+              state = evolve(state, ev);
+              lastEvents.push({ ev, before, after: state });
+              events.push(ev);
+            }
+          }
+          waited += to - from;
+          step.to = events.length;
+          break;
+        }
         case 'seat':
           seats.push({ id: rest[0] ?? '', user: rest[1] ?? '', crypt: [], library: [] });
           break;
@@ -135,7 +194,13 @@ export function runScenario(source: string, catalog: CardCatalog): ScenarioRun {
         case 'start': {
           const result = decide(
             state,
-            { type: 'StartGame', gameId: 'scenario', format, seats, settings: { tournament } },
+            {
+              type: 'StartGame',
+              gameId: 'scenario',
+              format,
+              seats,
+              settings: { ...settings, tournament },
+            },
             { actor: { kind: 'system' }, now: clock(i + 1), rng, catalog },
           );
           if (!result.ok) return fail(`Rejected: ${result.rejection.message}`);
@@ -169,7 +234,7 @@ export function runScenario(source: string, catalog: CardCatalog): ScenarioRun {
           break;
         }
         case 'expect': {
-          const message = check(state, rest, catalog);
+          const message = check(state, rest, catalog, clock(i + 1));
           if (message) return fail(message);
           break;
         }
@@ -237,7 +302,12 @@ function viewerToken(state: GameState, who: string): Viewer {
 }
 
 /** One `expect` line; returns a failure message or undefined. */
-function check(state: GameState, args: string[], catalog: CardCatalog): string | undefined {
+function check(
+  state: GameState,
+  args: string[],
+  catalog: CardCatalog,
+  now: string,
+): string | undefined {
   const [what = '', ...rest] = args;
   const ctx: ConsoleContext = { view: state, catalog };
   const seat = (token: string | undefined) =>
@@ -256,6 +326,17 @@ function check(state: GameState, args: string[], catalog: CardCatalog): string |
       return same(`${rest[0]} ousted`, !!seat(rest[0])?.ousted, rest[1] ?? '');
     case 'present':
       return same(`${rest[0]} present`, seat(rest[0])?.present ? 'yes' : 'no', rest[1] ?? '');
+    case 'elapsed':
+      return same('elapsed', `${Math.floor(clockElapsed(state, now) / 60_000)}m`, rest[0] ?? '');
+    case 'paused':
+      return same('paused', state.pause ? 'yes' : 'no', rest[0] ?? '');
+    case 'timeup':
+      return same('time up', state.clock?.limitReachedAt ? 'yes' : 'no', rest[0] ?? '');
+    case 'deadline': {
+      const d = deadlines(state).find((x) => x.seat === resolveSeat(rest[0] ?? '', ctx));
+      const status = !d ? 'none' : d.expired ? 'expired' : d.reminded ? 'reminded' : 'pending';
+      return same(`${rest[0]} deadline`, status, rest[1] ?? '');
+    }
     case 'waiting':
       return same(
         'waiting on',

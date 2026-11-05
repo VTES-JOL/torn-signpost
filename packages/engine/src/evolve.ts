@@ -1,3 +1,4 @@
+import { clockRunning, ms } from './clock.ts';
 import type { GameEvent } from './events.ts';
 import { waitKey } from './flow.ts';
 import {
@@ -41,6 +42,11 @@ export function newGame(id: GameId): GameState {
 export function evolve(state: GameState, ev: GameEvent): GameState {
   const d = draft(state);
   d.seq = ev.seq;
+  // The table clock counts the time since the last event if it was running then.
+  if (d.clock?.runningSince !== undefined) {
+    const gap = ms(ev.at) - ms(d.clock.runningSince);
+    d.clock = { ...d.clock, elapsedMs: d.clock.elapsedMs + (gap > 0 ? gap : 0) };
+  }
   switch (ev.type) {
     case 'GameStarted': {
       d.id = ev.gameId;
@@ -54,8 +60,10 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
           pool: ev.settings.startingPool,
           vp: 0,
           hasEdge: false,
+          awaySince: ev.at,
         }),
       );
+      d.clock = { elapsedMs: 0 };
       d.zones = {};
       for (const s of ev.seats) for (const z of ZONE_NAMES) d.zones[zoneId(s.id, z)] = [];
       d.cards = {};
@@ -315,15 +323,50 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
       }
       break;
     }
-    case 'PlayerPresent':
-      patchSeat(d, ev.seat, () => ({ present: true }));
+    case 'PlayerPresent': {
+      d.seats = d.seats.map((s) => {
+        if (s.id !== ev.seat) return s;
+        const { awaySince: _, ...rest } = s;
+        return { ...rest, present: true };
+      });
+      // Back at the table: a later absence starts a fresh deadline.
+      const w = d.waiting;
+      if (w) {
+        d.waiting = {
+          ...w,
+          reminded: (w.reminded ?? []).filter((x) => x !== ev.seat),
+          expired: (w.expired ?? []).filter((x) => x !== ev.seat),
+        };
+      }
       break;
+    }
     case 'PlayerAbsent':
-      d.seats = d.seats.map((s) => (s.id === ev.seat ? withoutPresence(s) : s));
+      d.seats = d.seats.map((s) =>
+        s.id === ev.seat ? { ...withoutPresence(s), awaySince: ev.at } : s,
+      );
+      break;
+    case 'Paused':
+      d.pause = ev.seat === undefined ? { until: ev.until } : { seat: ev.seat, until: ev.until };
+      break;
+    case 'Resumed':
+      delete d.pause;
+      break;
+    case 'DeadlineReminded':
+    case 'DeadlineExpired': {
+      const w = d.waiting;
+      if (!w) break;
+      const field = ev.type === 'DeadlineReminded' ? 'reminded' : 'expired';
+      d.waiting = { ...w, [field]: [...(w[field] ?? []), ev.seat] };
+      break;
+    }
+    case 'TimeLimitReached':
+      if (d.clock) d.clock = { ...d.clock, limitReachedAt: ev.at };
       break;
     case 'PlayerReplaced':
       // The new player is away until the server sees them.
-      d.seats = d.seats.map((s) => (s.id === ev.seat ? withoutPresence(s) : s));
+      d.seats = d.seats.map((s) =>
+        s.id === ev.seat ? { ...withoutPresence(s), awaySince: ev.at } : s,
+      );
       patchSeat(d, ev.seat, (s) => ({
         occupant: ev.user,
         occupants: [
@@ -337,6 +380,11 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
   const key = waitKey(d);
   if (!key) delete d.waiting;
   else if (d.waiting?.key !== key) d.waiting = { key, seq: ev.seq, at: ev.at };
+  // From here the clock runs, or waits, until the next event.
+  if (d.clock || d.status === 'active') {
+    const { runningSince: _, ...c } = d.clock ?? { elapsedMs: 0 };
+    d.clock = clockRunning(d) ? { ...c, runningSince: ev.at } : c;
+  }
   return d;
 }
 

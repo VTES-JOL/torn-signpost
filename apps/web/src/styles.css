@@ -1111,6 +1111,29 @@ body.dragging {
   box-shadow: 0 0 0 1px var(--accent);
 }
 
+.flow-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.clock {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.clock-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.clock-time.low {
+  color: var(--accent);
+}
+
 .flow-prompt {
   margin: 0;
   font-size: 0.95rem;

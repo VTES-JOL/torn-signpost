@@ -7,15 +7,19 @@ import {
   type Actor,
   type Command,
   decide,
+  timers as dueTimers,
   ENGINE_VERSION,
   evolve,
   type GameEvent,
   type GameState,
+  HOUR_MS,
+  MINUTE_MS,
   newGame,
   project,
   projectEvent,
   type Rng,
   shuffled,
+  type Timer,
   type Viewer,
   viewerFor,
 } from '@torn-signpost/engine';
@@ -38,6 +42,7 @@ import type { Content } from '../content/catalog.ts';
 import type { GameMeta, GameStore } from '../db/store.ts';
 import type { DeckService } from '../decks/service.ts';
 import { ApiError } from '../errors.ts';
+import type { GameTimerCommand, Timers } from '../timers/timers.ts';
 
 /** Delivers a message, built per recipient, to everyone watching a game. */
 export interface Publisher {
@@ -53,8 +58,10 @@ export interface GameServiceDeps {
   publisher: Publisher;
   newId: () => string;
   now?: () => Date;
-  /** Track presence (TEMPO-06); off unless set. */
+  /** Track presence (TEMPO-06); off unless set. Deadlines depend on it. */
   presence?: boolean;
+  /** Schedules the checks the engine asks for: deadlines, the time limit, the end of a pause. */
+  timers?: Timers;
 }
 
 const SNAPSHOT_EVERY = 25;
@@ -159,6 +166,10 @@ export class GameService {
         type: 'StartGame',
         gameId: id,
         format: meta.format,
+        settings: {
+          ...(meta.timeLimitMinutes ? { timeLimitMs: meta.timeLimitMinutes * MINUTE_MS } : {}),
+          ...(meta.deadlineHours ? { deadlineMs: meta.deadlineHours * HOUR_MS } : {}),
+        },
         seats: seating.map((p, i) => ({
           id: String(i + 1),
           user: p.user,
@@ -187,6 +198,7 @@ export class GameService {
     });
     if (appended !== 'ok') throw new ApiError(409, 'not_open', 'The game has already started');
     this.remember(after);
+    await this.syncTimers(id, newGame(id), after);
     const game = summary(await this.meta(id));
     await this.publishSteps(id, steps);
     await this.deps.publisher.publish(id, () => ({ type: 'lobby', game }));
@@ -208,6 +220,38 @@ export class GameService {
       if (!seat || !!seat.present === present) return undefined;
       return { type: 'SetPresence', seat: seat.id, present };
     });
+  }
+
+  /** A timer the engine asked for fired: run its check, which does nothing if it's stale. */
+  async runTimer(id: string, command: GameTimerCommand): Promise<void> {
+    await this.system(id, () => command);
+  }
+
+  /**
+   * Create, move or cancel this game's timers to match what the engine now asks for. A failure is
+   * logged, not thrown: the command has already happened.
+   */
+  private async syncTimers(id: string, before: GameState, after: GameState): Promise<void> {
+    const timers = this.deps.timers;
+    if (!timers) return;
+    const opts = { deadlines: !!this.deps.presence };
+    const plan = (s: GameState) =>
+      new Map<string, Timer>(dueTimers(s, opts).map((t) => [t.key, t]));
+    const was = plan(before);
+    const now = plan(after);
+    try {
+      for (const [key, t] of now) {
+        if (was.get(key)?.at === t.at) continue;
+        await timers.schedule(gameTimerKey(id, key), new Date(t.at), {
+          kind: 'game',
+          gameId: id,
+          command: t.command,
+        });
+      }
+      for (const key of was.keys()) if (!now.has(key)) await timers.cancel(gameTimerKey(id, key));
+    } catch (e) {
+      console.error('timer sync failed', { id, error: String(e) });
+    }
   }
 
   /** A player's last connection to the game closed a while ago: away, unless they came back. */
@@ -270,6 +314,7 @@ export class GameService {
       });
       if (appended === 'ok') {
         this.remember(after);
+        await this.syncTimers(id, state, after);
         await this.publishSteps(id, steps);
         return;
       }
@@ -396,6 +441,7 @@ export class GameService {
       });
       if (appended === 'ok') {
         this.remember(after);
+        await this.syncTimers(id, state, after);
         await this.publishSteps(id, steps);
         const viewer = viewerOf(identity, after);
         return {
@@ -496,6 +542,8 @@ function requireUser(identity: Identity): User {
   return identity;
 }
 
+const gameTimerKey = (gameId: string, key: string) => `game:${gameId}:${key}`;
+
 function crossesSnapshot(before: GameState, after: GameState): boolean {
   return Math.floor(after.seq / SNAPSHOT_EVERY) > Math.floor(before.seq / SNAPSHOT_EVERY);
 }
@@ -540,6 +588,8 @@ function summary(meta: GameMeta): GameSummary {
     visibility: meta.visibility,
     status: meta.status,
     maxSeats: meta.maxSeats,
+    ...(meta.timeLimitMinutes ? { timeLimitMinutes: meta.timeLimitMinutes } : {}),
+    ...(meta.deadlineHours ? { deadlineHours: meta.deadlineHours } : {}),
     players: meta.players.map((p) => ({ user: p.user, name: p.name })),
     createdBy: meta.createdBy,
     createdAt: meta.createdAt,

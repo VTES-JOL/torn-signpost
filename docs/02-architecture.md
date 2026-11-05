@@ -607,8 +607,20 @@ primitives, and corrections are new commands.
   timers Lambda and delete themselves; failures retry twice, then go to a dead-letter queue with an
   alarm. Locally, in-process timeouts. Firings are checked against current state, so stale ones do
   nothing. Delivery can be up to a minute late.
-- Not yet: referendums and combat steps (M6); the table timer, async deadlines, judge calls and
-  notifications (M5b); structural window elision beyond auto-pass.
+- **Table timer, pauses and deadlines** (TEMPO-03/04/05, `clock.ts`, web behind the `clock`
+  flag): `GameSettings.timeLimitMs` (optional for casual games, at least 2 h and on by default in
+  tournaments) and `deadlineMs` (24 h). `evolve` runs `state.clock` from event timestamps: it
+  counts while the game is live and not paused. `Pause{minutes}` (1–5, games with a timer; any
+  player or a judge) stops play: every command but `Resume` and settings is refused until the
+  pause ends by itself or whoever paused, or a judge, lifts it. `deadlines(state)` gives each
+  decision owed by an away player a deadline from when the wait began or they left: a reminder
+  halfway, then `DeadlineExpired`, which is logged and flags the game for a judge; nothing is ever
+  done on the player's behalf. `timers(state)` lists the checks due (`CheckDeadline`,
+  `CheckTimeLimit`, `EndPause`); the game service diffs it before and after every command and
+  schedules, moves or cancels them through `Timers`, and a firing runs the check as a system
+  command. `TimeLimitReached` is recorded and announced; ending and scoring the game is M6.
+- Not yet: referendums and combat steps (M6); judge calls and notifications (M5b); structural
+  window elision beyond auto-pass.
 
 ## 7. macOS client (`apps/apple`)
 

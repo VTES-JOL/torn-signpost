@@ -4,6 +4,7 @@
  * is deterministic and replay needs no RNG.
  */
 import type { BloodHolder } from './commands.ts';
+import type { WaitKind } from './flow.ts';
 import type {
   ActionState,
   ActorRef,
@@ -99,6 +100,15 @@ export type EventBody =
   /** The seat's player opened the game, or has been gone long enough to count as away. */
   | { type: 'PlayerPresent'; seat: SeatId }
   | { type: 'PlayerAbsent'; seat: SeatId }
+  /** `seat` is missing for a judge's pause. */
+  | { type: 'Paused'; seat?: SeatId; until: Instant }
+  | { type: 'Resumed' }
+  /** Half the time for a decision has gone by while its player is away. */
+  | { type: 'DeadlineReminded'; seat: SeatId }
+  /** The time for a decision ran out. Nothing is done for the player; a judge steps in (GAME-18). */
+  | { type: 'DeadlineExpired'; seat: SeatId; kind: WaitKind }
+  /** The table timer ran out (Tournament Rules 3.1.1). */
+  | { type: 'TimeLimitReached' }
   /** `phases` is private to the seat. */
   | { type: 'AutoPassSet'; seat: SeatId; phases?: Phase[] }
   /** `stops` is private to the seat. */

@@ -4,11 +4,17 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { ApiError, useApi } from '../api.ts';
 import { useAuth } from '../auth.tsx';
+import { useConfig } from '../content.tsx';
+
+const TIME_LIMITS = [60, 90, 120, 150, 180];
+const DEADLINES = [12, 24, 48, 72];
+const hours = (minutes: number) => `${minutes / 60} h`;
 
 export function GamesPage() {
   const api = useApi();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const clock = !!useConfig().flags.clock;
   const [lists, setLists] = useState<Record<string, GameSummary[] | undefined>>({});
   const [error, setError] = useState<string>();
   const [form, setForm] = useState<CreateGameRequest>({
@@ -49,6 +55,7 @@ export function GamesPage() {
             <Link to={`/games/${g.id}`}>{g.name}</Link>
             <span className="muted">
               {g.format} · {g.players.length}/{g.maxSeats} · {g.status} ·{' '}
+              {g.timeLimitMinutes ? `${hours(g.timeLimitMinutes)} timer · ` : ''}
               {g.players.map((p) => p.name).join(', ')}
             </span>
           </li>
@@ -114,6 +121,38 @@ export function GamesPage() {
             <option value="public">Public</option>
             <option value="private">Invite only</option>
           </select>
+          {clock && (
+            <>
+              <select
+                aria-label="Table timer"
+                value={form.timeLimitMinutes ?? ''}
+                onChange={(e) => {
+                  const { timeLimitMinutes: _, ...rest } = form;
+                  setForm(
+                    e.target.value ? { ...rest, timeLimitMinutes: Number(e.target.value) } : rest,
+                  );
+                }}
+              >
+                <option value="">No table timer</option>
+                {TIME_LIMITS.map((m) => (
+                  <option key={m} value={m}>
+                    {hours(m)} timer
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Time for each decision while away"
+                value={form.deadlineHours ?? 24}
+                onChange={(e) => setForm({ ...form, deadlineHours: Number(e.target.value) })}
+              >
+                {DEADLINES.map((h) => (
+                  <option key={h} value={h}>
+                    {h} h per decision when away
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
           <button type="submit" className="primary">
             Create game
           </button>

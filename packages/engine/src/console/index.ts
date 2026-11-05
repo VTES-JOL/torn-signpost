@@ -83,6 +83,8 @@ export const CONSOLE_COMMANDS: Record<string, Syntax> = {
   unblock: { args: [], usage: 'unblock  (withdraw your block attempt)' },
   pass: { args: [], usage: 'pass' },
   hold: { args: [], usage: 'hold  (ask the open window to wait for you)' },
+  pause: { args: ['count'], usage: 'pause [minutes]  (1–5, games with a table timer)' },
+  resume: { args: [], usage: 'resume  (lift your pause early)' },
   play: {
     args: ['card', 'options'],
     usage: 'play <card> [ready] [on <host>] [noreplace]',
@@ -308,6 +310,12 @@ function parse(tokens: string[], ctx: ConsoleContext): Command {
     case 'hold':
       extra(0);
       return { type: 'Hold' };
+    case 'pause':
+      extra(1);
+      return { type: 'Pause', minutes: args[0] === undefined ? 5 : integer(args[0]) };
+    case 'resume':
+      extra(0);
+      return { type: 'Resume' };
     case 'stop': {
       extra(1);
       const t = arg(0).toLowerCase();

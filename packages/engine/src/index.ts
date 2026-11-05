@@ -1,4 +1,5 @@
 export * from './catalog.ts';
+export * from './clock.ts';
 export * from './commands.ts';
 export * from './decide.ts';
 export * from './describe.ts';

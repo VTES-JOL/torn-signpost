@@ -1,0 +1,75 @@
+# The table timer, pauses and async deadlines (TEMPO-03/04/05). The clock runs only while the game
+# is live: everyone still in it at the table, and no pause. A player who is away has a deadline for
+# each decision: a reminder halfway, then the game is flagged for a judge. Nothing is ever done on
+# their behalf.
+seed 12
+timelimit 2h
+deadline 24h
+seat A alice
+seat B bob
+seat C carol
+crypt A "Vera Nightfall" *8
+library A "Iron Ward" *20
+crypt B "Tomas Grey" *8
+library B "Signal Fire" *20
+crypt C "Ilse Várga" *8
+library C "Quick Feed" *20
+start
+expect elapsed 0m
+expect timeup no
+
+# Everyone at the table: the clock runs.
+present A yes
+present B yes
+present C yes
+expect tempo live
+wait 30m
+expect elapsed 30m
+
+# Bob needs a break. While paused nothing happens and the clock waits; the pause ends by itself.
+B> pause 3
+log public B paused the game for 3 minutes
+expect paused yes
+reject:not-now A> next
+reject:forbidden C> resume
+reject:not-now A> pause 2
+wait 1m
+expect paused yes
+expect elapsed 30m
+wait 2m
+expect paused no
+log public The pause is over
+expect elapsed 30m
+# Pauses are short, and whoever asked can lift one early.
+reject:invalid B> pause 6
+B> pause 5
+B> resume
+log public B resumed the game
+
+# Someone leaves: async, so the clock waits for them.
+present C no
+expect tempo async
+wait 2h
+expect elapsed 30m
+expect timeup no
+present C yes
+
+# The time limit is reached after 90 more minutes of live play.
+wait 90m
+expect timeup yes
+log public Time is up: the game ends with the current action, or at the end of this phase
+
+# Alice, whose turn it is, leaves. Her decision gets a deadline: a reminder at 12 h, and at 24 h a
+# judge is asked to step in. Her turn isn't played for her.
+present A no
+expect deadline A pending
+expect deadline B none
+wait 12h
+expect deadline A reminded
+wait 12h
+expect deadline A expired
+log public A ran out of time for a decision (their turn); a judge will step in
+expect waiting A:phase
+# Back at the table, the deadline goes away.
+present A yes
+expect deadline A none

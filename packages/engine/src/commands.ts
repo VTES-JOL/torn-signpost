@@ -128,12 +128,25 @@ export type Command =
    * The server records a seated player arriving at the table or leaving it (TEMPO-06). System
    * only: arrival is immediate, absence is debounced by the server.
    */
-  | { type: 'SetPresence'; seat: SeatId; present: boolean };
+  | { type: 'SetPresence'; seat: SeatId; present: boolean }
+  /** Pause a game with a table timer for a few minutes (at most 5): a player or a judge. */
+  | { type: 'Pause'; minutes: number }
+  /** Lift the pause early: whoever asked for it, or a judge. */
+  | { type: 'Resume' }
+  /** System: a deadline's reminder or expiry may be due (TEMPO-04). */
+  | { type: 'CheckDeadline'; seat: SeatId }
+  /** System: the time limit may have been reached (TEMPO-05). */
+  | { type: 'CheckTimeLimit' }
+  /** System: the pause may be over. */
+  | { type: 'EndPause' };
 
 export type CommandType = Command['type'];
 
 /** Commands only the server issues. */
-export type SystemCommand = Extract<Command, { type: 'StartGame' | 'SetPresence' }>;
+export type SystemCommand = Extract<
+  Command,
+  { type: 'StartGame' | 'SetPresence' | 'CheckDeadline' | 'CheckTimeLimit' | 'EndPause' }
+>;
 
 /** Commands players, judges and admins send. */
 export type ClientCommand = Exclude<Command, SystemCommand>;
