@@ -214,7 +214,10 @@ export function Table(props: {
         <TurnBar zoom={zoom} setZoom={setZoom} />
         {outOfGame && view.status === 'active' && (
           <p className="notice small" role="status">
-            You have been ousted. You can keep watching the game.
+            {view.seats.find((x) => x.id === snapshot.seat)?.withdrawn
+              ? 'You withdrew from the game.'
+              : 'You have been ousted.'}{' '}
+            You can keep watching the game.
           </p>
         )}
         {picking && (
@@ -317,6 +320,14 @@ function SeatArea({
         {label && <span className="muted small">{label}</span>}
         {turn && <span className="badge">{view.turn?.phase}</span>}
         {s.hasEdge && <span className="badge ok">Edge</span>}
+        {s.withdrawing && (
+          <span
+            className="badge"
+            title="Leaves the game at the start of their next turn, unless they lose or spend pool or blood, or a minion of theirs enters combat"
+          >
+            withdrawing
+          </span>
+        )}
         <span
           className="pool"
           data-drop={`pool:${seat}`}

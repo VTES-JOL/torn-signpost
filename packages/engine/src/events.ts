@@ -27,6 +27,7 @@ import type {
   ZoneId,
 } from './model.ts';
 import type { SeatId, TurnDirection } from './seating.ts';
+import type { WithdrawalBreak } from './withdrawal.ts';
 
 export interface EventMeta {
   seq: number;
@@ -128,6 +129,12 @@ export type EventBody =
       gameWin?: SeatId;
       note?: string;
     }
+  /** A withdrawal announced (GAME-09); it takes effect at the start of the seat's next turn. */
+  | { type: 'WithdrawalAnnounced'; seat: SeatId }
+  /** Pool or blood lost or spent, or a minion in combat: the withdrawal no longer holds. */
+  | { type: 'WithdrawalBroken'; seat: SeatId; reason: WithdrawalBreak }
+  /** The withdrawal held: out of the game with `vp`, not ousted. */
+  | { type: 'Withdrew'; seat: SeatId; vp: number }
   | { type: 'EndProposed'; seat: SeatId }
   | { type: 'EndAgreed'; seat: SeatId }
   | { type: 'EndDeclined'; seat: SeatId }

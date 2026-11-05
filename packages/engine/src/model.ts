@@ -74,6 +74,11 @@ export interface Seat {
   disqualified?: true;
   withdrawn?: boolean;
   /**
+   * A withdrawal announced and still holding (GAME-09, `withdrawal.ts`): at the start of their next
+   * turn they leave the game, unless something nullifies it first.
+   */
+  withdrawing?: { since: number };
+  /**
    * Whether the seat's player has the game open (TEMPO-06). Missing means away: every seat starts
    * away until the server sees its player at the table.
    */

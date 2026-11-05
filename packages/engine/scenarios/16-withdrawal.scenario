@@ -1,0 +1,95 @@
+# Withdrawing from the game (GAME-09, docs/m6-plan.md M6.2; zero-vtes rules-qa Batch 95). With an
+# empty library and less than a full hand, a Methuselah announces it in their unlock phase. If by
+# their next unlock phase they lose or spend no pool or blood and none of their minions enters
+# combat, they leave the game with half a VP: not an oust, so nobody is rewarded.
+seed 16
+seat A alice
+seat B bob
+seat C carol
+# Small libraries: the opening draw empties them, leaving 5 cards in hand.
+crypt A "Vera Nightfall" *8
+library A "Iron Ward" *5
+crypt B "Tomas Grey" *8
+library B "Signal Fire" *5
+crypt C "Ilse Várga" *8
+library C "Quick Feed" *20
+start
+expect turn 1 A unlock
+expect count A:library 0
+expect count A:hand 5
+
+# Alice withdraws, and plays her turn as usual.
+A> withdraw
+expect withdrawing A yes
+log public A announces a withdrawal: they leave the game at the start of their next turn, if they lose or spend no pool or blood and none of their minions enters combat
+reject:no-change A> withdraw
+A> next
+# Only in your own unlock phase.
+reject:not-now B> withdraw
+A> next
+A> next
+A> next
+A> next
+expect turn 2 B unlock
+B> next
+B> next
+B> next
+B> next
+B> next
+expect turn 3 C unlock
+# Carol still has cards in her library.
+reject:not-now C> withdraw
+C> next
+C> next
+C> next
+C> next
+C> next
+# Alice's turn would start: her withdrawal held, so she leaves with ½ VP and Bob plays.
+expect withdrawn A yes
+expect vp A 0.5
+expect vp C 0
+expect status active
+expect turn 4 B unlock
+log public A withdrew from the game (+½ VP)
+
+# Bob withdraws, then loses pool by his own hand: it no longer holds. He may announce it again
+# while the conditions hold, but spending pool in his influence phase nullifies it again.
+B> withdraw
+B> pool -1
+expect withdrawing B no
+log public B's withdrawal no longer holds: they lost or spent pool
+B> withdraw
+B> next
+B> next
+B> next
+B> transfer +1 B:uncontrolled:1
+expect withdrawing B no
+B> next
+B> next
+expect turn 5 C unlock
+C> next
+C> next
+C> next
+C> next
+C> next
+
+# This time it holds: Bob leaves, Carol is the last Methuselah standing, and the game is over.
+expect turn 6 B unlock
+B> withdraw
+B> next
+B> next
+B> next
+B> next
+B> next
+expect turn 7 C unlock
+C> next
+C> next
+C> next
+C> next
+C> next
+expect withdrawn B yes
+expect status finished
+expect ended last-standing
+expect vp C 1
+expect winner C
+expect gamewin none

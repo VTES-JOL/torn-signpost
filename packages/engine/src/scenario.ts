@@ -353,6 +353,15 @@ function check(
     // `gamewin A|none`.
     case 'status':
       return same('status', state.status, rest[0] ?? '');
+    // Withdrawal (GAME-09): `withdrawing A yes|no` (pending), `withdrawn A yes|no` (gone).
+    case 'withdrawing':
+      return same(
+        `${rest[0]} withdrawing`,
+        seat(rest[0])?.withdrawing ? 'yes' : 'no',
+        rest[1] ?? '',
+      );
+    case 'withdrawn':
+      return same(`${rest[0]} withdrawn`, seat(rest[0])?.withdrawn ? 'yes' : 'no', rest[1] ?? '');
     case 'ended':
       return same('end', state.result?.reason ?? 'no', rest[0] ?? '');
     case 'winner':

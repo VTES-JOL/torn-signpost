@@ -14,4 +14,5 @@ export * from './rng.ts';
 export * from './scenario.ts';
 export * from './seating.ts';
 export * from './timeline.ts';
+export * from './withdrawal.ts';
 export * from './zones.ts';

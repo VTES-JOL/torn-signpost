@@ -198,6 +198,7 @@ export function FlowBar(props: {
       {choosing ? (
         <div className="flow-choose toolbar">
           <strong>{choosing.offer.label}</strong>
+          {choosing.offer.explain && <span className="small">{choosing.offer.explain}</span>}
           {choosing.offer.steps.slice(0, choosing.values.length).map((s, i) => {
             const text = describeValue(s, choosing.values[i]);
             return text ? (

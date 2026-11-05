@@ -25,6 +25,8 @@ export const NOTIFICATION_KINDS = [
   'escalation',
   /** A game you played in is over. */
   'ended',
+  /** Your withdrawal no longer holds, or it took you out of the game. */
+  'withdrawal',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 

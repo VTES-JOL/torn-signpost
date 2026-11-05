@@ -156,6 +156,8 @@ export type Command =
   /** An admin ends the game, scored as a timeout (docs/m6-plan.md, M6.1). */
   | { type: 'EndGame'; note?: string }
   /** Casual games: propose ending early; it ends once everyone still in it agrees (Q3). */
+  /** Announce a withdrawal (GAME-09): your unlock phase, an empty library, a short hand. */
+  | { type: 'Withdraw' }
   | { type: 'ProposeEnd' }
   | { type: 'AgreeEnd' }
   | { type: 'DeclineEnd' };

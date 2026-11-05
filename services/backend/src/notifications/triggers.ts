@@ -75,6 +75,18 @@ export function gameNotifications(input: {
           ev.disqualified ? 'A judge disqualified you' : 'You were ousted',
         );
         break;
+      case 'WithdrawalBroken': {
+        const why = {
+          pool: 'you lost or spent pool',
+          blood: 'a vampire of yours lost or spent blood',
+          combat: 'a minion of yours entered combat',
+        }[ev.reason];
+        add(occupant(ev.seat), 'withdrawal', `Your withdrawal no longer holds: ${why}`);
+        break;
+      }
+      case 'Withdrew':
+        add(occupant(ev.seat), 'withdrawal', 'You withdrew from the game (+½ VP)');
+        break;
       case 'GameEnded':
         for (const s of after.seats) {
           const won = ev.winner === s.id;

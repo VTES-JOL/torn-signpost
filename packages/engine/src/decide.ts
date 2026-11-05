@@ -39,6 +39,13 @@ import { canSee } from './projection.ts';
 import { newInstanceId, type Rng, shuffled } from './rng.ts';
 import { nextTurnSeat, predator, prey, type SeatId, windowOrder } from './seating.ts';
 import {
+  canWithdraw,
+  FULL_HAND,
+  WITHDRAWAL_VP,
+  type WithdrawalBreak,
+  withdrawalBreaks,
+} from './withdrawal.ts';
+import {
   HIDDEN_ZONES,
   IN_PLAY_ZONES,
   isHiddenZone,
@@ -102,7 +109,12 @@ export function decide(state: GameState, cmd: Command, ctx: DecideContext): Deci
       state,
       settleCalls(
         state,
-        withOusts(state, bodiesFor(state, cmd, ctx, by), ctx.now, by, dq),
+        withWithdrawals(
+          state,
+          withOusts(state, bodiesFor(state, cmd, ctx, by), ctx.now, by, dq),
+          ctx.now,
+          by,
+        ),
         ctx.now,
         by,
       ),
@@ -913,6 +925,17 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
       if (note && note.length > MAX_CALL_NOTE) reject('invalid', 'The note is too long');
       return [gameEnded(state, 'admin', note || undefined)];
     }
+    case 'Withdraw': {
+      const s = mySeat ?? reject('not-seated', 'Only players withdraw');
+      if (seat(s).withdrawing) reject('no-change', 'You are already withdrawing');
+      if (!canWithdraw(state, s)) {
+        reject(
+          'not-now',
+          `Withdraw in your unlock phase, once your library is empty and you have under ${FULL_HAND} cards in hand`,
+        );
+      }
+      return [{ type: 'WithdrawalAnnounced', seat: s }];
+    }
     case 'ProposeEnd': {
       const s = mySeat ?? reject('not-seated', 'Only players can propose ending the game');
       if (state.settings.tournament) {
@@ -1051,6 +1074,31 @@ function settleWindow(
 }
 
 /**
+ * Nullify pending withdrawals (GAME-09, `withdrawal.ts`): pool or blood lost or spent, or a minion
+ * entering combat, in this command's events, whoever's doing it was.
+ */
+function withWithdrawals(
+  state: GameState,
+  bodies: EventBody[],
+  now: string,
+  by: ActorRef,
+): EventBody[] {
+  if (state.status !== 'active') return bodies;
+  let s = state;
+  const broken = new Map<SeatId, WithdrawalBreak>();
+  for (const body of bodies) {
+    for (const [seat, reason] of withdrawalBreaks(s, body)) {
+      if (!broken.has(seat)) broken.set(seat, reason);
+    }
+    s = applyBodies(s, [body], now, by);
+  }
+  const breaks = [...broken]
+    .filter(([seat]) => s.seats.find((x) => x.id === seat)?.withdrawing)
+    .map(([seat, reason]): EventBody => ({ type: 'WithdrawalBroken', seat, reason }));
+  return breaks.length ? [...bodies, ...breaks] : bodies;
+}
+
+/**
  * End the game when its time has come (GAME-08/09, docs/m6-plan.md M6.1): one Methuselah left or
  * none, the end of the action or phase under way when time ran out (Q2), or everyone still in a
  * casual game agreeing (Q3). Admins end games with `EndGame`.
@@ -1170,7 +1218,7 @@ function withOusts(
       ...(s.window ? [{ type: 'WindowClosed' } as const] : []),
       ...(s.action ? [{ type: 'ActionEnded', outcome: 'ousted' } as const] : []),
     ];
-    next.push(...endTurn, ...nextTurn(applyBodies(s, endTurn, now, by)));
+    next.push(...endTurn, ...nextTurn(applyBodies(s, endTurn, now, by), now, by));
   }
   return [...bodies, ...settleWindow(after, next, now, by)];
 }
@@ -1249,22 +1297,41 @@ function advancePhase(state: GameState): EventBody[] {
 
 /**
  * The next Methuselah's turn, which starts by unlocking their cards. Walks from the current seat's
- * physical position, so it works when that seat was just ousted (GAME-21).
+ * physical position, so it works when that seat was just ousted (GAME-21). A Methuselah whose
+ * withdrawal still holds leaves the game as their turn would start, and the turn goes on to the
+ * next (zero-vtes rules-qa 95.4); with one Methuselah left, the game is over instead (withGameEnd).
  */
-function nextTurn(state: GameState): EventBody[] {
-  const turn = state.turn;
-  if (!turn) return [];
-  const seatId = nextTurnSeat(seatRefs(state), turn.seat, state.turnDirection) ?? turn.seat;
-  const unlocks: EventBody[] = [];
-  for (const z of ['ready', 'torpor'] as const) {
-    for (const id of zoneCards(state, zoneId(seatId, z))) {
-      if (state.cards[id]?.locked) unlocks.push({ type: 'CardLocked', card: id, locked: false });
+function nextTurn(state: GameState, now = '', by: ActorRef = { kind: 'system' }): EventBody[] {
+  const out: EventBody[] = [];
+  let s = state;
+  for (let guard = 0; guard < s.seats.length; guard++) {
+    const turn = s.turn;
+    if (!turn) return out;
+    const seatId = nextTurnSeat(seatRefs(s), turn.seat, s.turnDirection) ?? turn.seat;
+    const seat = s.seats.find((x) => x.id === seatId);
+    if (seat?.withdrawing && !seat.ousted && !seat.withdrawn) {
+      const leave: EventBody[] = [
+        ...oustedCards(s, new Set([seatId])),
+        { type: 'Withdrew', seat: seatId, vp: WITHDRAWAL_VP },
+      ];
+      out.push(...leave);
+      s = applyBodies(s, leave, now, by);
+      if (s.seats.filter((x) => !x.ousted && !x.withdrawn).length < 2) return out;
+      continue;
     }
+    const unlocks: EventBody[] = [];
+    for (const z of ['ready', 'torpor'] as const) {
+      for (const id of zoneCards(s, zoneId(seatId, z))) {
+        if (s.cards[id]?.locked) unlocks.push({ type: 'CardLocked', card: id, locked: false });
+      }
+    }
+    return [
+      ...out,
+      { type: 'PhaseAdvanced', turn: { number: turn.number + 1, seat: seatId, phase: 'unlock' } },
+      ...unlocks,
+    ];
   }
-  return [
-    { type: 'PhaseAdvanced', turn: { number: turn.number + 1, seat: seatId, phase: 'unlock' } },
-    ...unlocks,
-  ];
+  return out;
 }
 
 /** Every Methuselah starts with 4 crypt cards in the uncontrolled region and 7 in hand. */

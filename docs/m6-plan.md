@@ -85,7 +85,7 @@ once combat or card effects can cause one.
   action, admin, agreement), GW edge cases (an ousted winner, draws); property tests (games end
   only by these rules; VP never exceeds the table's maximum, timeouts aside).
 
-### M6.2 Withdrawal (GAME-09)
+### M6.2 Withdrawal (GAME-09): done
 
 A Methuselah whose library has run out can leave the game with half a victory point instead of
 playing on until ousted (rulebook "Withdrawing from the Game"; zero-vtes rules-qa 90.9 and Batch

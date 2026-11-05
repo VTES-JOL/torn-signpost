@@ -31,6 +31,7 @@ import {
 } from './model.ts';
 import { canSee, project, projectEvent } from './projection.ts';
 import { seededRng } from './rng.ts';
+import { withdrawalBreaks } from './withdrawal.ts';
 import { zoneId } from './zones.ts';
 
 /**
@@ -165,6 +166,7 @@ function commandFor(state: GameState, [, kind, a, b, c, d]: Step): Command {
     { type: 'SetEdge', seat },
     { type: 'SetTurnDirection', direction: c % 2 ? 'toPrey' : 'toPredator' },
     { type: 'ReplacePlayer', seat, user: `new${a % 3}` },
+    { type: 'Withdraw' },
   ];
   const flow: Command[] = [
     { type: 'SetAutoPass', phases: PHASES.filter((_, i) => (c >> i) & 1) },
@@ -706,6 +708,28 @@ describe('game end (GAME-08/09)', { timeout: 60_000 }, () => {
           break;
       }
       expect(after.status).toBe('finished');
+    });
+  });
+});
+
+describe('withdrawal (GAME-09)', { timeout: 60_000 }, () => {
+  it('a pending withdrawal never survives pool or blood lost, or combat', () => {
+    forEveryCommand(({ before, events, after }) => {
+      let s = before;
+      for (const ev of events) {
+        for (const [seat] of withdrawalBreaks(s, ev)) {
+          expect(after.seats.find((x) => x.id === seat)?.withdrawing, ev.type).toBeUndefined();
+        }
+        s = evolve(s, ev);
+      }
+    });
+  });
+
+  it('a withdrawn Methuselah never acts again', () => {
+    forEveryCommand(({ before, command, actor }) => {
+      if (actor.kind !== 'player') return;
+      const seat = before.seats.find((x) => x.occupant === actor.user);
+      expect(seat?.withdrawn, command.type).toBeFalsy();
     });
   });
 });

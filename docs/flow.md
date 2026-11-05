@@ -350,9 +350,30 @@ After every command the engine checks whether the game is over (`GameEnded`, GAM
 | An admin | `EndGame` (admins only), with an optional note | As at the time limit |
 | Agreement | Casual games: `ProposeEnd`, then `AgreeEnd` from everyone still in it; `DeclineEnd` drops the proposal | As at the time limit |
 
+A Methuselah who **withdrew** (below) counts as out, as an ousted one does.
+
 The **winner** has the most VP alone, ousted or not; a tie has no winner. A **game win** also needs
 at least 2 VP. A finished game takes no more commands; its timers, deadlines and judge calls stop,
 and the lobby lists it as finished.
+
+## Withdrawal
+
+With an **empty library** and **less than a full hand** (for now: fewer than 7 cards; cards that
+change the hand size aren't tracked yet), a Methuselah may `Withdraw` in their own **unlock
+phase**; the toolbar offers it only then, and asks for confirmation (GAME-09; zero-vtes rules-qa
+Batch 95). It is public. They play on as usual, but the withdrawal no longer holds
+(`WithdrawalBroken`) if, before their next unlock phase:
+
+- they lose or spend **pool** (a bleed, a pool adjustment down, blood moved from their pool,
+  influence transfers included); gaining some back doesn't repair it;
+- a **vampire** of theirs in play (ready or torpor) loses or spends **blood**; a minion leaving
+  play with its blood doesn't count, nor does an ally's life;
+- a **minion** of theirs **enters combat** (blocked, or blocking).
+
+Their own actions count as much as anyone's. Once it no longer holds, they may announce it again
+in a later unlock phase, if the conditions hold. If it still holds when their next turn would
+start, they leave the game instead (`Withdrew`): ½ VP, the turn goes on to the next Methuselah,
+their predator gains nothing, and their cards leave the game as an ousted Methuselah's do.
 
 ## How windows close
 

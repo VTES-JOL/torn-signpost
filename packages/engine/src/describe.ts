@@ -190,6 +190,18 @@ export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOp
         : 'Nobody wins';
       return `Game over. ${why[ev.reason]}${ev.note ? ` (“${ev.note}”)` : ''}. ${end}`;
     }
+    case 'WithdrawalAnnounced':
+      return `${seatName(ev.seat)} announces a withdrawal: they leave the game at the start of their next turn, if they lose or spend no pool or blood and none of their minions enters combat`;
+    case 'WithdrawalBroken': {
+      const why = {
+        pool: 'they lost or spent pool',
+        blood: 'a vampire of theirs lost or spent blood',
+        combat: 'a minion of theirs entered combat',
+      }[ev.reason];
+      return `${seatName(ev.seat)}'s withdrawal no longer holds: ${why}`;
+    }
+    case 'Withdrew':
+      return `${seatName(ev.seat)} withdrew from the game (+½ VP)`;
     case 'EndProposed':
       return `${seatName(ev.seat)} proposes ending the game; everyone still in it must agree`;
     case 'EndAgreed':

@@ -35,6 +35,8 @@ what the API or engine would refuse anyway).
 - **Call a judge**, one open call each (GAME-18) [engine].
 - **Pause** a game with a table timer for 1–5 minutes, up to 15 minutes in all per game, and lift
   their own pause early (TEMPO-05) [engine].
+- **Withdraw** with an empty library and less than a full hand, in their own unlock phase; they
+  leave with ½ VP at the start of their next turn if it still holds (GAME-09) [engine].
 - **End a casual game by agreement**: propose, agree or decline; it ends once everyone still in it
   agrees (docs/m6-plan.md Q3) [engine]. Not in tournament games.
 - **Their own account**: choose a display name once (AUTH-05); notifications; email settings and

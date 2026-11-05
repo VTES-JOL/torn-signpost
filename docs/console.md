@@ -95,6 +95,7 @@ wait 13h                       # time passes; due checks (deadlines, time limit,
 A> pause 3                     # pause a timed game for 1–5 minutes; resume lifts it early
 admin> endgame "Venue closing" # an admin ends the game, scored as a timeout (½ VP to each survivor)
 A> propose                     # casual games: propose ending early; `agree` / `decline` answer it
+A> withdraw                    # your unlock phase, empty library, short hand: leave next turn, ½ VP
 B> call rules Does it stack?   # call a judge: slow-play|rules|dispute|other [seat] [note]
 judge> claim                   # judges take the oldest call (or claim c42); judge2> is another judge
 judge> rule passfor B          # answered|escalate|extend B 12|passfor B|time 10|disqualify B [note]
@@ -113,6 +114,8 @@ expect status active|finished  # the game's status
 expect ended <reason>|no       # last-standing, no-survivors, time-limit, judge or agreement
 expect winner A|none           # the most VP alone, ousted or not
 expect gamewin A|none          # a winner with at least 2 VP
+expect withdrawing A yes|no    # a withdrawal announced and still holding
+expect withdrawn A yes|no      # out of the game by withdrawing
 expect timeup yes|no           # the time limit was reached
 expect deadline A pending      # an away player's deadline: none, pending, reminded or expired
 expect calls rules:B@judge     # open judge calls: reason[:about][@claimed by], or none

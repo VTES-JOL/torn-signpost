@@ -9,6 +9,7 @@ import type { ClientCommand } from './commands.ts';
 import { impulseHolder, isHolding, seatRefs } from './flow.ts';
 import type { ActionKind, CardId, GameState, InstanceId, PHASES } from './model.ts';
 import { prey, type SeatId } from './seating.ts';
+import { canWithdraw } from './withdrawal.ts';
 import { zoneCards, zoneId } from './zones.ts';
 
 export type OfferStep =
@@ -30,6 +31,8 @@ export interface Offer {
    * (GAME-11).
    */
   confirm: boolean;
+  /** What confirming it means, shown with the confirmation. */
+  explain?: string;
   build(values: StepValue[]): ClientCommand;
 }
 
@@ -322,6 +325,18 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
   }
   if (!myTurn || turn.phase !== 'master') {
     if (hand.length) offers.push(playCard('Play a card', hand));
+  }
+  // Only when it's allowed (GAME-09): otherwise there's no sign of it.
+  if (canWithdraw(view, seat)) {
+    offers.push({
+      id: 'withdraw',
+      label: 'Withdraw…',
+      confirm: true,
+      explain:
+        'You’ll leave the game at the start of your next turn, with ½ VP, if until then you lose or spend no pool, none of your vampires loses or spends blood, and none of your minions enters combat.',
+      steps: [],
+      build: () => ({ type: 'Withdraw' }),
+    });
   }
   if (myTurn) {
     offers.push({

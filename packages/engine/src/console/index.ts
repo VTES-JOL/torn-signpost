@@ -88,6 +88,7 @@ export const CONSOLE_COMMANDS: Record<string, Syntax> = {
   pause: { args: ['count'], usage: 'pause [minutes]  (1–5, games with a table timer)' },
   resume: { args: [], usage: 'resume  (lift your pause early)' },
   endgame: { args: [], usage: 'endgame ["note"]  (admins: end the game, scored as a timeout)' },
+  withdraw: { args: [], usage: 'withdraw  (your unlock phase, library empty, hand short)' },
   propose: { args: [], usage: 'propose  (casual games: propose ending the game early)' },
   agree: { args: [], usage: 'agree  (agree to end the game)' },
   decline: { args: [], usage: 'decline  (play on instead)' },
@@ -336,6 +337,9 @@ function parse(tokens: string[], ctx: ConsoleContext): Command {
       const note = args.join(' ').trim();
       return note ? { type: 'EndGame', note } : { type: 'EndGame' };
     }
+    case 'withdraw':
+      extra(0);
+      return { type: 'Withdraw' };
     case 'propose':
       extra(0);
       return { type: 'ProposeEnd' };

@@ -139,6 +139,31 @@ describe('the end of a game', () => {
   });
 });
 
+describe('withdrawal', () => {
+  it('tells the player when it no longer holds, and when it takes them out', () => {
+    const s = started();
+    const by = { kind: 'judge', user: 'jo' } as const;
+    const at = '2026-11-05T10:00:00.000Z';
+    const drafts = gameNotifications({
+      before: s,
+      after: s,
+      actor: 'jo',
+      events: [
+        { type: 'WithdrawalBroken', seat: '1', reason: 'pool', seq: 90, at, by },
+        { type: 'Withdrew', seat: '2', vp: 0.5, seq: 91, at, by },
+      ],
+    });
+    expect(drafts.filter((d) => d.kind === 'withdrawal')).toEqual([
+      {
+        user: 'alice',
+        kind: 'withdrawal',
+        text: 'Your withdrawal no longer holds: you lost or spent pool',
+      },
+      { user: 'bob', kind: 'withdrawal', text: 'You withdrew from the game (+½ VP)' },
+    ]);
+  });
+});
+
 describe('mentions', () => {
   const people = [
     { user: 'u1', name: 'Alice' },

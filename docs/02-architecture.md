@@ -581,7 +581,10 @@ primitives, and corrections are new commands.
 - **Game end** (GAME-08/09, `docs/flow.md`): a `withGameEnd` post-step after the ousts ends the
   game with one Methuselah left (+1 VP) or none, and at the time limit once the action or phase
   under way then is over (½ VP each); admins end games with `EndGame`, and casual players by
-  agreement. `GameEnded` carries the awards, the winner and any game win; `status: 'finished'`
+  agreement. Withdrawal (`withdrawal.ts`): `Withdraw` sets `Seat.withdrawing`; a
+  `withWithdrawals` post-step nullifies it on pool or blood lost or spent, or combat; `nextTurn`
+  takes a seat still withdrawing out (`Withdrew`, ½ VP) as its turn would start. `GameEnded`
+  carries the awards, the winner and any game win; `status: 'finished'`
   then refuses every command, and the lobby lists the game as finished. The turn never passes to
   a seat that is out.
 - **Control**: a card is controlled by the seat whose zone it's in, except a master card put on

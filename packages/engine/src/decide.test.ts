@@ -4,8 +4,10 @@ import { type DecideResult, decide } from './decide.ts';
 import { evolve, newGame } from './evolve.ts';
 import { waitingOn } from './flow.ts';
 import type { Actor, GameState } from './model.ts';
+import { availableActions } from './offers.ts';
 import { seededRng } from './rng.ts';
 import { testCatalog as catalog } from './testing/fixtures.ts';
+import { withdrawalBreaks } from './withdrawal.ts';
 
 const rng = seededRng(9);
 const seats = (n: number) =>
@@ -359,5 +361,106 @@ describe('game end (GAME-08/09, docs/m6-plan.md M6.1)', () => {
     expect(s.seats.find((x) => x.id === last)?.ousted).toBeUndefined();
     // The turn didn't move on to anyone: the game was over.
     expect(s.turn?.seat).toBe(first);
+  });
+});
+
+describe('withdrawal (GAME-09, docs/m6-plan.md M6.2)', () => {
+  const judge: Actor = { kind: 'judge', user: 'jo' };
+  const as = (seat: string): Actor => ({ kind: 'player', user: seat.toLowerCase() });
+
+  /**
+   * The seat whose turn it is, with an empty library, 6 cards in hand and a vampire ready with 3
+   * blood, still in their unlock phase.
+   */
+  function ready() {
+    let s = started();
+    const t = s.turn?.seat ?? 'A';
+    const library = s.zones[`${t}:library`] ?? [];
+    s = apply(s, { type: 'Draw', seat: t, count: library.length }, as(t));
+    for (const card of (s.zones[`${t}:hand`] ?? []).slice(6)) {
+      s = apply(s, { type: 'MoveCard', card, to: `${t}:ashHeap` }, as(t));
+    }
+    const vampire = s.zones[`${t}:uncontrolled`]?.[0] ?? '';
+    s = apply(s, { type: 'MoveCard', card: vampire, to: `${t}:ready` }, as(t));
+    s = apply(s, { type: 'AdjustCounter', card: vampire, counter: 'blood', delta: 3 }, judge);
+    return { s, t, vampire };
+  }
+
+  it('is offered exactly when it would be accepted', () => {
+    const { s, t } = ready();
+    const offered = (st: GameState, seat: string) =>
+      availableActions(st, seat, catalog).some((o) => o.id === 'withdraw');
+    expect(offered(s, t)).toBe(true);
+    expect(run(s, { type: 'Withdraw' }, as(t)).ok).toBe(true);
+    // A full hand: neither.
+    const card = s.zones[`${t}:ashHeap`]?.[0] ?? '';
+    const full = apply(s, { type: 'MoveCard', card, to: `${t}:hand` }, as(t));
+    expect(offered(full, t)).toBe(false);
+    expect(run(full, { type: 'Withdraw' }, as(t)).ok).toBe(false);
+    // Pending already: neither.
+    const pending = apply(s, { type: 'Withdraw' }, as(t));
+    expect(offered(pending, t)).toBe(false);
+    // Another player, or another phase: neither.
+    const other = s.seats.find((x) => x.id !== t)?.id ?? '';
+    expect(offered(s, other)).toBe(false);
+    const master = apply(s, { type: 'AdvancePhase' }, as(t));
+    expect(offered(master, t)).toBe(false);
+    expect(run(master, { type: 'Withdraw' }, as(t)).ok).toBe(false);
+  });
+
+  it('is nullified by a vampire losing or spending blood, not by blood leaving play with it', () => {
+    const { s, t, vampire } = ready();
+    const w = apply(s, { type: 'Withdraw' }, as(t));
+    const lost = apply(
+      w,
+      { type: 'AdjustCounter', card: vampire, counter: 'blood', delta: -1 },
+      as(t),
+    );
+    expect(lost.seats.find((x) => x.id === t)?.withdrawing).toBeUndefined();
+    const moved = apply(
+      w,
+      { type: 'TransferBlood', from: { card: vampire }, to: { pool: t }, amount: 1 },
+      as(t),
+    );
+    expect(moved.seats.find((x) => x.id === t)?.withdrawing).toBeUndefined();
+    // Burned with its blood on it: no loss (zero-vtes rules-qa 95.1).
+    const burned = apply(w, { type: 'MoveCard', card: vampire, to: `${t}:ashHeap` }, as(t));
+    expect(burned.seats.find((x) => x.id === t)?.withdrawing).toBeDefined();
+    // A gain is no loss; an ally's life isn't blood (95.2).
+    const gained = apply(
+      w,
+      { type: 'AdjustCounter', card: vampire, counter: 'blood', delta: 1 },
+      as(t),
+    );
+    expect(gained.seats.find((x) => x.id === t)?.withdrawing).toBeDefined();
+    const withLife = apply(
+      w,
+      { type: 'AdjustCounter', card: vampire, counter: 'life', delta: 2 },
+      judge,
+    );
+    const life = apply(
+      withLife,
+      { type: 'AdjustCounter', card: vampire, counter: 'life', delta: -1 },
+      judge,
+    );
+    expect(life.seats.find((x) => x.id === t)?.withdrawing).toBeDefined();
+  });
+
+  it('is nullified by another player taking their pool, as by their own doing', () => {
+    const { s, t } = ready();
+    const w = apply(s, { type: 'Withdraw' }, as(t));
+    const after = apply(w, { type: 'AdjustPool', seat: t, delta: -2 }, judge);
+    expect(after.seats.find((x) => x.id === t)?.withdrawing).toBeUndefined();
+  });
+
+  it('is nullified by a minion of theirs entering combat', () => {
+    const { s, t, vampire } = ready();
+    const w = apply(s, { type: 'Withdraw' }, as(t));
+    // Straight to combat: a blocked action, as a judge would record it.
+    const broke = withdrawalBreaks(
+      { ...w, action: { seat: t, minion: vampire, kind: 'bleed', stage: 'blocks' } } as GameState,
+      { type: 'ActionBlocked', blocker: vampire },
+    );
+    expect(broke).toEqual([[t, 'combat']]);
   });
 });

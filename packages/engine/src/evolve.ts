@@ -388,6 +388,24 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
       delete d.judgeCalls;
       delete d.waiting;
       break;
+    case 'WithdrawalAnnounced':
+      patchSeat(d, ev.seat, () => ({ withdrawing: { since: ev.seq } }));
+      break;
+    case 'WithdrawalBroken':
+      d.seats = d.seats.map((s) => {
+        if (s.id !== ev.seat) return s;
+        const { withdrawing: _, ...rest } = s;
+        return rest;
+      });
+      break;
+    case 'Withdrew':
+      // Out of the game, not ousted (zero-vtes rules-qa 95.5): their Edge is burned, as when ousted.
+      d.seats = d.seats.map((s) => {
+        if (s.id !== ev.seat) return s;
+        const { withdrawing: _, ...rest } = s;
+        return { ...rest, withdrawn: true, vp: s.vp + ev.vp, hasEdge: false };
+      });
+      break;
     case 'EndProposed':
       d.endProposal = { by: ev.seat, agreed: [ev.seat] };
       break;

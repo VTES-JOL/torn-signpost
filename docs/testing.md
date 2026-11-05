@@ -29,6 +29,8 @@ deploys only when they pass.
    - no player pauses for more than their allowance in a game;
    - the turn of an active game always belongs to someone still in it;
    - a game ends only for a reason the rules give, and never awards more VP than there are seats;
+   - a pending withdrawal never survives pool or blood lost, or combat; a withdrawn Methuselah
+     never acts again;
    - judge calls stay consistent: unique, one open per player, deadline calls still overdue.
 
    Property checks look at the state between events and after commands. Between the events of one
