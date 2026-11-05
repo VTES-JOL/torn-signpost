@@ -270,7 +270,6 @@ directives: `present`, `wait`, `judge`, `extend`, `passfor`, `remove`), `docs/02
 
 ## Later (noted, not in M5b)
 
-- An admin request queue for casual-game replacements.
 - Recording tournament penalties (cautions, warnings) against players: with tournaments, M7.
 - Ending the game at the time limit and timeout scoring: with game end, M6.
 - Web Push (NOTIF-03), APNs (M8), Discord webhooks (NOTIF-04), vacation status (TEMPO-07).
