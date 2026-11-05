@@ -22,7 +22,11 @@ export type TimerPayload =
   /** A seated player's last connection to the game closed: mark them away if still gone. */
   | { kind: 'presence'; gameId: string; user: string }
   /** A deadline, the time limit or the end of a pause may be due: let the engine check. */
-  | { kind: 'game'; gameId: string; command: GameTimerCommand };
+  | { kind: 'game'; gameId: string; command: GameTimerCommand }
+  /** A notification someone wants by email: send it if it's still unread and they're away. */
+  | { kind: 'email'; user: string; id: string }
+  /** A digest run (a recurring schedule, not a one-off). */
+  | { kind: 'digest'; slot: 'morning' | 'evening' };
 
 export interface Timers {
   /** Fire `payload` at `at`; scheduling the same key again moves it. */

@@ -372,7 +372,7 @@ export class GameStore {
         Item: {
           PK: `CONN#${connectionId}`,
           SK: 'META',
-          identity,
+          identity: withoutEmail(identity),
           games: [],
           ttl: epoch() + CONNECTION_TTL,
         },
@@ -424,7 +424,7 @@ export class GameStore {
                 PK: `SUB#${gameId}`,
                 SK: `CONN#${connectionId}`,
                 connectionId,
-                identity,
+                identity: withoutEmail(identity),
                 ttl: epoch() + CONNECTION_TTL,
               },
             },
@@ -559,3 +559,10 @@ function toMeta(item: Record<string, unknown>): GameMeta {
 
 const judgeKey = (gameId: string, call: Pick<JudgeCall, 'id' | 'openedAt'>) =>
   `${call.openedAt}#${gameId}#${call.id}`;
+
+/** Connections keep who the user is, not their email address (NFR-06). */
+function withoutEmail(identity: Identity): Identity {
+  if (identity.kind !== 'user') return identity;
+  const { email: _, ...rest } = identity;
+  return rest;
+}

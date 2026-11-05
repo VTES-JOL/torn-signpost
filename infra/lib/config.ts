@@ -28,6 +28,11 @@ export interface StageConfig {
    * the absence checks behind it and the spectator count. The web display has its own flag.
    */
   presenceEnabled: boolean;
+  /**
+   * Server-side switch for email notifications (NOTIF-02): queueing, sending and digests. The
+   * settings on the Account page have their own flag.
+   */
+  emailEnabled: boolean;
 }
 
 export const beta: StageConfig = {
@@ -44,6 +49,8 @@ export const beta: StageConfig = {
   gamesEnabled: true,
   // On, so the scheduler and timers Lambda run on the beta while the UI is still dark.
   presenceEnabled: true,
+  // On: players who are away get email (deadlines and judge matters at once, the rest daily).
+  emailEnabled: true,
 };
 
 export const hosts = (c: StageConfig) => ({

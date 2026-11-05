@@ -14,6 +14,7 @@ import { DeckEditor } from './pages/DeckEditor.tsx';
 import { DecksPage } from './pages/DecksPage.tsx';
 import { GamesPage } from './pages/GamesPage.tsx';
 import { JudgePage } from './pages/JudgePage.tsx';
+import { UnsubscribePage } from './pages/UnsubscribePage.tsx';
 import { NameForm, ProfileProvider, useProfile } from './profile.tsx';
 import { ReplayListPage, ReplayPage } from './replay/ReplayPage.tsx';
 
@@ -49,6 +50,7 @@ export function App() {
                     )}
                     {config.flags.judgeCalls && <Route path="judge" element={<JudgePage />} />}
                     <Route path="account" element={<AccountPage />} />
+                    <Route path="unsubscribe" element={<UnsubscribePage />} />
                     <Route path="auth/callback" element={<AuthCallback />} />
                     <Route path="*" element={<p className="notice">Page not found.</p>} />
                   </Route>

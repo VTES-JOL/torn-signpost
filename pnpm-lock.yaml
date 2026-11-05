@@ -311,6 +311,12 @@ importers:
       '@aws-sdk/client-scheduler':
         specifier: 3.1151.0
         version: 3.1151.0
+      '@aws-sdk/client-secrets-manager':
+        specifier: 3.1151.0
+        version: 3.1151.0
+      '@aws-sdk/client-sesv2':
+        specifier: 3.1151.0
+        version: 3.1151.0
       '@aws-sdk/lib-dynamodb':
         specifier: 3.1151.0
         version: 3.1151.0(@aws-sdk/client-dynamodb@3.1151.0)
@@ -442,6 +448,14 @@ packages:
 
   '@aws-sdk/client-scheduler@3.1151.0':
     resolution: {integrity: sha512-53RmUsfPAAp3N/zgTotfCbI4R3c0fE7WgMH7VviNerreo1y6wskmZ+A4ZT5Ea39aNuHM2fTzRVV2EoW0TxPfIw==}
+    engines: {node: '>=20.0.0'}
+
+  '@aws-sdk/client-secrets-manager@3.1151.0':
+    resolution: {integrity: sha512-TGqF12bgdX9V1tXoEJS0DNP5mS1ngMMPeO27qyYQYUMsZeKKpDbRV/7LeL742NLzNQafofp36MOE+rJr3oQkPg==}
+    engines: {node: '>=20.0.0'}
+
+  '@aws-sdk/client-sesv2@3.1151.0':
+    resolution: {integrity: sha512-Gann1GbKHVmksv0igE+7t96NIIWU83tPKyYvqzpYzbskVGzc4GOC6D98pxzucNQHKmwagK4OweR7LoPLZjiLSA==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/client-sts@3.1151.0':
@@ -1828,6 +1842,29 @@ snapshots:
     dependencies:
       '@aws-sdk/core': 3.978.7
       '@aws-sdk/credential-provider-node': 3.972.90
+      '@aws-sdk/types': 3.975.0
+      '@smithy/core': 3.37.0
+      '@smithy/fetch-http-handler': 5.8.0
+      '@smithy/node-http-handler': 4.13.0
+      '@smithy/types': 4.19.0
+      tslib: 2.8.1
+
+  '@aws-sdk/client-secrets-manager@3.1151.0':
+    dependencies:
+      '@aws-sdk/core': 3.978.7
+      '@aws-sdk/credential-provider-node': 3.972.90
+      '@aws-sdk/types': 3.975.0
+      '@smithy/core': 3.37.0
+      '@smithy/fetch-http-handler': 5.8.0
+      '@smithy/node-http-handler': 4.13.0
+      '@smithy/types': 4.19.0
+      tslib: 2.8.1
+
+  '@aws-sdk/client-sesv2@3.1151.0':
+    dependencies:
+      '@aws-sdk/core': 3.978.7
+      '@aws-sdk/credential-provider-node': 3.972.90
+      '@aws-sdk/signature-v4-multi-region': 3.996.50
       '@aws-sdk/types': 3.975.0
       '@smithy/core': 3.37.0
       '@smithy/fetch-http-handler': 5.8.0

@@ -400,6 +400,9 @@ sequenceDiagram
 | User connections | `USERCONN#<sub>` | `CONN#<connId>` | TTL 3 h; every socket a user has open, so notifications reach them on any page |
 | Notification | `USER#<sub>` | `NOTIF#<id>` | TTL 30 days; the ID starts with the time sent, so the sort key orders them (NOTIF-01) |
 | Judges | `JUDGES` | `USER#<sub>` | TTL 30 days, refreshed when a judge connects; who judge-call notifications go to |
+| Email address | `USER#<sub>` | `EMAIL` | the verified sign-in address, refreshed as the user makes requests (NOTIF-02) |
+| Email preferences | `USER#<sub>` | `EMAILPREFS` | per category: immediate, digest or off; digest daily or twice daily |
+| Digest queue | `DIGESTQ` | `<sub>#<notificationId>` | TTL 3 days; notifications waiting for the next digest run |
 | Profile | `USER#<sub>` | `PROFILE` | display name, avatar, prefs. Unique handles via `HANDLE#<lower>` items (AUTH-05) |
 | Stats | `USER#<sub>` | `STATS#<season>` | aggregates (STATS-02). GSI3 `LB#<season>#<metric>` / zero-padded score (STATS-03) |
 | Deck | `DECK#<id>` | `META`, `V#<n>` | versions immutable (DECK-07). GSI1 `OWNER#<sub>` for my decks; GSI4 `PUBLIC#<format>` / `<updatedAt>` for public listings |
@@ -641,8 +644,12 @@ primitives, and corrections are new commands.
   They are stored per user and pushed as `notification` messages to every socket the user has;
   the web app keeps a socket of its own for them, so they arrive on any page (the bell, and the
   count in the tab title). Unread counts cover the latest 50.
-- Not yet: referendums and combat steps (M6); email notifications (M5b.6); structural window
-  elision beyond auto-pass.
+- Email (NOTIF-02): a notification whose category the user wants at once is checked again two
+  minutes later (a one-off timer) and emailed only if it's still unread and the user has no
+  connection open; digest categories wait in `DIGESTQ` for the 05:00/17:00 UTC runs, which apply
+  the same checks. The timers Lambda sends through SES (the only Lambda allowed to), one recipient
+  per message, with signed one-click unsubscribe links. Switched by `emailEnabled`.
+- Not yet: referendums and combat steps (M6); structural window elision beyond auto-pass.
 
 ## 7. macOS client (`apps/apple`)
 

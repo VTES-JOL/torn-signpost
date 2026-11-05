@@ -12,6 +12,7 @@ import {
 import type { Identity } from '../auth.ts';
 import type { NotificationStore } from '../db/notifications.ts';
 import type { GameStore } from '../db/store.ts';
+import type { EmailService } from '../email/service.ts';
 import { ApiError } from '../errors.ts';
 import type { ConnectionGateway } from '../realtime/gateway.ts';
 import { type Draft, gameNotifications, mentioned } from './triggers.ts';
@@ -45,6 +46,8 @@ export class NotificationService implements Notifier {
       games: GameStore;
       gateway: ConnectionGateway;
       newId: () => string;
+      /** Email for players who want it (NOTIF-02). */
+      email?: Pick<EmailService, 'notified'>;
       now?: () => Date;
     },
   ) {
@@ -123,6 +126,7 @@ export class NotificationService implements Notifier {
         };
         await this.deps.store.put(d.user, notification);
         await this.push(d.user, notification);
+        await this.deps.email?.notified(d.user, notification);
       }),
     );
   }

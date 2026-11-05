@@ -26,6 +26,7 @@ function localConfig(): Plugin {
         clock: true,
         judgeCalls: true,
         notifications: true,
+        email: true,
       },
     };
     server.middlewares.use('/config.json', (_req, res) => {

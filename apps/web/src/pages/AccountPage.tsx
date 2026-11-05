@@ -2,11 +2,14 @@ import { DisplayName } from '@torn-signpost/protocol';
 import { useState } from 'react';
 import { ApiError, useApi } from '../api.ts';
 import { useAuth } from '../auth.tsx';
+import { useConfig } from '../content.tsx';
 import { NameForm, useProfile } from '../profile.tsx';
+import { EmailSettings } from './EmailSettings.tsx';
 
 export function AccountPage() {
   const auth = useAuth();
   const { profile } = useProfile();
+  const { flags } = useConfig();
   if (!auth.user) return <p className="notice">Sign in to see your account.</p>;
   if (!profile) return <p className="muted">Loading…</p>;
   return (
@@ -26,6 +29,7 @@ export function AccountPage() {
       ) : (
         <NameForm submitLabel="Save" />
       )}
+      {flags.email && <EmailSettings />}
       {profile.groups.includes('admin') && <AdminRename />}
     </section>
   );

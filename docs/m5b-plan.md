@@ -175,7 +175,25 @@ notifications. Behind the `notifications` flag in the web app; the backend alway
 - **Tests**: service unit tests for each trigger and for no self-notifications; integration test
   for push to a second connection.
 
-### M5b.6 Email (NOTIF-02)
+### M5b.6 Email (NOTIF-02): done
+
+Built as planned, with:
+- **The delay uses the timers** (EventBridge Scheduler one-off schedules, design decision 5)
+  rather than an SQS delay queue: one less moving part, and the same idempotent "check when it
+  fires" pattern.
+- **A sixth category, `game`** (a game starting, being ousted), in the digest by default.
+- **Digests at 05:00 and 17:00 UTC** (daily: the evening one), from two recurring schedules.
+  Users' time zones aren't known yet.
+- **The address** is the verified one from the Cognito ID token, kept on `USER#<sub> / EMAIL` as
+  users make requests. Local dev users get `<name>@example.test`, and locally emails are printed by
+  the API process instead of sent.
+- **Unsubscribe links** are signed (HMAC, key in Secrets Manager). Opening the web page changes
+  nothing (mail scanners open links); its button, or a mail client's one-click POST
+  (RFC 8058 `List-Unsubscribe-Post`), does.
+- **"Away"** means no open connection at all (`USERCONN#`), so any open tab counts as present.
+- The backend switch is `emailEnabled` (infra config), on for the beta; the
+  Account page settings are behind the `email` flag. The unsubscribe page is always there.
+
 
 The SES set-up (identity, DNS records, production-access request) is done first, at the start of
 M5b, since AWS approval takes a day or more; only the sending code waits for this increment.

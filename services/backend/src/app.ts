@@ -5,11 +5,13 @@ import {
   CommandRequest,
   CreateGameRequest,
   DeckFormat,
+  EmailPrefs,
   type HealthResponse,
   JoinGameRequest,
   LobbyStatus,
   MarkReadRequest,
   SaveDeckRequest,
+  UnsubscribeRequest,
   UpdateProfileRequest,
 } from '@torn-signpost/protocol';
 import { Hono } from 'hono';
@@ -17,6 +19,7 @@ import { cors } from 'hono/cors';
 import { z } from 'zod';
 import { type Authenticator, bearer, GUEST, type Identity } from './auth.ts';
 import type { DeckService } from './decks/service.ts';
+import type { EmailService } from './email/service.ts';
 import { ApiError } from './errors.ts';
 import type { GameService } from './games/service.ts';
 import type { NotificationService } from './notifications/service.ts';
@@ -32,6 +35,8 @@ export interface AppConfig {
   decks?: DeckService;
   profiles?: ProfileService;
   notifications?: NotificationService;
+  /** Missing while email is switched off for the stage. */
+  email?: EmailService;
 }
 
 type Env = { Variables: { identity: Identity } };
@@ -45,6 +50,7 @@ export function createApp(config: AppConfig): Hono<Env> {
   app.use('*', async (c, next) => {
     const identity = config.auth ? await config.auth(bearer(c.req.header('Authorization'))) : GUEST;
     c.set('identity', config.profiles ? await config.profiles.resolve(identity) : identity);
+    await config.email?.seen(identity);
     await next();
   });
 
@@ -187,6 +193,21 @@ export function createApp(config: AppConfig): Hono<Env> {
   app.post('/me/notifications/read', async (c) =>
     c.json(await notifications().markRead(c.var.identity, await body(c.req, MarkReadRequest))),
   );
+
+  // Email notifications (NOTIF-02): your settings, and unsubscribing from a link in an email.
+  const email = () => {
+    if (!config.email) throw new ApiError(503, 'email_disabled', 'Email is not available yet');
+    return config.email;
+  };
+  app.get('/me/email', async (c) => c.json(await email().settings(c.var.identity)));
+  app.put('/me/email', async (c) =>
+    c.json(await email().savePrefs(c.var.identity, await body(c.req, EmailPrefs))),
+  );
+  // One-click (RFC 8058) mail clients POST here with the link's query; so does the web page.
+  app.post('/email/unsubscribe', async (c) => {
+    await email().unsubscribe(UnsubscribeRequest.parse(c.req.query()));
+    return c.body(null, 204);
+  });
   app.put('/users/:name/name', async (c) => {
     if (c.var.identity.kind !== 'user') throw new ApiError(401, 'sign_in', 'Sign in first');
     const req = await body(c.req, UpdateProfileRequest);

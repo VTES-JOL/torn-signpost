@@ -17,6 +17,8 @@ const GameCommand = z.discriminatedUnion('type', [
 const Payload = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('presence'), gameId: z.string(), user: z.string() }),
   z.object({ kind: z.literal('game'), gameId: z.string(), command: GameCommand }),
+  z.object({ kind: z.literal('email'), user: z.string(), id: z.string() }),
+  z.object({ kind: z.literal('digest'), slot: z.enum(['morning', 'evening']) }),
 ]) satisfies z.ZodType<TimerPayload>;
 
 const services = servicesFor(process.env.WS_CALLBACK_URL ?? '');

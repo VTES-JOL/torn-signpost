@@ -9,6 +9,7 @@
  */
 import {
   type DynamoDBDocumentClient,
+  GetCommand,
   PutCommand,
   QueryCommand,
   UpdateCommand,
@@ -33,6 +34,13 @@ export class NotificationStore {
         Item: { PK: userKey(user), SK: notifKey(n.id), ...n, ttl: epoch() + KEEP },
       }),
     );
+  }
+
+  async get(user: string, id: string): Promise<Notification | undefined> {
+    const { Item } = await this.db.send(
+      new GetCommand({ TableName: this.table, Key: { PK: userKey(user), SK: notifKey(id) } }),
+    );
+    return Item ? toNotification(Item) : undefined;
   }
 
   /** Newest first, starting after `before` (an ID) if given. */

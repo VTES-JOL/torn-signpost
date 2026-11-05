@@ -5,6 +5,7 @@ import { MAIN_TABLE } from '../../services/backend/src/db/schema.ts';
 import { ApiStack } from '../lib/api-stack.ts';
 import { AuthStack } from '../lib/auth-stack.ts';
 import { beta } from '../lib/config.ts';
+import { EmailStack } from '../lib/email-stack.ts';
 import { FoundationStack } from '../lib/foundation-stack.ts';
 import { OpsStack } from '../lib/ops-stack.ts';
 
@@ -18,6 +19,7 @@ beforeAll(() => {
   const app = new App();
   const f = new FoundationStack(app, 'F', beta, { env });
   const a = new AuthStack(app, 'A', beta, { env, zone: f.zone, certificate: f.certificate });
+  const e = new EmailStack(app, 'E', beta, { env });
   const p = new ApiStack(app, 'P', beta, {
     env,
     zone: f.zone,
@@ -26,6 +28,11 @@ beforeAll(() => {
     userPoolId: a.userPool.userPoolId,
     userPoolClientId: a.webClient.userPoolClientId,
     version: 'test',
+    email: {
+      identityArn: e.identity.emailIdentityArn,
+      configurationSetName: e.configurationSet.configurationSetName,
+      fromAddress: e.fromAddress,
+    },
   });
   const o = new OpsStack(app, 'O', beta, {
     env,
@@ -197,6 +204,28 @@ describe('ops', () => {
   it('sets a US$50 monthly budget', () => {
     ops.hasResourceProperties('AWS::Budgets::Budget', {
       Budget: Match.objectLike({ BudgetLimit: { Amount: 50, Unit: 'USD' }, TimeUnit: 'MONTHLY' }),
+    });
+  });
+});
+
+describe('email', () => {
+  it('lets only the timers Lambda send, through the SES identity', () => {
+    const sends = Object.values(api.findResources('AWS::IAM::Policy')).filter((p) =>
+      JSON.stringify(p).includes('ses:SendEmail'),
+    );
+    expect(sends).toHaveLength(1);
+    expect(JSON.stringify(sends[0])).toContain('TimersFunctionServiceRole');
+  });
+
+  it('runs the digest twice a day, with email on for the beta', () => {
+    for (const hour of [5, 17]) {
+      api.hasResourceProperties('AWS::Scheduler::Schedule', {
+        ScheduleExpression: `cron(0 ${hour} * * ? *)`,
+        ScheduleExpressionTimezone: 'UTC',
+      });
+    }
+    api.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: { Variables: Match.objectLike({ EMAIL_ENABLED: 'true' }) },
     });
   });
 });

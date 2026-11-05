@@ -7,7 +7,14 @@ import { ApiError } from './errors.ts';
 
 export type Identity =
   | { kind: 'guest' }
-  | { kind: 'user'; sub: string; name: string; groups: string[] };
+  | {
+      kind: 'user';
+      sub: string;
+      name: string;
+      groups: string[];
+      /** The verified address they signed in with, for email notifications (NOTIF-02). */
+      email?: string;
+    };
 
 /** Resolves a bearer token (without the `Bearer ` prefix) to an identity. */
 export type Authenticator = (token: string | undefined) => Promise<Identity>;
@@ -27,7 +34,14 @@ export function cognitoAuthenticator(userPoolId: string, clientId: string): Auth
       const claims = await verifier.verify(token);
       const name =
         typeof claims.name === 'string' ? claims.name : `Player ${claims.sub.slice(0, 4)}`;
-      return { kind: 'user', sub: claims.sub, name, groups: claims['cognito:groups'] ?? [] };
+      const verified = claims.email_verified === true;
+      return {
+        kind: 'user',
+        sub: claims.sub,
+        name,
+        groups: claims['cognito:groups'] ?? [],
+        ...(verified && typeof claims.email === 'string' ? { email: claims.email } : {}),
+      };
     } catch {
       throw new ApiError(401, 'invalid_token', 'Sign in again');
     }
@@ -43,5 +57,12 @@ export const devAuthenticator: Authenticator = async (token) => {
   const m = /^dev:([a-z0-9-]{1,32})(?::([a-z,]+))?$/i.exec(token);
   if (!m?.[1]) throw new ApiError(401, 'invalid_token', 'Use a dev:<user> token locally');
   const user = m[1].toLowerCase();
-  return { kind: 'user', sub: user, name: user, groups: m[2]?.split(',') ?? [] };
+  // A reserved domain, so local email (which is only logged) can never reach anyone.
+  return {
+    kind: 'user',
+    sub: user,
+    name: user,
+    groups: m[2]?.split(',') ?? [],
+    email: `${user}@example.test`,
+  };
 };

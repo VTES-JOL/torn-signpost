@@ -31,6 +31,9 @@ const auth = new AuthStack(app, stackName(config, 'Auth'), config, {
 // Cognito custom domains require the parent domain to resolve first.
 auth.addStackDependency(foundation);
 
+// Email notifications (NOTIF-02): SES identity and DNS; the timers Lambda sends through it.
+const email = new EmailStack(app, stackName(config, 'Email'), config, { env });
+
 const api = new ApiStack(app, stackName(config, 'Api'), config, {
   env,
   zone: foundation.zone,
@@ -39,6 +42,11 @@ const api = new ApiStack(app, stackName(config, 'Api'), config, {
   userPoolId: auth.userPool.userPoolId,
   userPoolClientId: auth.webClient.userPoolClientId,
   version,
+  email: {
+    identityArn: email.identity.emailIdentityArn,
+    configurationSetName: email.configurationSet.configurationSetName,
+    fromAddress: email.fromAddress,
+  },
 });
 
 new WebDeployStack(app, stackName(config, 'WebDeploy'), {
@@ -58,9 +66,6 @@ new WebDeployStack(app, stackName(config, 'WebDeploy'), {
     flags: config.flags,
   },
 });
-
-// Email notifications (NOTIF-02): SES identity and DNS. Senders get its outputs when they land.
-new EmailStack(app, stackName(config, 'Email'), config, { env });
 
 new OpsStack(app, stackName(config, 'Ops'), config, {
   env,

@@ -1374,3 +1374,10 @@ body.dragging {
   border-left: 3px solid var(--accent);
   font-weight: 600;
 }
+
+/* Email settings (NOTIF-02). */
+.email-prefs th {
+  text-align: left;
+  font-weight: normal;
+  padding: 0.25rem 1rem 0.25rem 0;
+}

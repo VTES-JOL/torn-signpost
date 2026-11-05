@@ -8,6 +8,7 @@ import { serve } from '@hono/node-server';
 import { WebSocket, WebSocketServer } from 'ws';
 import { createApp } from '../app.ts';
 import { devAuthenticator } from '../auth.ts';
+import { consoleMailer } from '../email/mailer.ts';
 import { ApiError } from '../errors.ts';
 import type { ConnectionGateway } from '../realtime/gateway.ts';
 import { createServices } from '../services.ts';
@@ -32,6 +33,13 @@ const services = createServices({
   gateway,
   timers: (handler) => localTimers(handler),
   presence: true,
+  // Emails are printed here, never sent.
+  email: {
+    mailer: consoleMailer,
+    secret: async () => 'local-unsubscribe-secret',
+    webUrl: local.webOrigin,
+    apiUrl: `http://localhost:${local.port}`,
+  },
 });
 
 const app = createApp({
@@ -43,6 +51,7 @@ const app = createApp({
   decks: services.decks,
   profiles: services.profiles,
   notifications: services.notifications,
+  ...(services.email ? { email: services.email } : {}),
 });
 
 const server = serve({ fetch: app.fetch, port: local.port }, ({ port }) => {

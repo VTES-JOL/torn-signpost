@@ -14,6 +14,7 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import * as scheduler from 'aws-cdk-lib/aws-scheduler';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import type { Construct } from 'constructs';
 import { hosts, type StageConfig } from './config.ts';
@@ -27,6 +28,8 @@ export interface ApiStackProps extends StackProps {
   userPoolId: string;
   userPoolClientId: string;
   version: string;
+  /** The SES set-up (EmailStack), for email notifications (NOTIF-02). */
+  email: { identityArn: string; configurationSetName: string; fromAddress: string };
 }
 
 /**
@@ -222,6 +225,57 @@ export class ApiStack extends Stack {
         }),
       ),
     );
+
+    // Email notifications (NOTIF-02, docs/m5b-plan.md increment 6). Every Lambda builds the same
+    // services, so all get the settings; only the timers Lambda sends (delayed emails, digests).
+    const unsubscribeSecret = new secretsmanager.Secret(this, 'UnsubscribeSecret', {
+      description: 'Signs one-click unsubscribe links in notification emails',
+      generateSecretString: { passwordLength: 48, excludePunctuation: true },
+    });
+    const emailEnv = {
+      EMAIL_ENABLED: String(config.emailEnabled),
+      EMAIL_FROM: props.email.fromAddress,
+      EMAIL_CONFIGURATION_SET: props.email.configurationSetName,
+      WEB_URL: `https://${h.web}`,
+      API_URL: this.url,
+      UNSUBSCRIBE_SECRET_ARN: unsubscribeSecret.secretArn,
+    };
+    for (const f of [this.wsFunction, this.apiFunction, this.timersFunction]) {
+      for (const [k, v] of Object.entries(emailEnv)) f.addEnvironment(k, v);
+      unsubscribeSecret.grantRead(f);
+    }
+    this.timersFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ses:SendEmail'],
+        resources: [
+          props.email.identityArn,
+          this.formatArn({
+            service: 'ses',
+            resource: 'configuration-set',
+            resourceName: props.email.configurationSetName,
+          }),
+        ],
+      }),
+    );
+    // Digests at 05:00 and 17:00 UTC; daily ones only go out in the evening.
+    for (const [slot, hour] of [
+      ['morning', 5],
+      ['evening', 17],
+    ] as const) {
+      new scheduler.CfnSchedule(this, `Digest${slot[0]?.toUpperCase()}${slot.slice(1)}`, {
+        groupName: scheduleGroup.name ?? 'default',
+        scheduleExpression: `cron(0 ${hour} * * ? *)`,
+        scheduleExpressionTimezone: 'UTC',
+        flexibleTimeWindow: { mode: 'FLEXIBLE', maximumWindowInMinutes: 15 },
+        target: {
+          arn: timersArn,
+          roleArn: schedulerRole.roleArn,
+          input: JSON.stringify({ kind: 'digest', slot }),
+          deadLetterConfig: { arn: this.timersDeadLetters.queueArn },
+          retryPolicy: { maximumRetryAttempts: 2 },
+        },
+      }).addResourceDependency(scheduleGroup);
+    }
 
     const domainName = new apigw.DomainName(this, 'ApiDomain', {
       domainName: h.api,
