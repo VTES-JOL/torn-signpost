@@ -52,7 +52,7 @@ Increment 1 fixes it.
 | Q3 | Can a casual game end early by agreement? | Not in the rules; tournaments allow no such thing | **Yes for casual games**: every Methuselah still in the game agrees, scored as a timeout. Tournament games end only naturally, at the time limit, or by an admin |
 | Q4 | How far does combat go? | GAME-07 is a "should"; zero-vtes batches 4, 21, 22, 29 | **Guided steps** (range, strikes chosen each round, damage, prevention, presses, torpor), with card effects by hand. No card-specific automation |
 | Q5 | Where do votes come from? | Titles, the Edge, political action cards, Prisci ballots (zero-vtes 5.1–5.4, Batch 19) | Players **declare** their votes from those sources; the engine checks what it can know (the Edge, the calling card's vote, titles printed on vampires in play) and tallies. Unknown sources are accepted as overrides, like grants |
-| Q6 | What do stats count? | STATS-01..03, DQ8 | Every finished game, casual and tournament, by format; leaderboards per calendar-year season, from games with at least 4 players; replaced players as DQ8 |
+| Q6 | What do stats count? | STATS-01..03, DQ8 | ~~Every finished game; leaderboards from games with at least 4 players~~ **Superseded (2026-11-05, M6.3)**: only casual games of 5 players and tournament games count, by format, calendar-year seasons; replaced players as DQ8 |
 
 ## Increments
 
@@ -152,13 +152,80 @@ takes them out (both in the `game` email category).
 
 ### M6.3 Results and stats (STATS-01..03)
 
-- **Store**: `GAME#<id> / RESULT` (each seat's player, deck version, VP, GW, seat, duration,
-  format, tournament or not); per-player aggregates `USER#<sub> / STATS#<season>` updated on
-  `GameEnded` (architecture §5.3); leaderboards on GSI3 (`LB#<season>#<metric>`).
-- **API and web**: `GET /users/{handle}/stats` and a stats section on profiles; `GET /leaderboards`
-  and a leaderboards page (GW, VP, win rate), by season and format (Q6).
-- **Tests**: integration tests for the result record, aggregates, replaced players (DQ8), and
-  leaderboard ordering.
+Counted games leave a result, and every player gets stats, a history and a place on the
+leaderboards (STATS-01..03; architecture §5.8; replaced players as DQ8). Card and deck meta stats
+(STATS-04) stay for later.
+
+**Which games count** (decided 2026-11-05, replacing Q6's "at least 4 players"): **casual games
+of 5 players, and tournament games** (any table size). Only these get a result, stats, a history
+entry and leaderboard standing; every other game is still in its players' games list, but nowhere
+in results. A counted game's result is **public, private games included** (S1): a 5-player
+private game's result is as visible as a public one's.
+
+**The result** (STATS-01): when a command ends a counted game, the game service writes
+`GAME#<id> / RESULT`, built by a pure function from the game's meta and final state:
+- the game: name, format, tournament or casual, players, how it ended (`GameEnded.reason`), the
+  winner and any game win, started and ended times, the table timer's played time when it has one;
+- each seat: the player who finished it (credited, DQ8), anyone they replaced (a "replaced"
+  record: a game played, no GW or VP, out of the win rate), VP, game win, how they finished (still
+  in, ousted, withdrew, disqualified), the deck and version they joined with, and the deck's main
+  clan (S3).
+
+**Stats** (STATS-02): per player, `USER#<sub> / STATS#<season>` (calendar year of the game's end,
+UTC) and `USER#<sub> / STATS#all`: games, replaced, game wins, VP, wins, overall and per format.
+Win rate = game wins ÷ games, replaced ones left out. Updated by one DynamoDB transaction with the
+result's conditional put, so a retry never counts a game twice.
+
+**History**: the membership item `USER#<sub> / GAME#<id>` gains the seat's result (VP, game win,
+how they finished, the deck, the end time) for counted games, so a player's results list without
+reading every game. Favourite decks and clans come from the same list. A player brought in by
+`ReplacePlayer` now gets a membership item too (today they don't, so the game is missing from
+their games list).
+
+**Leaderboards** (STATS-03): each season's stats items are indexed on GSI1
+(`STATS#<season>` / user), so a season is one query; the API ranks in memory and caches the board
+for a few minutes. That serves thousands of players; a dedicated index (the architecture's GSI3)
+can come with scale.
+
+**Rebuilding** (S4): `pnpm --filter @torn-signpost/backend stats:rebuild` recomputes every result,
+stat and history entry from the finished games' event logs, with the same rule for which games
+count. For backfilling games finished before this ships, and for fixing stats after a rules
+change. Result corrections by organisers come with tournaments (TOURN-05, M7).
+
+**API:**
+- `GET /users/{name}`: the public profile: display name, all-time and current-season stats, by
+  format; favourite decks (public decks only, S5) and clans.
+- `GET /users/{name}/games?before=`: their counted games, newest first, with VP, game win and how
+  they finished.
+- `GET /leaderboards?season=&format=&by=gw|vp|winrate`: players with at least 5 counted games that
+  season (S2), ranked by game wins (default), VP or win rate; ties broken by GW, then VP, then fewer
+  games.
+
+**Web** (behind a `stats` flag):
+- a player page, `/players/{name}`: stats (season picker), favourite decks and clans, results
+  linking to each game;
+- a leaderboards page, `/leaderboards`: season, format and ranking;
+- player names in the lobby, at the table and in the game-over panel link to player pages.
+
+**Tests:**
+- Unit: which games count (5-player casual, tournament of any size; not 3- or 4-player casual);
+  the result from a final state: every ending, ousted winners, draws, withdrawals,
+  disqualifications, a replaced seat; the main clan of a deck, ties included.
+- Integration: one result per game even when the write is retried; nothing recorded for a game
+  that doesn't count; stats and history after games of each kind; a private 5-player game's
+  result visible to everyone; the replaced player's record; a replacement's membership;
+  leaderboard ranking, eligibility and ties; the rebuild reproducing the same stats.
+- Browser: a finished 5-player game showing on its players' pages and on the leaderboard.
+
+**Decisions** (2026-11-05):
+
+| # | Question | Decision |
+|---|---|---|
+| S1 | Private games? | A counted private game's result is public, like any other |
+| S2 | Leaderboards? | Players with at least 5 counted games that season; by game wins then VP by default, or by VP or win rate |
+| S3 | Favourite clans? | Each deck's main clan: the most common clan among its crypt cards, from the card data; ties list both |
+| S4 | Backfill and corrections? | A rebuild command recomputes everything from the event logs; organiser corrections with tournaments (M7) |
+| S5 | Show which deck someone played? | Only if that deck is public; otherwise just its main clan |
 
 ### M6.4 Combat steps (GAME-07)
 
