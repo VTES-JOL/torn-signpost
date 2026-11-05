@@ -25,7 +25,9 @@ test('a player elsewhere on the site is notified, and the notification opens the
   // A mention in chat, while Bob is at the table.
   await api(alice, 'POST', `/games/${game.id}/chat`, { text: `over to you @${bob}` });
   await bell.click();
-  await expect(panel.getByRole('link').first()).toContainText(`mentioned you: “over to you @${bob}”`);
+  await expect(panel.getByRole('link').first()).toContainText(
+    `mentioned you: “over to you @${bob}”`,
+  );
   await panel.getByRole('button', { name: 'Mark all read' }).click();
   await expect(bell).toHaveAccessibleName('Notifications');
   await expect(b).not.toHaveTitle(/^\(\d+\) /);
