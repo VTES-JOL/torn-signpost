@@ -35,6 +35,18 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      # Browser tests (docs/testing.md) against the built web app, the local API and DynamoDB Local.
+      - name: End-to-end tests
+        run: |
+          pnpm --filter @torn-signpost/web exec playwright install --with-deps chromium
+          pnpm --filter @torn-signpost/web test:e2e
+      - name: Keep end-to-end traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-traces
+          path: apps/web/test-results/
+          retention-days: 7
       - name: CDK synth
         run: pnpm --filter @torn-signpost/infra synth
 

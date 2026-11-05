@@ -9,6 +9,8 @@ node_modules/
 dist/
 build/
 coverage/
+test-results/
+playwright-report/
 .turbo/
 cdk.out/
 

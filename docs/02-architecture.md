@@ -725,7 +725,7 @@ to SNS email. Log retention is 30 days, to keep costs down.
 | Engine property | **no hidden-information leakage**, `evolve` determinism, replay equals live state, conservation (blood/pool), the clock, pauses, timers and judge calls; coverage floor enforced ([testing.md](testing.md)) | fast-check, v8 coverage |
 | Scenario ("golden games") | scripted games in console syntax with expected state/log; shared across TS **and Swift (via JSC)** as contract tests | Vitest + XCTest |
 | Backend integration | command pipeline, concurrency/retry, idempotency, projections over WebSocket | Vitest + DynamoDB Local |
-| End-to-end | multi-browser game (5 contexts), mobile viewport, accessibility checks | Playwright + axe |
+| End-to-end | multi-browser game (a context per player): block decisions, pauses, judge calls so far; mobile viewport and accessibility checks later | Playwright (+ axe later) |
 | Mac | view models, bridge, UI smoke | XCTest / XCUITest |
 | Load (pre-launch) | 50 concurrent live games | Artillery against the beta, before it's announced publicly |
 
