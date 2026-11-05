@@ -71,13 +71,14 @@ pnpm sandbox      # play the engine in the terminal as any seat, judge or admin
   judge) instead of signing in. WebSockets connect to `ws://localhost:3001/ws?token=dev:alice`.
 - Backend integration tests run against DynamoDB Local in throwaway tables. Start it with
   `pnpm db:up`; without it they're skipped locally (CI always runs them).
-- Feature flags still dark on the beta are on locally (`apps/web/vite.config.ts`): currently
-  `replay`, the scenario player at http://localhost:5173/replay (it runs in the browser and needs
-  only the web server and card content), `presence`, the presence dots and live/async status
-  at the table, `clock`, the table timer, pauses, deadline countdowns and the timer settings
-  when creating a game, and `judgeCalls`, calling a judge, the ruling tools and the judge queue at
-  /judge (sign in as `jo:judge` to try it), `notifications`, the bell in the header, and `email`,
-  the email settings on the Account page, and `stats`, players' pages and the leaderboards. Locally, emails are printed by the API process (dev users
+- Feature flags are all on locally (`apps/web/vite.config.ts`); on the beta, every one but `replay`
+  is on too (`infra/lib/config.ts`). They are `replay`, the scenario player at
+  http://localhost:5173/replay (it runs in the browser and needs only the web server and card
+  content), `presence`, the presence dots and live/async status at the table, `clock`, the table
+  timer, pauses, deadline countdowns and the timer settings when creating a game, `judgeCalls`,
+  calling a judge, the ruling tools and the judge queue at /judge (sign in as `jo:judge` to try
+  it), `notifications`, the bell in the header, `email`, the email settings on the Account page,
+  and `stats`, players' pages and the leaderboards. Locally, emails are printed by the API process (dev users
   are `<name>@example.test`), never sent. Locally, timers (such as the 30 s absence check) run in the API process.
 - Results and stats can be rebuilt from the finished games' event logs (after a change to how they
   are counted, or to backfill): `TABLE_NAME=ts-local-main DYNAMODB_ENDPOINT=http://localhost:8000
