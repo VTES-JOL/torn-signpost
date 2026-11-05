@@ -1,6 +1,6 @@
 /** In-app notifications (NOTIF-01) reach a player wherever they are on the site. */
 import { expect, test } from '@playwright/test';
-import { api, signedIn, startGame, users } from './helpers.ts';
+import { api, signedIn, startGame, users, view } from './helpers.ts';
 
 test('a player elsewhere on the site is notified, and the notification opens the game', async ({
   browser,
@@ -21,6 +21,11 @@ test('a player elsewhere on the site is notified, and the notification opens the
   await expect(started).toContainText(game.name);
   await started.click();
   await expect(b).toHaveURL(new RegExp(`/games/${game.id}$`));
+  // Opening the game marks everything about it read (before Bob shows as present).
+  await expect
+    .poll(async () => (await view(alice, game.id)).seats.find((s) => s.occupant === bob)?.present)
+    .toBe(true);
+  await expect(bell).toHaveAccessibleName('Notifications');
 
   // A mention in chat, while Bob is at the table.
   await api(alice, 'POST', `/games/${game.id}/chat`, { text: `over to you @${bob}` });

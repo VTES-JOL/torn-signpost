@@ -155,8 +155,9 @@ export class Realtime {
           const { seq } = await this.games.canView(conn.identity, parsed.gameId);
           await this.store.subscribe(connectionId, parsed.gameId, conn.identity);
           await reply({ type: 'subscribed', gameId: parsed.gameId, seq });
-          await this.arrived(conn.identity, parsed.gameId);
+          // Read first, so by the time the player shows as present nothing about it is unread.
           await this.options.notifications?.openedGame(conn.identity, parsed.gameId);
+          await this.arrived(conn.identity, parsed.gameId);
           await this.options.email?.active(conn.identity);
         } catch (e) {
           if (!(e instanceof ApiError)) throw e;
