@@ -281,8 +281,9 @@ function deckList(tokens: string[], catalog: CardCatalog): CardId[] {
 }
 
 function actorFor(state: GameState, who: string): { actor: Actor; viewer: Viewer; seat?: SeatId } {
-  if (who === 'judge')
-    return { actor: { kind: 'judge', user: 'judge' }, viewer: { kind: 'judge' } };
+  // judge>, or judge2> and so on for a second judge.
+  if (/^judge\d*$/.test(who))
+    return { actor: { kind: 'judge', user: who }, viewer: { kind: 'judge' } };
   if (who === 'admin')
     return { actor: { kind: 'admin', user: 'admin' }, viewer: { kind: 'spectator' } };
   const seat = state.seats.find((s) => s.id === who);
@@ -337,6 +338,19 @@ function check(
       const status = !d ? 'none' : d.expired ? 'expired' : d.reminded ? 'reminded' : 'pending';
       return same(`${rest[0]} deadline`, status, rest[1] ?? '');
     }
+    case 'calls':
+      return same(
+        'judge calls',
+        (state.judgeCalls ?? [])
+          .map(
+            (c) =>
+              `${c.reason}${c.seat ? `:${c.seat}` : ''}${c.claimedBy ? `@${c.claimedBy}` : ''}`,
+          )
+          .join(' ') || 'none',
+        rest.join(' '),
+      );
+    case 'disqualified':
+      return same(`${rest[0]} disqualified`, !!seat(rest[0])?.disqualified, rest[1] ?? '');
     case 'waiting':
       return same(
         'waiting on',

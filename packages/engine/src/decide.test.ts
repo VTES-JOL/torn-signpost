@@ -250,6 +250,37 @@ describe('waitingOn (UX-09)', () => {
   });
 });
 
+describe('judge calls (GAME-18)', () => {
+  const judge: Actor = { kind: 'judge', user: 'jo' };
+  const called = () => apply(started(), { type: 'CallJudge', reason: 'other' });
+  it('lets judges, and only judges, answer; casual games escalate instead of disqualifying', () => {
+    const state = called();
+    const id = state.judgeCalls?.[0]?.id ?? '';
+    expect(state.judgeCalls?.[0]).toMatchObject({ id: `c${state.seq}`, reason: 'other', by: 'A' });
+    expect(run(state, { type: 'ClaimJudgeCall', id })).toMatchObject({
+      rejection: { code: 'forbidden' },
+    });
+    const dq: Command = {
+      type: 'ResolveJudgeCall',
+      id,
+      ruling: { kind: 'disqualify', seat: 'B' },
+    };
+    expect(run(state, dq, judge)).toMatchObject({ rejection: { code: 'invalid' } });
+    const passFor: Command = { ...dq, ruling: { kind: 'pass-for', seat: 'B' } };
+    expect(run(state, passFor, judge)).toMatchObject({ rejection: { code: 'not-now' } });
+    const escalated = apply(state, { ...dq, ruling: { kind: 'escalate' } }, judge);
+    expect(escalated.judgeCalls).toBeUndefined();
+  });
+  it('refuses calls from judges and spectators, and unknown calls', () => {
+    expect(run(started(), { type: 'CallJudge', reason: 'rules' }, judge)).toMatchObject({
+      rejection: { code: 'not-seated' },
+    });
+    expect(run(called(), { type: 'ClaimJudgeCall', id: 'c999' }, judge)).toMatchObject({
+      rejection: { code: 'invalid' },
+    });
+  });
+});
+
 describe('AdvancePhase', () => {
   it('skips ousted seats when passing the turn', () => {
     let state = started();

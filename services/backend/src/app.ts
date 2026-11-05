@@ -116,6 +116,8 @@ export function createApp(config: AppConfig): Hono<Env> {
   app.get('/games/:id/chat', async (c) =>
     c.json(await games().chatHistory(c.var.identity, c.req.param('id'))),
   );
+  // The judge queue (GAME-18): open calls across every game, for judges.
+  app.get('/judge/calls', async (c) => c.json(await games().judgeQueue(c.var.identity)));
   app.get('/games/:id/events', async (c) => {
     const after = z.coerce
       .number()

@@ -93,6 +93,9 @@ A> draw crypt 4                # a command by seat A's player; also judge> and a
 present B no                   # the server records B's player as away (yes: at the table)
 wait 13h                       # time passes; due checks (deadlines, time limit, pause end) run
 A> pause 3                     # pause a timed game for 1–5 minutes; resume lifts it early
+B> call rules Does it stack?   # call a judge: slow-play|rules|dispute|other [seat] [note]
+judge> claim                   # judges take the oldest call (or claim c42); judge2> is another judge
+judge> rule passfor B          # answered|escalate|extend B 12|passfor B|time 10|disqualify B [note]
 reject A> look A:library:1     # the command must fail; reject:<code> pins the rejection code
 
 expect pool A 30
@@ -106,6 +109,8 @@ expect elapsed 30m             # table clock, whole minutes played while live
 expect paused yes|no
 expect timeup yes|no           # the time limit was reached
 expect deadline A pending      # an away player's deadline: none, pending, reminded or expired
+expect calls rules:B@judge     # open judge calls: reason[:about][@claimed by], or none
+expect disqualified D true
 expect direction prey|predator
 expect turn 2 B unlock
 expect occupant B erin

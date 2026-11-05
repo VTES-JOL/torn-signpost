@@ -1,0 +1,89 @@
+# Judge calls (GAME-18): players call a judge, a judge claims the call and rules. An open call
+# pauses the table timer. An expired deadline opens a call by itself and never decides for the
+# player; the judge does. Disqualification (tournaments) is not an oust: nobody gains VP or pool.
+seed 13
+tournament
+seat A alice
+seat B bob
+seat C carol
+seat D dave
+crypt A "Vera Nightfall" *8
+library A "Iron Ward" *20
+crypt B "Tomas Grey" *8
+library B "Signal Fire" *20
+crypt C "Ilse Várga" *8
+library C "Quick Feed" *20
+crypt D "Tomas Grey" *8
+library D "Signal Fire" *20
+start
+present A yes
+present B yes
+present C yes
+present D yes
+wait 10m
+expect elapsed 10m
+
+# Bob has a rules question. The call stops the clock until a judge has ruled.
+B> call rules Does Iron Ward stack?
+expect calls rules
+log public B called a judge (rules question): “Does Iron Ward stack?”
+reject:no-change B> call other
+reject:forbidden B> claim
+wait 10m
+expect elapsed 10m
+judge> claim
+expect calls rules@judge
+log public A judge is handling the judge call
+reject:forbidden judge2> rule answered
+judge> rule answered Yes, it does
+expect calls none
+log public A judge ruled: answered at the table: “Yes, it does”
+wait 5m
+expect elapsed 15m
+
+# A slow-play call: the judge adds the time it took back to the timer.
+C> call slow-play D
+judge2> rule time 10
+log public A judge ruled: 10 minutes added to the timer
+
+# Alice, whose turn it is, goes away. When her deadline runs out a judge is called, and her turn
+# isn't played for her. The judge gives her 12 more hours.
+present A no
+wait 24h
+expect deadline A expired
+expect calls deadline:A
+expect waiting A:phase
+judge> rule extend A 12
+log public A judge ruled: A gets 12 more hours
+expect deadline A reminded
+expect calls none
+# She runs out again, then comes back: the call settles itself and she plays on.
+wait 12h
+expect calls deadline:A
+present A yes
+expect calls none
+log public The judge call is settled: the player decided
+
+# Bob wants a say at phase ends, then goes away holding the impulse: the judge passes for him.
+B> autopass none
+A> next
+expect window phase unlock
+expect impulse B
+present B no
+wait 24h
+expect calls deadline:B
+judge> rule passfor B
+expect calls none
+expect window none
+expect turn 1 A master
+present B yes
+
+# Dave abandoned the game: the judge disqualifies him. His predator gains nothing.
+C> call other D
+judge> rule disqualify D Left without telling a judge
+expect disqualified D true
+expect ousted D true
+expect pool D 0
+expect vp C 0
+expect pool C 30
+log public D was disqualified

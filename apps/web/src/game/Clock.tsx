@@ -62,9 +62,11 @@ export function Clock(props: {
     ? 'time is up'
     : pause
       ? `paused by ${pause.seat ? seatName(pause.seat) : 'a judge'} · ${formatClock(Date.parse(pause.until) - now)}`
-      : clockRunning(view)
-        ? undefined
-        : 'paused: waiting for players to return';
+      : view.judgeCalls?.length
+        ? 'paused: judge call'
+        : clockRunning(view)
+          ? undefined
+          : 'paused: waiting for players to return';
   const canPause = view.settings.timeLimitMs !== undefined && (seat !== undefined || judge);
   const canResume = !!pause && (judge || (seat !== undefined && pause.seat === seat));
   return (

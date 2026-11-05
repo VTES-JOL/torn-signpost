@@ -24,11 +24,23 @@ export const ms = (at: Instant | undefined): number =>
 const iso = (n: number): Instant => new Date(n).toISOString();
 
 /**
- * Whether the table clock is running: the game is in progress, live (everyone still in it is at
+ * Whether the table clock is running: the game is in progress, no judge call is open, live
+ * (everyone still in it is at
  * the table), and not paused. In async play the clock waits (DQ7).
  */
 export function clockRunning(state: GameState): boolean {
-  return state.status === 'active' && !state.pause && tempo(state) === 'live';
+  return (
+    state.status === 'active' &&
+    !state.pause &&
+    !state.judgeCalls?.length &&
+    tempo(state) === 'live'
+  );
+}
+
+/** The time limit including any time judges added, if the game has one. */
+export function timeLimit(state: GameState): number | undefined {
+  const limit = state.settings.timeLimitMs;
+  return limit === undefined ? undefined : limit + (state.clock?.extendedMs ?? 0);
 }
 
 /** Time played so far at `now`, counting only while the clock runs. */
@@ -42,7 +54,7 @@ export function clockElapsed(state: GameState, now: Instant): number {
 
 /** Time left before the time limit at `now`, if the game has one. */
 export function clockRemaining(state: GameState, now: Instant): number | undefined {
-  const limit = state.settings.timeLimitMs;
+  const limit = timeLimit(state);
   return limit === undefined ? undefined : Math.max(0, limit - clockElapsed(state, now));
 }
 
@@ -68,7 +80,7 @@ export function deadlines(state: GameState): Deadline[] {
   for (const wait of waitingOn(state)) {
     const seat = state.seats.find((s) => s.id === wait.seat);
     if (!seat || seat.present) continue;
-    const from = Math.max(ms(w.at), ms(seat.awaySince));
+    const from = Math.max(ms(w.at), ms(seat.awaySince)) + (w.extendedMs?.[wait.seat] ?? 0);
     if (Number.isNaN(from)) continue;
     out.push({
       seat: wait.seat,
@@ -107,7 +119,7 @@ export function timers(state: GameState, opts: { deadlines?: boolean } = {}): Ti
       });
     }
   }
-  const limit = state.settings.timeLimitMs;
+  const limit = timeLimit(state);
   const c = state.clock;
   if (limit !== undefined && c?.runningSince && !c.limitReachedAt) {
     const at = ms(c.runningSince) + Math.max(0, limit - c.elapsedMs);

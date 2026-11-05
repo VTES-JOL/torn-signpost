@@ -2,11 +2,13 @@ import type { CardCatalog, Grant } from './catalog.ts';
 import {
   clockElapsed,
   deadlines,
+  HOUR_MS,
   instantFromMs,
   MAX_PAUSE_MINUTES,
   MIN_TOURNAMENT_TIME_LIMIT_MS,
   MINUTE_MS,
   ms,
+  timeLimit,
 } from './clock.ts';
 import type { BloodHolder, Command } from './commands.ts';
 import type { EventBody, GameEvent } from './events.ts';
@@ -30,7 +32,7 @@ import type {
   StopRule,
   ZoneId,
 } from './model.ts';
-import { ACTION_KINDS, PHASES, STOP_ACTORS, STOP_TRIGGERS } from './model.ts';
+import { ACTION_KINDS, PHASES, PLAYER_CALL_REASONS, STOP_ACTORS, STOP_TRIGGERS } from './model.ts';
 import { canSee } from './projection.ts';
 import { newInstanceId, type Rng, shuffled } from './rng.ts';
 import { nextTurnSeat, predator, prey, type SeatId, windowOrder } from './seating.ts';
@@ -89,7 +91,16 @@ function reject(code: RejectionCode, message: string): never {
 export function decide(state: GameState, cmd: Command, ctx: DecideContext): DecideResult {
   try {
     const by = actorRef(state, cmd, ctx.actor);
-    const bodies = withOusts(state, bodiesFor(state, cmd, ctx, by), ctx.now, by);
+    const dq =
+      cmd.type === 'ResolveJudgeCall' && cmd.ruling.kind === 'disqualify'
+        ? cmd.ruling.seat
+        : undefined;
+    const bodies = settleCalls(
+      state,
+      withOusts(state, bodiesFor(state, cmd, ctx, by), ctx.now, by, dq),
+      ctx.now,
+      by,
+    );
     return {
       ok: true,
       events: bodies.map(
@@ -115,7 +126,12 @@ const ALLOWED_WHILE_PAUSED: ReadonlySet<Command['type']> = new Set([
   'SetAutoPass',
   'SetStops',
   'ReplacePlayer',
+  'CallJudge',
+  'ClaimJudgeCall',
+  'ResolveJudgeCall',
 ]);
+
+const MAX_CALL_NOTE = 500;
 
 function actorRef(state: GameState, cmd: Command, actor: Actor): ActorRef {
   if (cmd.type === 'StartGame') {
@@ -138,6 +154,12 @@ function actorRef(state: GameState, cmd: Command, actor: Actor): ActorRef {
   }
   if (cmd.type === 'JudgeReveal' && actor.kind !== 'judge') {
     reject('forbidden', 'Only judges can look at hidden cards');
+  }
+  if (
+    (cmd.type === 'ClaimJudgeCall' || cmd.type === 'ResolveJudgeCall') &&
+    actor.kind !== 'judge'
+  ) {
+    reject('forbidden', 'Only judges answer judge calls');
   }
   switch (actor.kind) {
     case 'judge':
@@ -180,6 +202,8 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
     if (s.ousted || s.withdrawn) reject('invalid', 'That player is out of the game');
     return s;
   };
+  const openCall = (id: string) =>
+    state.judgeCalls?.find((c) => c.id === id) ?? reject('invalid', `No open judge call ${id}`);
   const ownSeatOrJudge = (id: SeatId) => {
     liveSeat(id);
     if (mySeat !== undefined && id !== mySeat) reject('forbidden', "That is another player's zone");
@@ -801,7 +825,11 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
       const d = deadlines(state).find((x) => x.seat === cmd.seat);
       const now = ms(ctx.now);
       if (d && !d.expired && now >= ms(d.dueAt)) {
-        return [{ type: 'DeadlineExpired', seat: d.seat, kind: d.kind }];
+        // Expiry never decides (DQ6): a judge does, and the player can still act until then.
+        return [
+          { type: 'DeadlineExpired', seat: d.seat, kind: d.kind },
+          { type: 'JudgeCalled', call: { reason: 'deadline', seat: d.seat } },
+        ];
       }
       if (d && !d.reminded && !d.expired && now >= ms(d.remindAt)) {
         return [{ type: 'DeadlineReminded', seat: d.seat }];
@@ -809,12 +837,132 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
       return reject('no-change', 'Nothing is due');
     }
     case 'CheckTimeLimit': {
-      const limit = state.settings.timeLimitMs;
+      const limit = timeLimit(state);
       if (limit === undefined || state.clock?.limitReachedAt) reject('no-change', 'No time limit');
       if (clockElapsed(state, ctx.now) < limit) reject('no-change', 'Time is not up yet');
-      return [{ type: 'TimeLimitReached' }];
+      return [
+        { type: 'TimeLimitReached' },
+        { type: 'JudgeCalled', call: { reason: 'time-limit' } },
+      ];
+    }
+    case 'CallJudge': {
+      const s = mySeat ?? reject('not-seated', 'Only players call judges');
+      if (!(PLAYER_CALL_REASONS as readonly string[]).includes(cmd.reason)) {
+        reject('invalid', `Unknown reason ${cmd.reason}`);
+      }
+      if (state.judgeCalls?.some((c) => c.by === s)) {
+        reject('no-change', 'You already have a judge call open');
+      }
+      if (cmd.seat !== undefined) seat(cmd.seat);
+      if (
+        cmd.ref !== undefined &&
+        !(Number.isInteger(cmd.ref) && cmd.ref >= 1 && cmd.ref <= state.seq)
+      ) {
+        reject('invalid', 'No such event');
+      }
+      const note = cmd.note?.trim();
+      if (note && note.length > MAX_CALL_NOTE) reject('invalid', 'The note is too long');
+      return [
+        {
+          type: 'JudgeCalled',
+          call: withOptional(
+            { reason: cmd.reason, by: s },
+            { seat: cmd.seat, ref: cmd.ref, note: note || undefined },
+          ),
+        },
+      ];
+    }
+    case 'ClaimJudgeCall': {
+      const c = openCall(cmd.id);
+      if (by.kind !== 'judge') return reject('forbidden', 'Only judges');
+      if (c.claimedBy === by.user) reject('no-change', 'You have this call already');
+      if (c.claimedBy !== undefined) reject('forbidden', 'Another judge has this call');
+      return [{ type: 'JudgeCallClaimed', id: c.id, judge: by.user }];
+    }
+    case 'ResolveJudgeCall': {
+      const c = openCall(cmd.id);
+      if (by.kind !== 'judge') return reject('forbidden', 'Only judges');
+      if (c.claimedBy !== undefined && c.claimedBy !== by.user) {
+        reject('forbidden', 'Another judge has this call');
+      }
+      const note = cmd.note?.trim();
+      if (note && note.length > MAX_CALL_NOTE) reject('invalid', 'The note is too long');
+      const claim: EventBody[] =
+        c.claimedBy === undefined ? [{ type: 'JudgeCallClaimed', id: c.id, judge: by.user }] : [];
+      const resolved: EventBody = withOptional(
+        { type: 'JudgeCallResolved', id: c.id, ruling: cmd.ruling } as const,
+        { note: note || undefined },
+      );
+      const r = cmd.ruling;
+      switch (r.kind) {
+        case 'answered':
+        case 'escalate':
+          return [...claim, resolved];
+        case 'extend-deadline': {
+          liveSeat(r.seat);
+          if (!Number.isInteger(r.hours) || r.hours < 1 || r.hours > 168) {
+            reject('invalid', 'Extend by 1 to 168 hours');
+          }
+          if (!deadlines(state).some((d) => d.seat === r.seat)) {
+            reject('not-now', 'That player has no deadline right now');
+          }
+          return [
+            ...claim,
+            resolved,
+            { type: 'DeadlineExtended', seat: r.seat, ms: r.hours * HOUR_MS },
+          ];
+        }
+        case 'extend-time': {
+          if (state.settings.timeLimitMs === undefined)
+            reject('invalid', 'This game has no table timer');
+          if (!Number.isInteger(r.minutes) || r.minutes < 1 || r.minutes > 120) {
+            reject('invalid', 'Add 1 to 120 minutes');
+          }
+          return [...claim, resolved, { type: 'TimeExtended', ms: r.minutes * MINUTE_MS }];
+        }
+        case 'pass-for': {
+          liveSeat(r.seat);
+          if (impulseHolder(state) !== r.seat)
+            reject('not-now', 'That player does not hold the impulse');
+          const pass = bodiesFor(state, { type: 'Pass' }, ctx, { kind: 'seat', seat: r.seat });
+          return [...claim, resolved, ...pass];
+        }
+        case 'disqualify': {
+          if (!state.settings.tournament) {
+            reject(
+              'invalid',
+              'Disqualification is for tournament games; escalate to an admin instead',
+            );
+          }
+          liveSeat(r.seat);
+          // withOusts takes the seat out, without a reward.
+          return [...claim, resolved];
+        }
+      }
+      return reject('invalid', 'Unknown ruling');
     }
   }
+}
+
+/**
+ * A `deadline` call settles itself once that decision is no longer overdue: the player came back
+ * to the table, or the game moved on to a new decision. Calls about a seat that is out go too.
+ */
+function settleCalls(
+  state: GameState,
+  bodies: EventBody[],
+  now: string,
+  by: ActorRef,
+): EventBody[] {
+  if (state.status !== 'active') return bodies;
+  const after = applyBodies(state, bodies, now, by);
+  const settled: EventBody[] = [];
+  for (const c of after.judgeCalls ?? []) {
+    if (c.reason !== 'deadline' || c.seat === undefined) continue;
+    if (deadlines(after).some((d) => d.seat === c.seat && d.expired)) continue;
+    settled.push({ type: 'JudgeCallResolved', id: c.id, ruling: { kind: 'answered' }, auto: true });
+  }
+  return settled.length ? [...bodies, ...settled] : bodies;
 }
 
 function applyBodies(from: GameState, bodies: EventBody[], now: string, by: ActorRef): GameState {
@@ -861,11 +1009,20 @@ export const OUST_REWARD = { vp: 1, pool: 6 } as const;
  * - it leaves any open window, and an action it is acting in, targeted by or fighting in ends;
  * - if it was its turn, the turn ends and play passes on from its seat.
  */
-function withOusts(state: GameState, bodies: EventBody[], now: string, by: ActorRef): EventBody[] {
+function withOusts(
+  state: GameState,
+  bodies: EventBody[],
+  now: string,
+  by: ActorRef,
+  /** A seat a judge disqualified: out like an oust, but nobody is rewarded. */
+  disqualify?: SeatId,
+): EventBody[] {
   if (state.status !== 'active') return bodies;
   const after = applyBodies(state, bodies, now, by);
   const live = seatRefs(after);
-  const out = after.seats.filter((x) => !x.ousted && !x.withdrawn && x.pool <= 0).map((x) => x.id);
+  const out = after.seats
+    .filter((x) => !x.ousted && !x.withdrawn && (x.pool <= 0 || x.id === disqualify))
+    .map((x) => x.id);
   if (out.length === 0) return bodies;
   const ousting = new Set(out);
   const next: EventBody[] = [];
@@ -881,6 +1038,10 @@ function withOusts(state: GameState, bodies: EventBody[], now: string, by: Actor
     next.push({ type: 'BlockWithdrawn', seat: a.blockAttempt.seat });
   }
   for (const id of out) {
+    if (id === disqualify) {
+      next.push({ type: 'Ousted', seat: id, disqualified: true });
+      continue;
+    }
     const pred = predator(live, id);
     const reward = pred === undefined ? undefined : { seat: pred, vp: OUST_REWARD.vp };
     next.push(

@@ -13,7 +13,9 @@ import type {
   CardId,
   GameState,
   InstanceId,
+  JudgeCallReason,
   Override,
+  Ruling,
   ZoneId,
   ZoneName,
 } from './model.ts';
@@ -27,6 +29,32 @@ const WAIT_NAMES: Record<WaitKind, string> = {
   resolve: 'resolving an action',
   combat: 'combat',
 };
+
+const CALL_REASONS: Record<JudgeCallReason, string> = {
+  'slow-play': 'slow play',
+  rules: 'rules question',
+  dispute: 'dispute',
+  deadline: 'deadline',
+  'time-limit': 'time limit',
+  other: 'other',
+};
+
+export function rulingText(r: Ruling, seatName: (s: SeatId) => string): string {
+  switch (r.kind) {
+    case 'answered':
+      return 'answered at the table';
+    case 'extend-deadline':
+      return `${seatName(r.seat)} gets ${r.hours} more hours`;
+    case 'pass-for':
+      return `${seatName(r.seat)} passes`;
+    case 'extend-time':
+      return `${r.minutes} minutes added to the timer`;
+    case 'disqualify':
+      return `${seatName(r.seat)} is disqualified`;
+    case 'escalate':
+      return 'referred to a server admin';
+  }
+}
 
 const ZONE_LABELS: Record<ZoneName, string> = {
   crypt: 'crypt',
@@ -204,7 +232,29 @@ export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOp
         cancelled: `${who} cancelled the action`,
         ousted: 'The action ends: a Methuselah in it was ousted',
       }[ev.outcome];
+    case 'JudgeCalled': {
+      const c = ev.call;
+      const about = c.seat ? ` about ${seatName(c.seat)}` : '';
+      const note = c.note ? `: “${c.note}”` : '';
+      if (c.reason === 'deadline') {
+        return `A judge has been called: ${seatName(c.seat ?? '')} ran out of time`;
+      }
+      if (c.reason === 'time-limit') return 'A judge has been called: the time limit was reached';
+      return `${who} called a judge (${CALL_REASONS[c.reason]})${about}${note}`;
+    }
+    case 'JudgeCallClaimed':
+      return `${who} is handling the judge call`;
+    case 'JudgeCallResolved': {
+      if (ev.auto) return 'The judge call is settled: the player decided';
+      const note = ev.note ? `: “${ev.note}”` : '';
+      return `${who} ruled: ${rulingText(ev.ruling, seatName)}${note}`;
+    }
+    // A ruling's effect: the ruling line just before says it.
+    case 'DeadlineExtended':
+    case 'TimeExtended':
+      return '';
     case 'Ousted': {
+      if (ev.disqualified) return `${seatName(ev.seat)} was disqualified`;
       const reward = ev.predator;
       if (!reward) return `${seatName(ev.seat)} was ousted`;
       const gains = [`${reward.vp} VP`, ...(reward.pool ? [`${reward.pool} pool`] : [])];

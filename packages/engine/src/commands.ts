@@ -12,6 +12,8 @@ import type {
   GameSettings,
   InstanceId,
   Phase,
+  PLAYER_CALL_REASONS,
+  Ruling,
   StopRule,
   UserId,
   ZoneId,
@@ -138,7 +140,19 @@ export type Command =
   /** System: the time limit may have been reached (TEMPO-05). */
   | { type: 'CheckTimeLimit' }
   /** System: the pause may be over. */
-  | { type: 'EndPause' };
+  | { type: 'EndPause' }
+  /** A seated player asks for a judge (GAME-18); at most one open call per player. */
+  | {
+      type: 'CallJudge';
+      reason: (typeof PLAYER_CALL_REASONS)[number];
+      seat?: SeatId;
+      ref?: number;
+      note?: string;
+    }
+  /** A judge takes a call. */
+  | { type: 'ClaimJudgeCall'; id: string }
+  /** A judge rules on a call (taking it first if nobody has). */
+  | { type: 'ResolveJudgeCall'; id: string; ruling: Ruling; note?: string };
 
 export type CommandType = Command['type'];
 

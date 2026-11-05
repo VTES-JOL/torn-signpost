@@ -7,7 +7,9 @@ import {
   type ClientCommand,
   type GameEvent,
   type GameState,
+  type JudgeCall,
   PHASES,
+  PLAYER_CALL_REASONS,
   STOP_ACTORS,
   ZONE_NAMES,
 } from '@torn-signpost/engine';
@@ -20,6 +22,19 @@ const opt = <T extends z.ZodType>(t: T) => t.exactOptional();
 const Delta = z.number().int().min(-1000).max(1000);
 const OverrideClaim = z.strictObject({ source: opt(Id) });
 const BloodHolder = z.union([z.strictObject({ pool: Id }), z.strictObject({ card: Id })]);
+const Note = z.string().max(500);
+const Ruling = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('answered') }),
+  z.strictObject({ kind: z.literal('escalate') }),
+  z.strictObject({
+    kind: z.literal('extend-deadline'),
+    seat: Id,
+    hours: z.number().int().min(1).max(168),
+  }),
+  z.strictObject({ kind: z.literal('pass-for'), seat: Id }),
+  z.strictObject({ kind: z.literal('extend-time'), minutes: z.number().int().min(1).max(120) }),
+  z.strictObject({ kind: z.literal('disqualify'), seat: Id }),
+]);
 
 /** Every command a client may send. System commands are issued by the server, never by clients. */
 export const PlayerCommand = z.discriminatedUnion('type', [
@@ -104,6 +119,20 @@ export const PlayerCommand = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('ReplacePlayer'), seat: Id, user: Id }),
   z.strictObject({ type: z.literal('Pause'), minutes: z.number().int().min(1).max(5) }),
   z.strictObject({ type: z.literal('Resume') }),
+  z.strictObject({
+    type: z.literal('CallJudge'),
+    reason: z.enum(PLAYER_CALL_REASONS),
+    seat: opt(Id),
+    ref: opt(z.number().int().min(1)),
+    note: opt(Note),
+  }),
+  z.strictObject({ type: z.literal('ClaimJudgeCall'), id: Id }),
+  z.strictObject({
+    type: z.literal('ResolveJudgeCall'),
+    id: Id,
+    ruling: Ruling,
+    note: opt(Note),
+  }),
 ]);
 export type PlayerCommand = ClientCommand;
 
@@ -161,6 +190,14 @@ export interface GameSummary {
   createdBy: string;
   createdAt: string;
   seq: number;
+}
+
+/** An open judge call in the judge queue (GAME-18), across all games. */
+export interface JudgeQueueEntry {
+  gameId: string;
+  gameName: string;
+  tournament: boolean;
+  call: JudgeCall;
 }
 
 export interface GameDetails {

@@ -20,7 +20,7 @@ function localConfig(): Plugin {
         apiUrl: process.env.TS_API_URL ?? 'http://localhost:3001',
         wsUrl: process.env.TS_WS_URL ?? 'ws://localhost:3001/ws',
         // Features still dark on the beta are on locally.
-        flags: { ...example.flags, replay: true, presence: true, clock: true },
+        flags: { ...example.flags, replay: true, presence: true, clock: true, judgeCalls: true },
       };
       server.middlewares.use('/config.json', (_req, res) => {
         res.setHeader('Content-Type', 'application/json');

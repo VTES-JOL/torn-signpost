@@ -12,6 +12,7 @@ import { CardsPage } from './pages/CardsPage.tsx';
 import { DeckEditor } from './pages/DeckEditor.tsx';
 import { DecksPage } from './pages/DecksPage.tsx';
 import { GamesPage } from './pages/GamesPage.tsx';
+import { JudgePage } from './pages/JudgePage.tsx';
 import { NameForm, ProfileProvider, useProfile } from './profile.tsx';
 import { ReplayListPage, ReplayPage } from './replay/ReplayPage.tsx';
 
@@ -44,6 +45,7 @@ export function App() {
                       <Route path="replay/:name" element={<ReplayPage />} />
                     </>
                   )}
+                  {config.flags.judgeCalls && <Route path="judge" element={<JudgePage />} />}
                   <Route path="account" element={<AccountPage />} />
                   <Route path="auth/callback" element={<AuthCallback />} />
                   <Route path="*" element={<p className="notice">Page not found.</p>} />
@@ -107,6 +109,9 @@ function Header() {
         <NavLink to="/cards">Cards</NavLink>
         <NavLink to="/decks">Decks</NavLink>
         {flags.replay && <NavLink to="/replay">Replay</NavLink>}
+        {flags.judgeCalls && auth.user?.groups.includes('judge') && (
+          <NavLink to="/judge">Judge queue</NavLink>
+        )}
       </nav>
       <div className="account">
         {auth.user ? (

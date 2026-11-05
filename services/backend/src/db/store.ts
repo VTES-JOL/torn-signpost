@@ -10,6 +10,7 @@
  * | Membership | `USER#<sub>` | `GAME#<id>` |
  * | Connection | `CONN#<connId>` | `META` (TTL 3 h) |
  * | Subscription | `SUB#<gameId>` | `CONN#<connId>` (TTL 3 h) |
+ * | Judge queue | `JUDGEQ` | `<openedAt>#<gameId>#<callId>` (open judge calls, oldest first) |
  */
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { TransactionCanceledException } from '@aws-sdk/client-dynamodb';
@@ -24,11 +25,12 @@ import {
   TransactWriteCommand,
   type TransactWriteCommandInput,
 } from '@aws-sdk/lib-dynamodb';
-import type { GameEvent, GameState } from '@torn-signpost/engine';
+import type { GameEvent, GameState, JudgeCall } from '@torn-signpost/engine';
 import type {
   ChatMessage,
   CreateGameRequest,
   DeckCards,
+  JudgeQueueEntry,
   LobbyStatus,
 } from '@torn-signpost/protocol';
 import type { Identity } from '../auth.ts';
@@ -435,6 +437,39 @@ export class GameStore {
     );
   }
 
+  // The judge queue (GAME-18): every open call in every game, oldest first.
+
+  async putJudgeCall(entry: JudgeQueueEntry): Promise<void> {
+    await this.db.send(
+      new PutCommand({
+        TableName: this.table,
+        Item: { PK: 'JUDGEQ', SK: judgeKey(entry.gameId, entry.call), ...entry },
+      }),
+    );
+  }
+
+  async deleteJudgeCall(gameId: string, call: Pick<JudgeCall, 'id' | 'openedAt'>): Promise<void> {
+    await this.db.send(
+      new DeleteCommand({
+        TableName: this.table,
+        Key: { PK: 'JUDGEQ', SK: judgeKey(gameId, call) },
+      }),
+    );
+  }
+
+  async judgeQueue(): Promise<JudgeQueueEntry[]> {
+    const items = await this.query({
+      KeyConditionExpression: 'PK = :pk',
+      ExpressionAttributeValues: { ':pk': 'JUDGEQ' },
+    });
+    return items.map((i) => ({
+      gameId: i.gameId as string,
+      gameName: i.gameName as string,
+      tournament: !!i.tournament,
+      call: i.call as JudgeCall,
+    }));
+  }
+
   async subscribers(gameId: string): Promise<Subscriber[]> {
     const items = await this.query({
       KeyConditionExpression: 'PK = :pk',
@@ -490,3 +525,6 @@ function toMeta(item: Record<string, unknown>): GameMeta {
   } = item;
   return meta as unknown as GameMeta;
 }
+
+const judgeKey = (gameId: string, call: Pick<JudgeCall, 'id' | 'openedAt'>) =>
+  `${call.openedAt}#${gameId}#${call.id}`;

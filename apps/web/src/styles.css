@@ -1289,3 +1289,25 @@ body.dragging {
 .script-step.failed p {
   color: var(--accent);
 }
+
+.judge-calls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.judge-call-button {
+  align-self: flex-start;
+}
+
+.judge-call {
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 0.3rem 0.5rem;
+}
+
+.judge-tools {
+  margin-top: 0.3rem;
+}

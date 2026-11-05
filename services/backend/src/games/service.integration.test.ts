@@ -596,4 +596,29 @@ describe.skipIf(!available)('game service (DynamoDB Local)', () => {
       expect(manual.scheduled.has(key(`deadline:${turnSeat}`))).toBe(false);
     });
   });
+
+  describe('judge queue (GAME-18)', () => {
+    it('lists open calls across games for judges, claimed and then gone once ruled on', async () => {
+      const { games } = service(store, recordingGateway().gateway);
+      const { id } = await startedGame(games);
+      const mine = async () => (await games.judgeQueue(judge)).filter((e) => e.gameId === id);
+      await games.command(bob, id, cmd({ type: 'CallJudge', reason: 'rules', note: 'Timing?' }));
+      const [entry] = await mine();
+      expect(entry).toMatchObject({
+        gameName: 'Test',
+        tournament: false,
+        call: { reason: 'rules', note: 'Timing?' },
+      });
+      await expect(games.judgeQueue(bob)).rejects.toMatchObject({ status: 403 });
+      const callId = entry?.call.id ?? '';
+      await games.command(judge, id, cmd({ type: 'ClaimJudgeCall', id: callId }));
+      expect((await mine())[0]?.call.claimedBy).toBe('jo');
+      await games.command(
+        judge,
+        id,
+        cmd({ type: 'ResolveJudgeCall', id: callId, ruling: { kind: 'answered' } }),
+      );
+      expect(await mine()).toEqual([]);
+    });
+  });
 });

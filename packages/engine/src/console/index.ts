@@ -10,6 +10,8 @@ import {
   type Counter,
   type GameState,
   PHASES,
+  PLAYER_CALL_REASONS,
+  type Ruling,
   STOP_ACTORS,
   type ZoneId,
   type ZoneName,
@@ -101,6 +103,16 @@ export const CONSOLE_COMMANDS: Record<string, Syntax> = {
     usage: 'stop none|neighbours|anyone  (block windows you never pass automatically)',
   },
   replace: { args: ['seat', 'user'], usage: 'replace <seat> <user>  (admins)' },
+  call: {
+    args: ['options'],
+    usage: 'call slow-play|rules|dispute|other [seat] ["note"]  (call a judge)',
+  },
+  claim: { args: ['options'], usage: 'claim [call]  (judges: take a call; the oldest by default)' },
+  rule: {
+    args: ['options'],
+    usage:
+      'rule [call] answered|escalate|extend <seat> <hours>|passfor <seat>|time <minutes>|disqualify <seat> ["note"]  (judges)',
+  },
 };
 
 const ZONE_ALIASES: Record<string, ZoneName> = {
@@ -316,6 +328,72 @@ function parse(tokens: string[], ctx: ConsoleContext): Command {
     case 'resume':
       extra(0);
       return { type: 'Resume' };
+    case 'call': {
+      const [reason = '', ...rest] = args;
+      if (!(PLAYER_CALL_REASONS as readonly string[]).includes(reason)) usage();
+      const cmd: Command = {
+        type: 'CallJudge',
+        reason: reason as (typeof PLAYER_CALL_REASONS)[number],
+      };
+      let i = 0;
+      if (rest[0] !== undefined && ctx.view.seats.some((x) => x.id === rest[0]?.toUpperCase())) {
+        cmd.seat = resolveSeat(rest[0], ctx);
+        i = 1;
+      }
+      const note = rest.slice(i).join(' ').trim();
+      if (note) cmd.note = note;
+      return cmd;
+    }
+    case 'claim':
+    case 'rule': {
+      const calls = ctx.view.judgeCalls ?? [];
+      let rest = args;
+      let id = calls[0]?.id;
+      if (rest[0] && /^c\d+$/.test(rest[0])) {
+        id = rest[0];
+        rest = rest.slice(1);
+      }
+      if (!id) fail('There is no open judge call');
+      if (verb === 'claim') {
+        if (rest.length) usage();
+        return { type: 'ClaimJudgeCall', id: id as string };
+      }
+      const [kind = '', ...more] = rest;
+      let ruling: Ruling;
+      let used = 0;
+      switch (kind) {
+        case 'answered':
+          ruling = { kind: 'answered' };
+          break;
+        case 'escalate':
+          ruling = { kind: 'escalate' };
+          break;
+        case 'extend':
+          ruling = {
+            kind: 'extend-deadline',
+            seat: resolveSeat(more[0] ?? '', ctx),
+            hours: integer(more[1] ?? ''),
+          };
+          used = 2;
+          break;
+        case 'passfor':
+          ruling = { kind: 'pass-for', seat: resolveSeat(more[0] ?? '', ctx) };
+          used = 1;
+          break;
+        case 'time':
+          ruling = { kind: 'extend-time', minutes: integer(more[0] ?? '') };
+          used = 1;
+          break;
+        case 'disqualify':
+          ruling = { kind: 'disqualify', seat: resolveSeat(more[0] ?? '', ctx) };
+          used = 1;
+          break;
+        default:
+          return usage();
+      }
+      const note = more.slice(used).join(' ').trim();
+      return { type: 'ResolveJudgeCall', id: id as string, ruling, ...(note ? { note } : {}) };
+    }
     case 'stop': {
       extra(1);
       const t = arg(0).toLowerCase();

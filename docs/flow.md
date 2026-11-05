@@ -314,6 +314,27 @@ a break away from the table. While paused, the clock stops and every command is 
 when its time is up, or earlier when whoever paused, or a judge, sends `Resume`. Only one pause at a
 time; a player can pause again once it ends.
 
+## Judge calls
+
+Any seated player can **call a judge** (slow play, a rules question, a dispute, or other), about a
+player or not, with a note; one open call per player. The game calls one itself when a deadline
+expires or the time limit is reached. While any call is open the table clock stops; play goes on.
+
+A judge **claims** a call so no other judge answers it, then **rules** (claiming it on the way if
+nobody had). Rulings, all logged:
+
+| Ruling | Effect |
+|---|---|
+| Answered at the table | None; for rules questions and disputes settled with the usual tools |
+| Pass for the player | A `Pass` for the seat holding the impulse |
+| More time to decide | Adds hours to that player's current deadline |
+| Add time to the timer | Adds minutes to the time limit (Conduct Guide 1.2.4) |
+| Disqualify | Tournament games only. The seat is out like an oust, but nobody gains VP or pool |
+| Refer to a server admin | Casual games only; an admin can then replace the player |
+
+A `deadline` call settles itself when that decision stops being overdue: the player came back, or
+the game moved on.
+
 ## How windows close
 
 After each command the engine runs the open window forward: it records automatic passes for the

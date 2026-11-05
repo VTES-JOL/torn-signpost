@@ -396,6 +396,7 @@ sequenceDiagram
 | Membership | `USER#<sub>` | `GAME#<id>` | "my games", seat, deck version |
 | Connection | `CONN#<connId>` | `META` | identity, subscribed games, TTL 3 h |
 | Subscription | `SUB#<game\|channel>` | `CONN#<connId>` | identity, TTL 3 h; one Query per fan-out, so no GSI is needed |
+| Judge queue | `JUDGEQ` | `<openedAt>#<gameId>#<callId>` | every open judge call, oldest first (GAME-18); put, updated and deleted as the game's calls change |
 | Profile | `USER#<sub>` | `PROFILE` | display name, avatar, prefs. Unique handles via `HANDLE#<lower>` items (AUTH-05) |
 | Stats | `USER#<sub>` | `STATS#<season>` | aggregates (STATS-02). GSI3 `LB#<season>#<metric>` / zero-padded score (STATS-03) |
 | Deck | `DECK#<id>` | `META`, `V#<n>` | versions immutable (DECK-07). GSI1 `OWNER#<sub>` for my decks; GSI4 `PUBLIC#<format>` / `<updatedAt>` for public listings |
@@ -619,8 +620,18 @@ primitives, and corrections are new commands.
   `CheckTimeLimit`, `EndPause`); the game service diffs it before and after every command and
   schedules, moves or cancels them through `Timers`, and a firing runs the check as a system
   command. `TimeLimitReached` is recorded and announced; ending and scoring the game is M6.
-- Not yet: referendums and combat steps (M6); judge calls and notifications (M5b); structural
-  window elision beyond auto-pass.
+- **Judge calls** (GAME-18, web behind the `judgeCalls` flag): `state.judgeCalls` holds open
+  calls (`c<seq>` IDs). Seated players `CallJudge` (slow play, rules, dispute, other; one open call
+  each); an expired deadline and the time limit open calls by themselves. A judge `ClaimJudgeCall`s
+  so two don't answer the same call, then `ResolveJudgeCall`s with a ruling: answered,
+  extend-deadline, pass-for (a `Pass` for the impulse holder), extend-time, disqualify
+  (tournaments: like an oust but nobody gains VP or pool; `Seat.disqualified`) or escalate (casual:
+  to a server admin, who can replace the player). An open call stops the table clock. A `deadline`
+  call settles itself once that decision is no longer overdue. The game service mirrors open calls
+  into the `JUDGEQ` partition, read by `GET /judge/calls` and the web `/judge` page (judges only,
+  refreshed every 15 s).
+- Not yet: referendums and combat steps (M6); notifications (M5b); structural window elision
+  beyond auto-pass.
 
 ## 7. macOS client (`apps/apple`)
 

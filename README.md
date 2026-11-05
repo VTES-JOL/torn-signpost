@@ -72,8 +72,9 @@ pnpm sandbox      # play the engine in the terminal as any seat, judge or admin
 - Feature flags still dark on the beta are on locally (`apps/web/vite.config.ts`): currently
   `replay`, the scenario player at http://localhost:5173/replay (it runs in the browser and needs
   only the web server and card content), `presence`, the presence dots and live/async status
-  at the table, and `clock`, the table timer, pauses, deadline countdowns and the timer settings
-  when creating a game. Locally, timers (such as the 30 s absence check) run in the API process.
+  at the table, `clock`, the table timer, pauses, deadline countdowns and the timer settings
+  when creating a game, and `judgeCalls`, calling a judge, the ruling tools and the judge queue at
+  /judge (sign in as `jo:judge` to try it). Locally, timers (such as the 30 s absence check) run in the API process.
 - To point the local web client at the live beta API instead:
   `TS_API_URL=https://api.tornsignpost.org pnpm dev:web`.
 - The sandbox starts a three-player table with invented test cards. Type `.help` for commands,

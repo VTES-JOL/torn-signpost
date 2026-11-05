@@ -34,6 +34,7 @@ import type {
   GameDetails,
   GameSummary,
   JoinGameRequest,
+  JudgeQueueEntry,
   LobbyStatus,
   ServerMessage,
 } from '@torn-signpost/protocol';
@@ -254,6 +255,35 @@ export class GameService {
     }
   }
 
+  /** Every open judge call, oldest first: judges only (GAME-18). */
+  async judgeQueue(identity: Identity): Promise<JudgeQueueEntry[]> {
+    const user = requireUser(identity);
+    if (!user.groups.includes('judge')) throw new ApiError(403, 'forbidden', 'Judges only');
+    return this.deps.store.judgeQueue();
+  }
+
+  /** Keep the judge queue in step with the game's open calls. Logged, not thrown, on failure. */
+  private async syncJudgeQueue(meta: GameMeta, before: GameState, after: GameState) {
+    const was = new Map((before.judgeCalls ?? []).map((c) => [c.id, c]));
+    const now = new Map((after.judgeCalls ?? []).map((c) => [c.id, c]));
+    try {
+      for (const [id, call] of now) {
+        if (was.get(id)?.claimedBy === call.claimedBy && was.has(id)) continue;
+        await this.deps.store.putJudgeCall({
+          gameId: meta.id,
+          gameName: meta.name,
+          tournament: after.settings.tournament,
+          call,
+        });
+      }
+      for (const [id, call] of was) {
+        if (!now.has(id)) await this.deps.store.deleteJudgeCall(meta.id, call);
+      }
+    } catch (e) {
+      console.error('judge queue sync failed', { id: meta.id, error: String(e) });
+    }
+  }
+
   /** A player's last connection to the game closed a while ago: away, unless they came back. */
   async checkAbsence(id: string, user: string): Promise<void> {
     if ((await this.watchingUsers(id)).has(user)) return;
@@ -315,6 +345,7 @@ export class GameService {
       if (appended === 'ok') {
         this.remember(after);
         await this.syncTimers(id, state, after);
+        await this.syncJudgeQueue(meta, state, after);
         await this.publishSteps(id, steps);
         return;
       }
@@ -442,6 +473,7 @@ export class GameService {
       if (appended === 'ok') {
         this.remember(after);
         await this.syncTimers(id, state, after);
+        await this.syncJudgeQueue(meta, state, after);
         await this.publishSteps(id, steps);
         const viewer = viewerOf(identity, after);
         return {

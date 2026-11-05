@@ -109,7 +109,12 @@ expiries and the time limit are events. Checks are one `timers(state)` list the 
 - **Tests**: scenario directive `wait 25h` advances the scenario clock; scenarios for set,
   clear-on-return, remind, expire, and clock pause/resume.
 
-### M5b.4 Judge calls and the judge queue (GAME-18)
+### M5b.4 Judge calls and the judge queue (GAME-18): done
+
+Built as planned, with: call IDs are `c<seq>` of the opening event; rulings are part of
+`ResolveJudgeCall` (no separate `PassFor`/`ExtendDeadline` commands), plus `answered` and
+`escalate`; a `deadline` call settles itself when the player comes back or the game moves on;
+the judge queue page refreshes every 15 s until notifications (M5b.5) push new calls.
 
 A call waits until a judge responds: there is no fallback. To keep that workable, outstanding
 calls live in a queue that judges can see and work through together.

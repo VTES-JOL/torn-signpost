@@ -290,6 +290,7 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
         pool: 0,
         // An ousted Methuselah's Edge is burned.
         hasEdge: false,
+        ...(ev.disqualified ? { disqualified: true as const } : {}),
       }));
       const reward = ev.predator;
       if (reward) {
@@ -362,6 +363,36 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
     case 'TimeLimitReached':
       if (d.clock) d.clock = { ...d.clock, limitReachedAt: ev.at };
       break;
+    case 'TimeExtended': {
+      // Time added after the limit was reached reopens it.
+      const { limitReachedAt: _, ...c } = d.clock ?? { elapsedMs: 0 };
+      d.clock = { ...c, extendedMs: (c.extendedMs ?? 0) + ev.ms };
+      break;
+    }
+    case 'DeadlineExtended': {
+      const w = d.waiting;
+      if (!w) break;
+      d.waiting = {
+        ...w,
+        expired: (w.expired ?? []).filter((x) => x !== ev.seat),
+        extendedMs: { ...w.extendedMs, [ev.seat]: (w.extendedMs?.[ev.seat] ?? 0) + ev.ms },
+      };
+      break;
+    }
+    case 'JudgeCalled':
+      d.judgeCalls = [...(d.judgeCalls ?? []), { ...ev.call, id: `c${ev.seq}`, openedAt: ev.at }];
+      break;
+    case 'JudgeCallClaimed':
+      d.judgeCalls = (d.judgeCalls ?? []).map((c) =>
+        c.id === ev.id ? { ...c, claimedBy: ev.judge } : c,
+      );
+      break;
+    case 'JudgeCallResolved': {
+      const calls = (d.judgeCalls ?? []).filter((c) => c.id !== ev.id);
+      if (calls.length) d.judgeCalls = calls;
+      else delete d.judgeCalls;
+      break;
+    }
     case 'PlayerReplaced':
       // The new player is away until the server sees them.
       d.seats = d.seats.map((s) =>

@@ -16,8 +16,10 @@ import type {
   ImpulseWindow,
   InstanceId,
   Instant,
+  JudgeCall,
   Override,
   Phase,
+  Ruling,
   StopRule,
   Turn,
   UserId,
@@ -109,6 +111,13 @@ export type EventBody =
   | { type: 'DeadlineExpired'; seat: SeatId; kind: WaitKind }
   /** The table timer ran out (Tournament Rules 3.1.1). */
   | { type: 'TimeLimitReached' }
+  /** A judge call opened; its ID is `c<seq>` of this event. */
+  | { type: 'JudgeCalled'; call: Omit<JudgeCall, 'id' | 'openedAt' | 'claimedBy'> }
+  | { type: 'JudgeCallClaimed'; id: string; judge: UserId }
+  /** `auto`: the call settled itself (an away player came back and decided). */
+  | { type: 'JudgeCallResolved'; id: string; ruling: Ruling; note?: string; auto?: true }
+  | { type: 'DeadlineExtended'; seat: SeatId; ms: number }
+  | { type: 'TimeExtended'; ms: number }
   /** `phases` is private to the seat. */
   | { type: 'AutoPassSet'; seat: SeatId; phases?: Phase[] }
   /** `stops` is private to the seat. */
@@ -138,6 +147,8 @@ export type EventBody =
       type: 'Ousted';
       seat: SeatId;
       predator?: { seat: SeatId; vp: number; pool: number };
+      /** Out by a judge's ruling rather than at 0 pool: nobody is rewarded. */
+      disqualified?: true;
     };
 
 export type EventType = EventBody['type'];

@@ -70,6 +70,8 @@ export interface Seat {
   vp: number;
   hasEdge: boolean;
   ousted?: { atSeq: number; by?: SeatId };
+  /** Out of the game by a judge's ruling (tournaments): not an oust, nobody gains VP or pool. */
+  disqualified?: true;
   withdrawn?: boolean;
   /**
    * Whether the seat's player has the game open (TEMPO-06). Missing means away: every seat starts
@@ -157,6 +159,59 @@ export interface ActionState {
   blocker?: InstanceId;
 }
 
+export const JUDGE_CALL_REASONS = [
+  'slow-play',
+  'rules',
+  'dispute',
+  'deadline',
+  'time-limit',
+  'other',
+] as const;
+/** Why a judge was called. `deadline` and `time-limit` calls are opened by the game itself. */
+export type JudgeCallReason = (typeof JUDGE_CALL_REASONS)[number];
+/** The reasons a player can call a judge for. */
+export const PLAYER_CALL_REASONS = ['slow-play', 'rules', 'dispute', 'other'] as const;
+
+export interface JudgeCall {
+  /** `c<seq>`: the event that opened it. */
+  id: string;
+  reason: JudgeCallReason;
+  /** The seat that called; missing when the game opened the call. */
+  by?: SeatId;
+  /** The seat the call is about, if any. */
+  seat?: SeatId;
+  /** The event it is about (an unverified override for a dispute). */
+  ref?: number;
+  note?: string;
+  openedAt: Instant;
+  /** The judge handling it, so two judges don't answer the same call. */
+  claimedBy?: UserId;
+}
+
+/** What a judge decided (GAME-18). Every ruling is logged, by the judge. */
+export type Ruling =
+  /** Answered at the table (a rules question, a dispute settled with the usual tools). */
+  | { kind: 'answered' }
+  /** More time for an away player's decision. */
+  | { kind: 'extend-deadline'; seat: SeatId; hours: number }
+  /** Pass for a player who holds the impulse: the default for an expired decision. */
+  | { kind: 'pass-for'; seat: SeatId }
+  /** Time added to the table timer for a judge-caused delay (Conduct Guide 1.2.4). */
+  | { kind: 'extend-time'; minutes: number }
+  /** Tournament games: the player is out (Conduct Guide 1.1.4, 4.11). Not an oust. */
+  | { kind: 'disqualify'; seat: SeatId }
+  /** Casual games: referred to a server admin, who can replace the player (GAME-19). */
+  | { kind: 'escalate' };
+
+export const RULING_KINDS = [
+  'answered',
+  'extend-deadline',
+  'pass-for',
+  'extend-time',
+  'disqualify',
+  'escalate',
+] as const satisfies readonly Ruling['kind'][];
+
 /**
  * A default flow rule set aside by a card effect the player claims (docs/flow.md, "Overrides").
  * Public: the source is a card in play, the action card, or a card played with the command.
@@ -209,9 +264,27 @@ export interface GameState {
    * The current wait (`waitingOn`): its key, and the event that started it, kept by `evolve`; and
    * the seats in it already reminded of their deadline, or past it (`clock.ts`).
    */
-  waiting?: { key: string; seq: number; at: Instant; reminded?: SeatId[]; expired?: SeatId[] };
-  /** The table clock: time played while live, and since when it has been running. */
-  clock?: { elapsedMs: number; runningSince?: Instant; limitReachedAt?: Instant };
+  waiting?: {
+    key: string;
+    seq: number;
+    at: Instant;
+    reminded?: SeatId[];
+    expired?: SeatId[];
+    /** Extra time a judge gave a seat for this decision. */
+    extendedMs?: Record<SeatId, number>;
+  };
+  /**
+   * The table clock: time played while live, and since when it has been running; `extendedMs` is
+   * time judges added (Conduct Guide 1.2.4).
+   */
+  clock?: {
+    elapsedMs: number;
+    runningSince?: Instant;
+    limitReachedAt?: Instant;
+    extendedMs?: number;
+  };
+  /** Judge calls waiting for a judge's ruling (GAME-18); resolved calls are only in the log. */
+  judgeCalls?: JudgeCall[];
   /** A pause (TEMPO-05): nothing happens at the table until it ends or is lifted. */
   pause?: { seat?: SeatId; until: Instant };
   settings: GameSettings;

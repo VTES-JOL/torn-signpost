@@ -28,11 +28,13 @@ import {
   useState,
 } from 'react';
 import { ApiError } from '../api.ts';
+import { useAuth } from '../auth.tsx';
 import { useCards, useConfig } from '../content.tsx';
 import { cardActions, type MenuItem } from './actions.ts';
 import type { GameSnapshot, TableClient } from './client.ts';
 import { DragProvider, type DragSource, type DropTarget, useDrag } from './drag.tsx';
 import { type Choosing, currentStep, FlowBar } from './FlowBar.tsx';
+import { JudgeCalls } from './JudgeCalls.tsx';
 import { seatLayout } from './seatLayout.ts';
 
 interface TableContextValue {
@@ -69,6 +71,8 @@ export function Table(props: {
 }) {
   const { client, snapshot, catalog, judge, onError } = props;
   const view = snapshot.view;
+  const judgeCalls = !!useConfig().flags.judgeCalls;
+  const { user } = useAuth();
   // An ousted (or withdrawn) player only watches from now on, like a spectator.
   const outOfGame = !!snapshot.seat && isOut(view, snapshot.seat);
   const seat = outOfGame ? undefined : snapshot.seat;
@@ -188,6 +192,16 @@ export function Table(props: {
           send={send}
           judge={judge}
         />
+        {judgeCalls && (
+          <JudgeCalls
+            view={view}
+            seat={seat}
+            judge={judge}
+            user={user?.sub}
+            seatName={client.seatName}
+            send={send}
+          />
+        )}
         <TurnBar zoom={zoom} setZoom={setZoom} />
         {outOfGame && (
           <p className="notice small" role="status">
