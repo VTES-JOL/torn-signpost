@@ -946,7 +946,8 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
 
 /**
  * A `deadline` call settles itself once that decision is no longer overdue: the player came back
- * to the table, or the game moved on to a new decision. Calls about a seat that is out go too.
+ * to the table, or the game moved on to a new decision (or that seat is out). Players' calls stay
+ * open until a judge rules, even about a seat that is out: the dispute may be how it got there.
  */
 function settleCalls(
   state: GameState,

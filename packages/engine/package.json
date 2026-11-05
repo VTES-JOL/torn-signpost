@@ -11,10 +11,11 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run --coverage"
   },
   "devDependencies": {
     "@types/node": "26.6.5",
+    "@vitest/coverage-v8": "4.1.12",
     "fast-check": "4.10.2",
     "typescript": "7.0.2",
     "vitest": "4.1.12"

@@ -1,6 +1,16 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { type CardInfo, createCatalog } from './catalog.ts';
+import {
+  clockElapsed,
+  clockRunning,
+  deadlines,
+  HOUR_MS,
+  instantFromMs,
+  MINUTE_MS,
+  ms,
+  timers,
+} from './clock.ts';
 import type { Command } from './commands.ts';
 import { decide } from './decide.ts';
 import type { GameEvent } from './events.ts';
@@ -10,8 +20,11 @@ import {
   ACTION_KINDS,
   type Actor,
   type CardInstance,
+  type GameSettings,
   type GameState,
   PHASES,
+  PLAYER_CALL_REASONS,
+  type Ruling,
   type Viewer,
   ZONE_NAMES,
 } from './model.ts';
@@ -41,7 +54,31 @@ const catalog = createCatalog(
 );
 const CARD_ID = /card-[A-E]-[cl]-\d+/g;
 
-type Step = [actor: number, kind: number, a: number, b: number, c: number, d: number];
+type Step = [actor: number, kind: number, a: number, b: number, c: number, d: number, dt: number];
+
+/** Random games run on a real clock, so timers, pauses and deadlines fall due. */
+const T0 = Date.parse('2026-01-01T00:00:00.000Z');
+
+/** Tournament (2 h timer), casual with a short timer, or casual without one; short deadlines. */
+function settingsFor(seed: number): Partial<GameSettings> {
+  const deadlineMs = HOUR_MS;
+  switch (Math.abs(seed) % 3) {
+    case 0:
+      return { tournament: true, deadlineMs };
+    case 1:
+      return { timeLimitMs: 20 * MINUTE_MS, deadlineMs };
+    default:
+      return { deadlineMs };
+  }
+}
+
+/** Mostly seconds between commands, sometimes minutes, now and then hours (async play). */
+function advance([, , , , , , dt]: Step): number {
+  const n = dt % 20;
+  if (n < 14) return (dt % 40) * 1000;
+  if (n < 19) return (dt % 12) * MINUTE_MS;
+  return (1 + (dt % 4)) * 15 * MINUTE_MS;
+}
 
 function start(seatCount: number, seed: number): GameState {
   const seats = SEATS.slice(0, seatCount).map((id) => ({
@@ -52,10 +89,10 @@ function start(seatCount: number, seed: number): GameState {
   }));
   const result = decide(
     newGame('g'),
-    { type: 'StartGame', gameId: 'g', format: 'standard', seats },
+    { type: 'StartGame', gameId: 'g', format: 'standard', seats, settings: settingsFor(seed) },
     {
       actor: { kind: 'system' },
-      now: 't',
+      now: instantFromMs(T0),
       rng: seededRng(seed),
       catalog,
     },
@@ -64,11 +101,15 @@ function start(seatCount: number, seed: number): GameState {
   let state = result.events.reduce(evolve, newGame('g'));
   // Warm up as a real opening would, so random commands find cards in hands and in play.
   const rng = seededRng(seed + 2);
-  const run = (user: string, cmd: Command) => {
-    const r = decide(state, cmd, { actor: { kind: 'player', user }, now: 't', rng, catalog });
+  const run = (user: string, cmd: Command, actor: Actor = { kind: 'player', user }) => {
+    const r = decide(state, cmd, { actor, now: instantFromMs(T0), rng, catalog });
     if (r.ok) state = r.events.reduce(evolve, state);
   };
   for (const { id, user } of seats) {
+    // Most players start at the table; the last one is away, so deadlines come into play.
+    if (id !== seats.at(-1)?.id || seed % 2) {
+      run(user, { type: 'SetPresence', seat: id, present: true }, { kind: 'system' });
+    }
     run(user, { type: 'Draw', seat: id, from: 'crypt', count: 4 });
     run(user, { type: 'Draw', seat: id, count: 7 });
     for (const zone of ['uncontrolled', 'uncontrolled', 'hand'] as const) {
@@ -218,6 +259,87 @@ function guidedStep(state: GameState, [, kind, a, , c, d]: Step): [Command, Acto
   return [{ type: 'AdvancePhase' }, actor];
 }
 
+/**
+ * Presence, pauses and judge calls (TEMPO-03/04/05, GAME-18): players come and go, pause and call
+ * judges; judges claim and rule, sometimes wrongly (rejected).
+ */
+function tableStep(state: GameState, [, kind, a, b, c, d]: Step): [Command, Actor] {
+  const seat = state.seats[b % state.seats.length];
+  const player: Actor = { kind: 'player', user: seat?.occupant ?? '' };
+  const calls = state.judgeCalls ?? [];
+  const call = calls[a % Math.max(calls.length, 1)];
+  // Usually the judge who has the call, sometimes another one (rejected).
+  const judge: Actor = {
+    kind: 'judge',
+    user: (d % 5 ? call?.claimedBy : undefined) ?? `j${a % 2}`,
+  };
+  const id = call?.id ?? 'c0';
+  const target = state.seats[d % state.seats.length]?.id ?? 'A';
+  const rulings: Ruling[] = [
+    { kind: 'answered' },
+    { kind: 'escalate' },
+    { kind: 'pass-for', seat: call?.seat ?? impulseHolder(state) ?? target },
+    {
+      kind: 'extend-deadline',
+      seat:
+        (deadlines(state).find((x) => x.seat === call?.seat) ?? deadlines(state)[0])?.seat ??
+        target,
+      hours: 1 + (c % 3),
+    },
+    { kind: 'extend-time', minutes: 1 + (c % 15) },
+    { kind: 'disqualify', seat: target },
+  ];
+  switch (kind % 9) {
+    case 0:
+    case 1:
+      return [
+        { type: 'SetPresence', seat: seat?.id ?? 'A', present: c % 3 !== 0 },
+        { kind: 'system' },
+      ];
+    case 2:
+      return [{ type: 'Pause', minutes: 1 + (c % 6) }, d % 4 ? player : judge];
+    case 3:
+      return [{ type: 'Resume' }, d % 2 ? player : judge];
+    case 4:
+      return [
+        {
+          type: 'CallJudge',
+          reason: PLAYER_CALL_REASONS[c % PLAYER_CALL_REASONS.length] ?? 'rules',
+          ...(d % 2 ? { seat: target } : {}),
+          ...(d % 3 === 0 ? { note: 'n' } : {}),
+        },
+        player,
+      ];
+    case 5:
+      return [{ type: 'ClaimJudgeCall', id }, judge];
+    case 6:
+      // Rare in play, so ask for it directly: a judge disqualifies (tournament games only).
+      return [
+        { type: 'ResolveJudgeCall', id, ruling: { kind: 'disqualify', seat: target } },
+        judge,
+      ];
+    case 7: {
+      // More time for an away player: call a judge about them first if nobody has.
+      const away = deadlines(state)[0]?.seat;
+      if (call || !away) {
+        return [{ type: 'ResolveJudgeCall', id, ruling: rulings[3] as Ruling }, judge];
+      }
+      const caller = state.seats.find((s) => s.id !== away && !s.ousted)?.occupant ?? '';
+      return [
+        { type: 'CallJudge', reason: 'slow-play', seat: away },
+        { kind: 'player', user: caller },
+      ];
+    }
+    default: {
+      // Rulings that fit the call more often than not.
+      const fitting =
+        call?.reason === 'deadline' ? (c % 2 ? 2 : 3) : call?.reason === 'time-limit' ? 4 : 0;
+      const ruling = (d % 3 ? rulings[fitting] : rulings[c % rulings.length]) ?? rulings[0];
+      return [{ type: 'ResolveJudgeCall', id, ruling: ruling as Ruling }, judge];
+    }
+  }
+}
+
 function actorFor(state: GameState, [actor]: Step): Actor {
   if (actor % 8 === 6) return { kind: 'judge', user: 'j' };
   if (actor % 8 === 7) return { kind: 'admin', user: 'adm' };
@@ -266,42 +388,85 @@ function totalBlood(state: GameState): number {
   );
 }
 
-/** Run random games, calling `check` for every applied event. */
-function forEveryEvent(check: (before: GameState, ev: GameEvent, after: GameState) => void) {
+interface Applied {
+  before: GameState;
+  command: Command;
+  actor: Actor;
+  now: number;
+  events: GameEvent[];
+  after: GameState;
+}
+
+/**
+ * Run random games, calling `onCommand` for every accepted command (including the server's timer
+ * checks as they fall due) and `onEvent` for every applied event.
+ */
+function play(
+  onEvent: (before: GameState, ev: GameEvent, after: GameState) => void,
+  onCommand: (applied: Applied) => void = () => {},
+) {
   fc.assert(
     fc.property(
       fc.integer({ min: 3, max: 5 }),
       fc.integer(),
-      fc.array(fc.tuple(fc.nat(), fc.nat(), fc.nat(), fc.nat(), fc.nat(), fc.nat()), {
+      fc.array(fc.tuple(fc.nat(), fc.nat(), fc.nat(), fc.nat(), fc.nat(), fc.nat(), fc.nat()), {
         minLength: 20,
         maxLength: 80,
       }),
       (seatCount, seed, steps) => {
         let state = deepFreeze(start(seatCount, seed));
         const rng = seededRng(seed + 1);
-        for (const step of steps) {
-          const [command, actor] =
-            step[0] % 5 < 3
-              ? guidedStep(state, step)
-              : [commandFor(state, step), actorFor(state, step)];
+        let now = T0;
+        const apply = (command: Command, actor: Actor, at: number): boolean => {
           const result = decide(state, command, {
             actor,
-            now: 't',
+            now: instantFromMs(at),
             rng,
             catalog,
           });
-          if (!result.ok) continue;
+          if (!result.ok) return false;
+          const before = state;
           for (const ev of result.events) {
             const after = deepFreeze(evolve(state, ev));
-            check(state, ev, after);
+            onEvent(state, ev, after);
             state = after;
           }
+          onCommand({ before, command, actor, now: at, events: result.events, after: state });
+          return true;
+        };
+        for (const step of steps) {
+          // Time passes; the checks the server scheduled run when they fall due, in order.
+          const to = now + advance(step);
+          for (;;) {
+            const due = timers(state)
+              .filter((t) => ms(t.at) <= to)
+              .sort((x, y) => ms(x.at) - ms(y.at))[0];
+            if (!due) break;
+            const at = Math.max(now, ms(due.at));
+            if (!apply(due.command, { kind: 'system' }, at)) {
+              throw new Error(`timer ${due.key} at ${due.at} did nothing`);
+            }
+            now = at;
+          }
+          now = to;
+          const pick = step[0] % 10;
+          const [command, actor] =
+            pick < 5
+              ? guidedStep(state, step)
+              : pick < 7
+                ? tableStep(state, step)
+                : [commandFor(state, step), actorFor(state, step)];
+          apply(command, actor, now);
         }
       },
     ),
     { numRuns: 150 },
   );
 }
+
+const forEveryEvent = (check: (before: GameState, ev: GameEvent, after: GameState) => void) =>
+  play(check);
+const forEveryCommand = (check: (applied: Applied) => void) => play(() => {}, check);
 
 // Property suites run hundreds of random games; allow for slower CI runners.
 describe('hidden information', { timeout: 60_000 }, () => {
@@ -361,6 +526,19 @@ describe('hidden information', { timeout: 60_000 }, () => {
       'AutoPassSet',
       'StopsSet',
       'Held',
+      'PlayerPresent',
+      'PlayerAbsent',
+      'Paused',
+      'Resumed',
+      'DeadlineReminded',
+      'DeadlineExpired',
+      'TimeLimitReached',
+      'DeadlineExtended',
+      'TimeExtended',
+      'JudgeCalled',
+      'JudgeCallClaimed',
+      'JudgeCallResolved',
+      'Ousted',
     ]) {
       expect(seen, type).toContain(type);
     }
@@ -378,16 +556,21 @@ describe('hidden information', { timeout: 60_000 }, () => {
 
 describe('engine invariants', { timeout: 60_000 }, () => {
   it('an active game always waits on someone still in it, and knows since when (UX-09)', () => {
-    forEveryEvent((_, ev, after) => {
+    // Checked once each command is done: an oust of the acting seat passes the turn in later
+    // events of the same command.
+    forEveryCommand(({ command, after }) => {
       const waits = waitingOn(after);
       if (after.status !== 'active') return;
-      expect(waits.length, `nobody to wait on after ${ev.type}`).toBeGreaterThan(0);
+      expect(waits.length, `nobody to wait on after ${command.type}`).toBeGreaterThan(0);
       for (const w of waits) {
         const seat = after.seats.find((s) => s.id === w.seat);
         expect(seat && !seat.ousted && !seat.withdrawn, `${w.seat} is out`).toBe(true);
       }
-      expect(after.waiting?.key).toBe(waitKey(after));
-      expect(after.waiting?.seq).toBeLessThanOrEqual(after.seq);
+    });
+    forEveryEvent((_, __, after) => {
+      if (after.status !== 'active') return;
+      expect(after.waiting?.key ?? '').toBe(waitKey(after));
+      if (after.waiting) expect(after.waiting.seq).toBeLessThanOrEqual(after.seq);
     });
   });
 
@@ -395,6 +578,85 @@ describe('engine invariants', { timeout: 60_000 }, () => {
     forEveryEvent((before, ev, after) => {
       if (ev.type === 'BloodTransferred') expect(totalBlood(after)).toBe(totalBlood(before));
       expect(after.seq).toBe(ev.seq);
+    });
+  });
+});
+
+const TIMER_EVENTS: Record<string, readonly string[]> = {
+  CheckDeadline: ['DeadlineReminded', 'DeadlineExpired', 'JudgeCalled'],
+  CheckTimeLimit: ['TimeLimitReached', 'JudgeCalled'],
+  EndPause: ['Resumed'],
+};
+const ALLOWED_WHILE_PAUSED = new Set([
+  'Resume',
+  'SetAutoPass',
+  'SetStops',
+  'ReplacePlayer',
+  'CallJudge',
+  'ClaimJudgeCall',
+  'ResolveJudgeCall',
+  'SetPresence',
+  'CheckDeadline',
+  'CheckTimeLimit',
+  'EndPause',
+]);
+
+describe('time and judges', { timeout: 60_000 }, () => {
+  it('the clock runs exactly when it should, never goes back, and never outruns real time', () => {
+    forEveryEvent((before, ev, after) => {
+      if (!after.clock) return;
+      expect(!!after.clock.runningSince, `after ${ev.type}`).toBe(clockRunning(after));
+      const elapsed = clockElapsed(after, ev.at);
+      expect(elapsed).toBeGreaterThanOrEqual(clockElapsed(before, ev.at));
+      expect(elapsed).toBeLessThanOrEqual(ms(ev.at) - T0);
+    });
+  });
+
+  it('a pause stops play: only settings, judges and the server act while paused', () => {
+    forEveryCommand(({ before, command }) => {
+      if (before.pause) expect(ALLOWED_WHILE_PAUSED, command.type).toContain(command.type);
+    });
+  });
+
+  it('a timer check only reminds, flags and calls a judge; it never acts for a player (DQ6)', () => {
+    forEveryCommand(({ command, events }) => {
+      const allowed = TIMER_EVENTS[command.type];
+      if (!allowed) return;
+      for (const ev of events) expect(allowed, `${command.type} → ${ev.type}`).toContain(ev.type);
+    });
+  });
+
+  it('a timer that fires early, or twice, does nothing', () => {
+    forEveryCommand(({ after, now }) => {
+      for (const t of timers(after)) {
+        const at = ms(t.at);
+        expect(Number.isNaN(at), t.key).toBe(false);
+        if (at <= now) continue;
+        const early = decide(after, t.command, {
+          actor: { kind: 'system' },
+          now: instantFromMs(now),
+          rng: seededRng(0),
+          catalog,
+        });
+        expect(early.ok, `${t.key} fired early`).toBe(false);
+      }
+    });
+  });
+
+  it('judge calls stay consistent: unique, one per player, deadline calls still overdue', () => {
+    forEveryCommand(({ after }) => {
+      const calls = after.judgeCalls ?? [];
+      expect(new Set(calls.map((c) => c.id)).size).toBe(calls.length);
+      for (const c of calls) {
+        if (c.reason !== 'deadline') continue;
+        expect(after.waiting?.expired ?? []).toContain(c.seat);
+        expect(after.seats.some((s) => s.id === c.seat && !s.ousted)).toBe(true);
+      }
+      // A player has at most one call open at a time.
+      const callers = calls.flatMap((c) => (c.by ? [c.by] : []));
+      expect(new Set(callers).size).toBe(callers.length);
+      for (const s of after.seats) if (s.disqualified) expect(s.ousted).toBeDefined();
+      if (after.status !== 'active') expect(after.pause).toBeUndefined();
     });
   });
 });

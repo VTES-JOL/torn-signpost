@@ -722,7 +722,7 @@ to SNS email. Log retention is 30 days, to keep costs down.
 | Level | What | Tooling |
 |---|---|---|
 | Engine unit | every command/event, phase transitions, impulses | Vitest |
-| Engine property | **no hidden-information leakage**, `evolve` determinism, replay equals live state, conservation (blood/pool) | fast-check |
+| Engine property | **no hidden-information leakage**, `evolve` determinism, replay equals live state, conservation (blood/pool), the clock, pauses, timers and judge calls; coverage floor enforced ([testing.md](testing.md)) | fast-check, v8 coverage |
 | Scenario ("golden games") | scripted games in console syntax with expected state/log; shared across TS **and Swift (via JSC)** as contract tests | Vitest + XCTest |
 | Backend integration | command pipeline, concurrency/retry, idempotency, projections over WebSocket | Vitest + DynamoDB Local |
 | End-to-end | multi-browser game (5 contexts), mobile viewport, accessibility checks | Playwright + axe |
