@@ -126,7 +126,7 @@ export function createServices(opts: {
 export async function fireTimer(services: Services, payload: TimerPayload): Promise<void> {
   switch (payload.kind) {
     case 'presence':
-      await services.games.checkAbsence(payload.gameId, payload.user);
+      await services.games.checkPresence(payload.gameId, payload.user);
       return;
     case 'game':
       await services.games.runTimer(payload.gameId, payload.command);

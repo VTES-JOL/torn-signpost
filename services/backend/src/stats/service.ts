@@ -89,6 +89,8 @@ export class ResultsService {
       names.set(user, { name: chosen ?? joined ?? user, key: chosen ?? user });
     }
     await this.deps.store.record(result, statDeltas(result), history, names);
+    // This server's leaderboards are out of date now (others' catch up within BOARD_CACHE_MS).
+    this.boards.clear();
     return true;
   }
 

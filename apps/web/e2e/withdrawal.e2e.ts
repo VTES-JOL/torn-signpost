@@ -9,6 +9,8 @@ const flow = (page: Page) => page.getByRole('region', { name: 'Game flow' });
 test('a player with an empty library withdraws, and leaves at the start of their next turn', async ({
   browser,
 }) => {
+  // Emptying the library takes some 45 commands, slow when other tests share the API.
+  test.setTimeout(60_000);
   const [alice, bob, carol] = users('alice', 'bob', 'carol');
   const game = await startGame([alice, bob, carol]);
   const start = await view(alice, game.id);

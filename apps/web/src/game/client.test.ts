@@ -134,4 +134,44 @@ describe('GameClient', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(c.getSnapshot().view).toEqual(project(s.state, viewer));
   });
+
+  it('fetches an event pushed with a gap while a catch-up is already under way', async () => {
+    const s = server();
+    const viewer: Viewer = { kind: 'player', seat: '1' };
+    const base = s.api(viewer, 'a');
+    // The next events request is answered as of when it was asked, but only once released.
+    let hold = false;
+    let release: (() => void) | undefined;
+    const api = (async (path: string, init?: { method?: string; body?: unknown }) => {
+      if (hold && path.startsWith('/games/g/events')) {
+        hold = false;
+        const answer = await base(path, init);
+        await new Promise<void>((r) => {
+          release = r;
+        });
+        return answer;
+      }
+      return base(path, init);
+    }) as Api;
+    const c = client(api, 'a');
+    await c.start();
+    const internals = c as unknown as {
+      apply(e: GameEvent[], animate: boolean): void;
+      catchUp(): Promise<void>;
+    };
+
+    // A catch-up starts (say, after subscribing) and sees one new event…
+    s.run({ type: 'AdjustPool', seat: '2', delta: -2 }, { kind: 'player', user: 'b' });
+    hold = true;
+    const first = internals.catchUp();
+    while (!release) await new Promise((r) => setTimeout(r, 0));
+    // …while a later one, the last of the game perhaps, is pushed before it lands: a gap.
+    const before = s.state.seq;
+    s.run({ type: 'AdjustPool', seat: '3', delta: -3 }, { kind: 'player', user: 'c' });
+    internals.apply(s.as(viewer, before), true);
+    release?.();
+    await first;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(c.getSnapshot().view).toEqual(project(s.state, viewer));
+  });
 });

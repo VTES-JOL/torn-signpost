@@ -96,9 +96,14 @@ export class GameStore {
     );
   }
 
-  async getMeta(id: string): Promise<GameMeta | undefined> {
+  /** `consistent` for the command path: a retry after a conflict must see the write it lost to. */
+  async getMeta(id: string, consistent = false): Promise<GameMeta | undefined> {
     const { Item } = await this.db.send(
-      new GetCommand({ TableName: this.table, Key: { PK: gameKey(id), SK: 'META' } }),
+      new GetCommand({
+        TableName: this.table,
+        Key: { PK: gameKey(id), SK: 'META' },
+        ...(consistent ? { ConsistentRead: true } : {}),
+      }),
     );
     return Item ? toMeta(Item) : undefined;
   }
@@ -252,9 +257,15 @@ export class GameStore {
   }
 
   /** Events with seq > `after`, oldest first. */
-  async events(id: string, after: number, limit?: number): Promise<GameEvent[]> {
+  async events(
+    id: string,
+    after: number,
+    limit?: number,
+    consistent = false,
+  ): Promise<GameEvent[]> {
     const items = await this.query(
       {
+        ...(consistent ? { ConsistentRead: true } : {}),
         KeyConditionExpression: 'PK = :pk AND SK BETWEEN :from AND :to',
         ExpressionAttributeValues: {
           ':pk': gameKey(id),
@@ -560,8 +571,10 @@ export class GameStore {
     );
   }
 
+  /** Consistent, so a connection that has just subscribed gets the next push (§5.2). */
   async subscribers(gameId: string): Promise<Subscriber[]> {
     const items = await this.query({
+      ConsistentRead: true,
       KeyConditionExpression: 'PK = :pk',
       ExpressionAttributeValues: { ':pk': `SUB#${gameId}` },
     });

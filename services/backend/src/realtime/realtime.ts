@@ -14,6 +14,8 @@ import type { ConnectionGateway } from './gateway.ts';
 
 /** How long a player may be gone before they count as away (TEMPO-06): rides out a page reload. */
 export const ABSENCE_DELAY_MS = 30_000;
+/** After recording an arrival failed: soon, so the player isn't shown as away for long. */
+export const PRESENCE_RETRY_MS = 2_000;
 
 /** Push is best effort: clients catch up over HTTP when they see a `seq` gap (§5.2). */
 export class Fanout implements Publisher {
@@ -80,15 +82,33 @@ export class Realtime {
 
   /**
    * Arrival is recorded at once; absence only after `ABSENCE_DELAY_MS`, and only if the player
-   * hasn't come back (`GameService.checkAbsence`). Presence never gets in the way of watching.
+   * hasn't come back (`GameService.checkPresence`). Presence never gets in the way of watching:
+   * if recording an arrival fails (the game was busy), a check shortly after records it instead.
    */
   private async arrived(identity: Identity, gameId: string): Promise<void> {
     if (!this.options.presence) return;
     try {
       if (identity.kind === 'user') await this.games.setPresence(gameId, identity.sub, true);
+    } catch (e) {
+      console.warn('presence failed; checking again shortly', { gameId, error: String(e) });
+      if (identity.kind === 'user') await this.recheck(gameId, identity.sub, PRESENCE_RETRY_MS);
+    }
+    try {
       await this.publishAudience(gameId);
     } catch (e) {
-      console.warn('presence failed', { gameId, error: String(e) });
+      console.warn('audience failed', { gameId, error: String(e) });
+    }
+  }
+
+  private async recheck(gameId: string, user: string, delayMs: number): Promise<void> {
+    try {
+      await this.options.timers?.schedule(
+        presenceKey(gameId, user),
+        new Date(this.now().getTime() + delayMs),
+        { kind: 'presence', gameId, user },
+      );
+    } catch (e) {
+      console.warn('presence check not scheduled', { gameId, error: String(e) });
     }
   }
 
@@ -96,11 +116,7 @@ export class Realtime {
     if (!this.options.presence) return;
     try {
       if (identity.kind === 'user' && (await this.games.isPlaying(gameId, identity.sub))) {
-        await this.options.timers?.schedule(
-          presenceKey(gameId, identity.sub),
-          new Date(this.now().getTime() + ABSENCE_DELAY_MS),
-          { kind: 'presence', gameId, user: identity.sub },
-        );
+        await this.recheck(gameId, identity.sub, ABSENCE_DELAY_MS);
       }
       await this.publishAudience(gameId);
     } catch (e) {
@@ -152,8 +168,11 @@ export class Realtime {
           return;
         }
         try {
-          const { seq } = await this.games.canView(conn.identity, parsed.gameId);
+          await this.games.canView(conn.identity, parsed.gameId);
           await this.store.subscribe(connectionId, parsed.gameId, conn.identity);
+          // The seq once subscribed: anything later is pushed, anything up to it the client
+          // fetches. Read before subscribing, an event in between would be neither.
+          const seq = await this.games.seq(parsed.gameId);
           await reply({ type: 'subscribed', gameId: parsed.gameId, seq });
           // Read first, so by the time the player shows as present nothing about it is unread.
           await this.options.notifications?.openedGame(conn.identity, parsed.gameId);

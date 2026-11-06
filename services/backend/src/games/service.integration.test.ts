@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Identity } from '../auth.ts';
 import type { GameStore } from '../db/store.ts';
 import type { ConnectionGateway } from '../realtime/gateway.ts';
-import { ABSENCE_DELAY_MS, Fanout, Realtime } from '../realtime/realtime.ts';
+import { ABSENCE_DELAY_MS, Fanout, PRESENCE_RETRY_MS, Realtime } from '../realtime/realtime.ts';
 import { testContent, testDeck } from '../testing/content.ts';
 import { dynamoAvailable, testStore } from '../testing/dynamo.ts';
 import { presenceKey, type TimerPayload, type Timers } from '../timers/timers.ts';
@@ -392,6 +392,28 @@ describe.skipIf(!available)('game service (DynamoDB Local)', () => {
       expect(await store.subscribers(id)).toEqual([]);
     });
 
+    it('a game that moves on while someone subscribes: told the seq after, so nothing is missed', async () => {
+      const rec = recordingGateway();
+      const { games, realtime } = service(store, rec.gateway, 7, undefined, false);
+      const { id } = await startedGame(games);
+      // An event lands after the permission check but before the subscription is stored: no push
+      // reaches the newcomer, so the seq they're told must already include it.
+      const subscribe = store.subscribe.bind(store);
+      store.subscribe = async (...args) => {
+        await games.command(judge, id, cmd({ type: 'AdjustPool', seat: '1', delta: 1 }));
+        return subscribe(...args);
+      };
+      try {
+        await realtime.connect('c-late', guest);
+        await realtime.message('c-late', JSON.stringify({ type: 'subscribe', gameId: id }));
+      } finally {
+        store.subscribe = subscribe;
+      }
+      const seq = (await store.getMeta(id))?.seq;
+      expect(rec.sent.get('c-late')).toContainEqual({ type: 'subscribed', gameId: id, seq });
+      await realtime.disconnect('c-late');
+    });
+
     it('admins can replace a player in a casual game', async () => {
       const { games } = service(store, recordingGateway().gateway);
       const { id, seatOf } = await startedGame(games);
@@ -455,12 +477,12 @@ describe.skipIf(!available)('game service (DynamoDB Local)', () => {
         at: new Date(Date.parse('2026-11-05T10:00:00Z') + ABSENCE_DELAY_MS),
         payload: { kind: 'presence', gameId: g.id, user: 'bob' },
       });
-      await games.checkAbsence(g.id, 'bob');
+      await games.checkPresence(g.id, 'bob');
       expect(await presence(games, g.id)).toMatchObject({ bob: true });
 
       // Bob closes the other one too and stays gone: away.
       await realtime.disconnect('p-bob2');
-      await games.checkAbsence(g.id, 'bob');
+      await games.checkPresence(g.id, 'bob');
       expect(await presence(games, g.id)).toMatchObject({ bob: false });
       // A spectator leaving schedules nothing.
       manual.scheduled.clear();
@@ -483,7 +505,7 @@ describe.skipIf(!available)('game service (DynamoDB Local)', () => {
       await realtime.connect('off-bob', bob);
       await realtime.message('off-bob', JSON.stringify({ type: 'subscribe', gameId: id }));
       await realtime.disconnect('off-bob');
-      await games.checkAbsence(id, 'bob');
+      await games.checkPresence(id, 'bob');
       expect(await presence(games, id)).toEqual({ alice: false, bob: false, carol: false });
       expect(manual.scheduled.size).toBe(0);
       expect(rec.sent.get('off-bob')).toEqual([{ type: 'subscribed', gameId: id, seq: 1 }]);
@@ -500,7 +522,7 @@ describe.skipIf(!available)('game service (DynamoDB Local)', () => {
       // A reload: back before the check runs.
       await realtime.message('q-carol', JSON.stringify({ type: 'subscribe', gameId: id }));
       const seq = (await games.details(carol, id)).game.seq;
-      await games.checkAbsence(id, 'carol');
+      await games.checkPresence(id, 'carol');
       expect((await games.details(carol, id)).game.seq).toBe(seq);
       expect(await presence(games, id)).toMatchObject({ carol: true });
 
@@ -512,6 +534,68 @@ describe.skipIf(!available)('game service (DynamoDB Local)', () => {
       });
       await expect(games.setPresence(open.id, 'alice', true)).resolves.toBeUndefined();
       expect((await games.details(alice, open.id)).game.seq).toBe(0);
+    });
+  });
+
+  describe('writers colliding on one game', () => {
+    it('presence changes and moves from several servers at once all succeed', async () => {
+      // Separate services, like separate Lambdas: each has its own cache, so they really collide.
+      const servers = [1, 2, 3, 4, 5, 6].map((seed) =>
+        service(store, recordingGateway().gateway, seed),
+      );
+      const [first] = servers as [(typeof servers)[number]];
+      const five = [alice, bob, carol, dave, user('eve')];
+      const g = await first.games.create(alice, {
+        name: 'Busy',
+        format: 'standard',
+        visibility: 'public',
+        maxSeats: 5,
+      });
+      for (const p of five) await first.games.join(p, g.id, { deck });
+      await first.games.start(alice, g.id);
+      const id = g.id;
+      const seq = async () => (await store.getMeta(id))?.seq ?? 0;
+      const start = await seq();
+      const seats = (await first.games.details(judge, id)).view?.seats.map((x) => x.id) ?? [];
+      const sub = (p: Identity) => (p.kind === 'user' ? p.sub : '');
+      const rounds = [true, false, true, false, true];
+      for (const present of rounds) {
+        await Promise.all([
+          ...five.map((p, i) => servers[i]?.games.setPresence(id, sub(p), present)),
+          ...seats
+            .slice(0, 2)
+            .map((seat) =>
+              servers[5]?.games.command(judge, id, cmd({ type: 'AdjustPool', seat, delta: 1 })),
+            ),
+        ]);
+      }
+      const view = (await first.games.details(judge, id)).view;
+      expect(view?.seats.every((x) => x.present)).toBe(true);
+      expect(view?.seats.slice(0, 2).map((x) => x.pool)).toEqual([35, 35]);
+      // Each round: five presence changes and two moves, each its own event.
+      expect((await seq()) - start).toBe(rounds.length * 7);
+    });
+
+    it('checks presence again shortly when recording an arrival fails', async () => {
+      const manual = manualTimers();
+      const { games, realtime } = service(store, recordingGateway().gateway, 9, manual.timers);
+      const { id } = await startedGame(games);
+      const real = games.setPresence.bind(games);
+      games.setPresence = async () => {
+        throw new Error('The game is busy; try again');
+      };
+      await realtime.connect('busy-bob', bob);
+      await realtime.message('busy-bob', JSON.stringify({ type: 'subscribe', gameId: id }));
+      expect(manual.scheduled.get(presenceKey(id, 'bob'))).toEqual({
+        at: new Date(Date.parse('2026-11-05T10:00:00Z') + PRESENCE_RETRY_MS),
+        payload: { kind: 'presence', gameId: id, user: 'bob' },
+      });
+      // The check, once the game is free again: he's watching, so he's present.
+      games.setPresence = real;
+      await games.checkPresence(id, 'bob');
+      const seats = (await games.details(judge, id)).view?.seats;
+      expect(seats?.find((x) => x.occupant === 'bob')?.present).toBe(true);
+      await realtime.disconnect('busy-bob');
     });
   });
 
@@ -579,7 +663,7 @@ describe.skipIf(!available)('game service (DynamoDB Local)', () => {
       const turnSeat = state?.turn?.seat ?? '';
       const turnUser = state?.seats.find((s) => s.id === turnSeat)?.occupant ?? '';
       await realtime.disconnect(`t-${turnUser}`);
-      await games.checkAbsence(g.id, turnUser);
+      await games.checkPresence(g.id, turnUser);
       const deadline = manual.scheduled.get(key(`deadline:${turnSeat}`));
       expect(deadline?.at).toEqual(new Date(now + 12 * 3_600_000));
       now += 12 * 3_600_000;

@@ -370,7 +370,7 @@ sequenceDiagram
   A->>A: engine.decide(state, cmd, ctx) → events (or 409/422 rejection)
   A->>D: TransactWrite: Put EV#seq+1..n · Update META seq (cond. seq = expected) · Put CMD#commandId (cond. not exists) [· Put SNAP every 25 events]
   alt condition failed (concurrent command)
-    A->>A: reload tail, retry decide (max 3)
+    A->>A: wait a random 0–15·2ⁿ ms, reload tail (consistent reads), retry decide (6 tries)
   end
   A->>W: postToConnection(projectEvent(ev, viewer)) for each subscribed connection
   A-->>C: 200 {seq, events (projected for caller)}
@@ -379,8 +379,17 @@ sequenceDiagram
 
 - **Idempotency**: a client-generated `commandId` with a conditional `CMD#` item (TTL 24 h) makes
   retries safe.
+- **Collisions**: two writers on one game (players, judges, presence, timers) collide on the
+  `seq` condition; the loser re-reads META and the events consistently, so it sees the write it
+  lost to, and waits a random, growing time first, so the same writers don't collide again in
+  step. After 6 tries it gives up with 409 `busy`. A presence arrival that still fails schedules
+  a presence check 2 s later (`PRESENCE_RETRY_MS`) instead of being dropped.
 - **Push is best effort**; correctness comes from sequence numbers and catch-up via
-  `GET /events?after=`.
+  `GET /events?after=`. Subscribing stores the subscription first and then reads the `seq` it
+  replies with (consistently, as is the subscriber list a push reads), so every event is either
+  pushed or covered by that `seq`. A client asked to catch up while a catch-up is under way
+  fetches once more when it lands, so an event pushed with a gap meanwhile (the last of a game,
+  say, with no later push to reveal it) is never left unfetched.
 - **Warm cache**: a warm Lambda keeps recently used game states in memory keyed by `seq`, so
   most commands read only the small META item and any new events.
 - **Latency budget** (TEMPO-02, p95 <500 ms): API Gateway ≈ 30 ms + Lambda warm ≈ 30–80 ms +

@@ -63,6 +63,8 @@ export interface GameServiceDeps {
   publisher: Publisher;
   newId: () => string;
   now?: () => Date;
+  /** Waits between retries after a conflict; tests can make it instant. */
+  sleep?: (ms: number) => Promise<void>;
   /** Track presence (TEMPO-06); off unless set. Deadlines depend on it. */
   presence?: boolean;
   /** Schedules the checks the engine asks for: deadlines, the time limit, the end of a pause. */
@@ -77,7 +79,14 @@ export interface GameServiceDeps {
 }
 
 const SNAPSHOT_EVERY = 25;
-const MAX_ATTEMPTS = 3;
+/**
+ * Tries at appending a command before giving up as busy. Writers that collide wait a short random,
+ * growing time before trying again, so they don't keep colliding in step.
+ */
+const MAX_ATTEMPTS = 6;
+const RETRY_BASE_MS = 15;
+/** Full jitter: a random wait up to 15, 30, 60… ms. */
+const retryDelay = (attempt: number) => Math.random() * RETRY_BASE_MS * 2 ** (attempt - 1);
 const CACHE_SIZE = 200;
 const EVENTS_PAGE = 200;
 /** Finished public games the lobby lists (M6.6, F4). */
@@ -94,9 +103,11 @@ export class GameService {
   /** Warm-Lambda cache of recent game states, keyed by game ID (§5.2). */
   private readonly cache = new Map<string, GameState>();
   private readonly now: () => Date;
+  private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(private readonly deps: GameServiceDeps) {
     this.now = deps.now ?? (() => new Date());
+    this.sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   }
 
   async create(identity: Identity, req: CreateGameRequest): Promise<GameSummary> {
@@ -402,10 +413,12 @@ export class GameService {
     await this.deps.store.deleteEscalation(entry);
   }
 
-  /** A player's last connection to the game closed a while ago: away, unless they came back. */
-  async checkAbsence(id: string, user: string): Promise<void> {
-    if ((await this.watchingUsers(id)).has(user)) return;
-    await this.setPresence(id, user, false);
+  /**
+   * Bring a player's presence in line with whether they're watching: after their last connection
+   * closed a while ago (away, unless they came back), or after recording their arrival failed.
+   */
+  async checkPresence(id: string, user: string): Promise<void> {
+    await this.setPresence(id, user, (await this.watchingUsers(id)).has(user));
   }
 
   /** Whether `user` holds a live seat in a game in progress, so their presence matters. */
@@ -438,9 +451,9 @@ export class GameService {
     build: (state: GameState) => Command | undefined,
   ): Promise<void> {
     for (let attempt = 1; ; attempt++) {
-      const meta = await this.deps.store.getMeta(id);
+      const meta = await this.deps.store.getMeta(id, true);
       if (meta?.status !== 'active') return;
-      const state = await this.load(id, meta.seq);
+      const state = await this.load(id, meta.seq, true);
       const command = build(state);
       if (!command) return;
       const result = decide(state, command, {
@@ -478,6 +491,7 @@ export class GameService {
       }
       this.cache.delete(id);
       if (attempt >= MAX_ATTEMPTS) throw new ApiError(409, 'busy', 'The game is busy; try again');
+      await this.sleep(retryDelay(attempt));
     }
   }
 
@@ -544,6 +558,11 @@ export class GameService {
     return details;
   }
 
+  /** The game's latest seq, read consistently. */
+  async seq(id: string): Promise<number> {
+    return (await this.meta(id, true)).seq;
+  }
+
   /** Whether the identity may watch the game (public games: anyone, GAME-16). */
   async canView(identity: Identity, id: string): Promise<{ seq: number }> {
     const meta = await this.meta(id);
@@ -578,10 +597,10 @@ export class GameService {
           throw new ApiError(409, 'duplicate_command', 'Command ID already used');
         return this.replay(identity, id, done.firstSeq, done.lastSeq);
       }
-      const meta = await this.meta(id);
+      const meta = await this.meta(id, true);
       if (meta.status !== 'active')
         throw new ApiError(409, 'not_active', 'The game is not in progress');
-      const state = await this.load(id, meta.seq);
+      const state = await this.load(id, meta.seq, true);
       if (req.expectedSeq !== undefined && req.expectedSeq !== state.seq) {
         throw new ApiError(409, 'stale', `The game is at ${state.seq}; catch up and retry`);
       }
@@ -632,6 +651,7 @@ export class GameService {
         throw new ApiError(409, 'stale', 'The game has moved on; catch up and retry');
       }
       if (attempt >= MAX_ATTEMPTS) throw new ApiError(409, 'busy', 'The game is busy; try again');
+      await this.sleep(retryDelay(attempt));
     }
   }
 
@@ -659,19 +679,22 @@ export class GameService {
     });
   }
 
-  private async meta(id: string): Promise<GameMeta> {
-    const meta = await this.deps.store.getMeta(id);
+  private async meta(id: string, consistent = false): Promise<GameMeta> {
+    const meta = await this.deps.store.getMeta(id, consistent);
     if (!meta) throw new ApiError(404, 'not_found', 'No such game');
     return meta;
   }
 
   /** Current state: cached state plus newer events, or the latest snapshot plus events. */
-  private async load(id: string, seq: number): Promise<GameState> {
+  private async load(id: string, seq: number, consistent = false): Promise<GameState> {
     const cached = this.cache.get(id);
     if (cached && cached.seq === seq) return cached;
     const base =
       cached && cached.seq < seq ? cached : ((await this.deps.store.snapshot(id)) ?? newGame(id));
-    const state = (await this.deps.store.events(id, base.seq)).reduce(evolve, base);
+    const state = (await this.deps.store.events(id, base.seq, undefined, consistent)).reduce(
+      evolve,
+      base,
+    );
     this.remember(state);
     return state;
   }

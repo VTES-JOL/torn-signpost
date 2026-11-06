@@ -84,6 +84,8 @@ export class GameClient implements TableClient {
   private generation = 0;
   private attempts = 0;
   private catchingUp: Promise<void> | undefined;
+  /** Asked to catch up again while a catch-up was under way. */
+  private catchUpAgain = false;
 
   constructor(private readonly opts: GameClientOptions) {
     this.snapshot = {
@@ -161,15 +163,25 @@ export class GameClient implements TableClient {
     this.update({ game: details.game });
   }
 
+  /**
+   * Fetch the events after the current view. Asked again while one is under way (a push with a gap
+   * arrived meanwhile), it fetches once more when that one lands: the request already in flight
+   * may have been answered before the missing events existed, and the last event of a game has
+   * no later push to reveal the gap.
+   */
   private catchUp(): Promise<void> {
+    this.catchUpAgain = true;
     this.catchingUp ??= (async () => {
       try {
-        for (;;) {
-          const page = await this.opts.api<EventsResponse>(
-            `/games/${this.opts.gameId}/events?after=${this.snapshot.view.seq}`,
-          );
-          this.apply(page.events, false);
-          if (!page.more || page.events.length === 0) break;
+        while (this.catchUpAgain) {
+          this.catchUpAgain = false;
+          for (;;) {
+            const page = await this.opts.api<EventsResponse>(
+              `/games/${this.opts.gameId}/events?after=${this.snapshot.view.seq}`,
+            );
+            this.apply(page.events, false);
+            if (!page.more || page.events.length === 0) break;
+          }
         }
       } finally {
         this.catchingUp = undefined;
