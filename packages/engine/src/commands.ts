@@ -11,10 +11,13 @@ import type {
   GameId,
   GameSettings,
   InstanceId,
+  PassTarget,
   Phase,
   PLAYER_CALL_REASONS,
+  Range,
   Ruling,
   StopRule,
+  StrikeKind,
   UserId,
   ZoneId,
 } from './model.ts';
@@ -114,15 +117,38 @@ export type Command =
       attachTo?: InstanceId;
       replace?: boolean;
     }
-  /** The acting Methuselah resolves an unblocked action; bleeds and hunts apply their amount. */
+  /**
+   * The acting Methuselah resolves an unblocked action; bleeds and hunts apply their amount. An
+   * action that enters combat starts it against `opponent`, a minion in play (M6.4).
+   */
   | {
       type: 'ResolveAction';
-      outcome: 'success' | 'failure';
+      outcome: 'success' | 'failure' | 'combat';
       amount?: number;
       /** Take the Edge after a successful bleed. */
       edge?: boolean;
+      opponent?: InstanceId;
     }
+  /**
+   * Combat (docs/flow.md, "Combat"). Each names the card it comes from, if any: a card in the
+   * hand is played with it; a card in play (a weapon, the minion itself) is only named.
+   */
+  | { type: 'Maneuver'; to: Range; source?: InstanceId }
+  | {
+      type: 'Strike';
+      kind: StrikeKind;
+      amount?: number;
+      ranged?: boolean;
+      aggravated?: boolean;
+      first?: boolean;
+      source?: InstanceId;
+      note?: string;
+    }
+  /** Pass every combat step up to `until`, unless the other combatant does something first. */
+  | { type: 'PassUntil'; until: PassTarget }
   | { type: 'EndCombat' }
+  /** Use an ability of a card in play: logged for the table, nothing else happens. */
+  | { type: 'UseCard'; card: InstanceId; note?: string }
   | { type: 'CancelAction' }
   /** Admin only, non-tournament games only (GAME-19). */
   | { type: 'ReplacePlayer'; seat: SeatId; user: UserId }

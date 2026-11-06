@@ -9,6 +9,8 @@ import type {
   ActionState,
   ActorRef,
   CardId,
+  CombatState,
+  CombatStep,
   Counter,
   Format,
   GameEndReason,
@@ -19,9 +21,12 @@ import type {
   Instant,
   JudgeCall,
   Override,
+  PassTarget,
   Phase,
+  Range,
   Ruling,
   StopRule,
+  Strike,
   Turn,
   UserId,
   ZoneId,
@@ -71,6 +76,8 @@ export type EventBody =
       controller?: SeatId;
       /** Moved because this seat was ousted: removed from the game, or burned (GAME-08). */
       ousted?: SeatId;
+      /** Played as the source of the combat move that follows, which tells it (M6.4). */
+      source?: true;
     }
   | { type: 'CardsDrawn'; seat: SeatId; from: 'library' | 'crypt'; cards: Rekey[] }
   | {
@@ -146,14 +153,33 @@ export type EventBody =
   | { type: 'Held'; seat: SeatId }
   | { type: 'WindowOpened'; window: ImpulseWindow }
   | { type: 'Passed'; seat: SeatId; auto?: true }
-  /** A card play returned the impulse to the acting Methuselah and voided the passes. */
-  | { type: 'ImpulseReset' }
+  /**
+   * A card play returned the impulse to the acting Methuselah (in combat, to `to`, the other
+   * combatant's) and voided the passes.
+   */
+  | { type: 'ImpulseReset'; to?: SeatId }
   | { type: 'WindowClosed' }
   | { type: 'ActionDeclared'; action: ActionState }
   | { type: 'BlockAttempted'; seat: SeatId; minion: InstanceId; override?: Override }
   | { type: 'BlockWithdrawn'; seat: SeatId }
   | { type: 'ActionBlocked'; blocker: InstanceId }
   | { type: 'ActionResolving' }
+  /** Combat begins, at the first step of round 1, at close range. */
+  | { type: 'CombatStarted'; combat: CombatState }
+  /** The combat moves on to `step` (and `round`, from a press, M6.4b); passes start over. */
+  | { type: 'CombatStepped'; step: CombatStep; round: number }
+  | {
+      type: 'Maneuvered';
+      minion: InstanceId;
+      to: Range;
+      source?: InstanceId;
+      sourceCardId?: CardId;
+      /** The source was played from the hand with it. */
+      played?: true;
+    }
+  | { type: 'StrikeChosen'; minion: InstanceId; strike: Strike; played?: true }
+  | { type: 'PassingUntil'; seat: SeatId; until: PassTarget }
+  | { type: 'CardUsed'; card: InstanceId; cardId?: CardId; note?: string }
   | {
       type: 'ActionEnded';
       /** `ousted`: the acting Methuselah, the target or the blocker's was ousted (DQ9). */

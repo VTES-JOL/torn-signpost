@@ -55,6 +55,45 @@ describe('decision prompts (UX-09)', () => {
     );
   });
 
+  it('names the combat step: a strike to choose, or a card to play or pass (M6.4)', () => {
+    const cards = {
+      m1: { id: 'm1', owner: 'A', controller: 'A', zone: 'A:ready' },
+      m2: { id: 'm2', owner: 'B', controller: 'B', zone: 'B:ready' },
+    } as unknown as GameState['cards'];
+    const combat = (step: 'range' | 'strikes', strikes: { minion: string }[] = []) =>
+      view({
+        cards,
+        action: {
+          ...bleed,
+          stage: 'combat',
+          blocker: 'm2',
+          combat: {
+            cause: 'block',
+            acting: 'm1',
+            opposing: 'm2',
+            round: 1,
+            step,
+            range: 'long',
+            strikes: strikes.map((x) => ({ ...x, strike: { kind: 'hand' as const } })),
+          },
+        },
+        window: { kind: 'combat', phase: 'minion', order: ['A', 'B'], cursor: 1, passes: 0 },
+      });
+    const b = [wait('B', 'combat')];
+    expect(promptFor(combat('range'), 'B', b, who, name)?.text).toBe(
+      'Combat, Round 1 · Range: maneuver, play a card or pass (long range)',
+    );
+    expect(promptFor(combat('strikes', [{ minion: 'm1' }]), 'B', b, who, name)?.text).toBe(
+      'Combat, Round 1 · Strikes: choose a strike',
+    );
+    expect(promptFor(combat('strikes', [{ minion: 'm2' }]), 'B', b, who, name)?.text).toBe(
+      'Combat, Round 1 · Strikes: play a card or pass',
+    );
+    expect(promptFor(combat('range'), 'C', b, who, name)?.text).toBe(
+      'Waiting on Bob (combat, Round 1 · Range)',
+    );
+  });
+
   it('says nothing before the game starts', () => {
     expect(promptFor({} as GameState, 'A', [], who, name)).toBeUndefined();
   });

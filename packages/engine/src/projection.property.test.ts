@@ -16,7 +16,7 @@ import type { Command } from './commands.ts';
 import { decide } from './decide.ts';
 import type { GameEvent } from './events.ts';
 import { evolve, newGame } from './evolve.ts';
-import { impulseHolder, waitingOn, waitKey } from './flow.ts';
+import { combatSeats, impulseHolder, waitingOn, waitKey } from './flow.ts';
 import {
   ACTION_KINDS,
   type Actor,
@@ -26,6 +26,7 @@ import {
   PHASES,
   PLAYER_CALL_REASONS,
   type Ruling,
+  STRIKE_KINDS,
   type Viewer,
   ZONE_NAMES,
 } from './model.ts';
@@ -192,6 +193,15 @@ function commandFor(state: GameState, [, kind, a, b, c, d]: Step): Command {
     { type: 'ResolveAction', outcome: c % 2 ? 'success' : 'failure', amount: d % 4, edge: true },
     { type: 'EndCombat' },
     { type: 'CancelAction' },
+    {
+      type: 'Maneuver',
+      to: c % 2 ? 'long' : 'close',
+      ...(d % 2 ? { source: pick('hand', d) } : {}),
+    },
+    { type: 'Strike', kind: STRIKE_KINDS[c % STRIKE_KINDS.length] ?? 'hand', amount: d % 4 },
+    { type: 'PassUntil', until: c % 2 ? 'strikes' : 'end' },
+    { type: 'UseCard', card: pick('ready', a) },
+    { type: 'ResolveAction', outcome: 'combat', opponent: other },
   ];
   const pool = [...commands, ...flow];
   return pool[kind % pool.length] as Command;
@@ -211,6 +221,26 @@ function guidedStep(state: GameState, [, kind, a, , c, d]: Step): [Command, Acto
   const card = hand[d % Math.max(hand.length, 1)] ?? 'none';
   const n = kind % 10;
   const act = state.action;
+  const fight = act?.combat;
+  if (state.window?.kind === 'combat' && fight) {
+    const mine = ready.filter((id) => !state.cards[id]?.attachedTo);
+    const source = c % 2 ? { source: card } : d % 2 ? { source: mine[0] ?? 'none' } : {};
+    if (fight.step === 'strikes' && !fight.strikes.some((x) => mine.includes(x.minion))) {
+      const kind = STRIKE_KINDS[(c + d) % STRIKE_KINDS.length] ?? 'hand';
+      return [{ type: 'Strike', kind, amount: d % 4, first: c % 3 === 0, ...source }, actor];
+    }
+    if (fight.step === 'range' && n < 3) {
+      return [
+        { type: 'Maneuver', to: fight.range === 'close' ? 'long' : 'close', ...source },
+        actor,
+      ];
+    }
+    if (n === 3) return [{ type: 'PlayCard', card }, actor];
+    if (n === 4) return [{ type: 'UseCard', card: mine[0] ?? 'none', note: 'x' }, actor];
+    if (n === 5) return [{ type: 'PassUntil', until: c % 2 ? 'strikes' : 'end' }, actor];
+    if (n === 6 && c % 4 === 0) return [{ type: 'EndCombat' }, actor];
+    return [{ type: 'Pass' }, actor];
+  }
   if (state.window) {
     if (act?.blockAttempt?.seat === fs && n === 0) return [{ type: 'WithdrawBlock' }, actor];
     if (state.window.kind === 'blocks' && n < 3) {
@@ -230,6 +260,14 @@ function guidedStep(state: GameState, [, kind, a, , c, d]: Step): [Command, Acto
   if (act?.stage === 'combat') return [{ type: 'EndCombat' }, actor];
   if (act?.stage === 'resolution') {
     if (n === 0) return [{ type: 'CancelAction' }, actor];
+    if (n === 1) {
+      // Enter combat with someone else's minion.
+      const others = state.seats.filter((x) => x.id !== fs);
+      const target = others[c % Math.max(others.length, 1)];
+      const theirs = target ? (state.zones[zoneId(target.id, 'ready')] ?? []) : [];
+      const opponent = theirs[d % Math.max(theirs.length, 1)] ?? 'none';
+      return [{ type: 'ResolveAction', outcome: 'combat', opponent }, actor];
+    }
     const outcome = c % 3 ? 'success' : 'failure';
     return [{ type: 'ResolveAction', outcome, amount: d % 4, edge: c % 2 === 0 }, actor];
   }
@@ -375,6 +413,8 @@ const byCardId = new WeakMap<GameState, Map<string, CardInstance>>();
  */
 function visibleIn(state: GameState, id: string, viewer: Viewer): boolean {
   if (state.action?.cardId === id) return true;
+  // A combat move's source was public when it was named: in play, or played with it.
+  if (state.action?.combat?.strikes.some((x) => x.strike.sourceCardId === id)) return true;
   let index = byCardId.get(state);
   if (!index) {
     index = new Map(Object.values(state.cards).flatMap((c) => (c.cardId ? [[c.cardId, c]] : [])));
@@ -526,6 +566,12 @@ describe('hidden information', { timeout: 60_000 }, () => {
       'ActionBlocked',
       'ActionResolving',
       'ActionEnded',
+      'CombatStarted',
+      'CombatStepped',
+      'Maneuvered',
+      'StrikeChosen',
+      'PassingUntil',
+      'CardUsed',
       'AutoPassSet',
       'StopsSet',
       'Held',
@@ -721,6 +767,22 @@ describe('withdrawal (GAME-09)', { timeout: 60_000 }, () => {
           expect(after.seats.find((x) => x.id === seat)?.withdrawing, ev.type).toBeUndefined();
         }
         s = evolve(s, ev);
+      }
+    });
+  });
+
+  it('a combat step is a window between the combatants’ Methuselahs only (M6.4)', () => {
+    forEveryCommand(({ after }) => {
+      const c = after.action?.combat;
+      if (after.window?.kind === 'combat') {
+        expect(c, 'combat state').toBeDefined();
+        expect(after.window.order).toEqual(combatSeats(after));
+      }
+      if (c) {
+        expect(after.action?.stage).toBe('combat');
+        // At most one strike per combatant in a round.
+        const strikers = c.strikes.map((x) => x.minion);
+        expect(new Set(strikers).size).toBe(strikers.length);
       }
     });
   });

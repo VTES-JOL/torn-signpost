@@ -26,8 +26,8 @@ Two pieces of state drive the flow:
 
 - **`action`**: the minion action in progress, if any. It goes through the stages
   `blocks` → `combat` or `resolution`, then ends.
-- **`window`**: an open impulse window, if any. Its `kind` is `phase` (the end-of-phase round) or
-  `blocks` (the block window of an action). It holds the seat `order`, the `cursor` (who holds
+- **`window`**: an open impulse window, if any. Its `kind` is `phase` (the end-of-phase round),
+  `blocks` (the block window of an action) or `combat` (a step of a combat round). It holds the seat `order`, the `cursor` (who holds
   the impulse), the number of consecutive `passes`, and the seats that asked it to wait
   (`holds`).
 
@@ -41,7 +41,8 @@ notifications, read only this.
 | A window is open, the impulse holder is an eligible blocker who hasn't declined, no block attempt pending | The impulse holder | `block` |
 | Any other open window | The impulse holder | `impulse` |
 | An action at `resolution` | The acting Methuselah | `resolve` |
-| An action at `combat` | The acting Methuselah and the blocker's controller | `combat` |
+| A combat step is open | The impulse holder | `combat` |
+| An action at `combat` with no step open (games from before combat steps) | The acting Methuselah and the blocker's controller | `combat` |
 | Otherwise | The acting Methuselah | `phase` |
 
 It's never empty while the game is active and never names a seat that is out. `since` is the event
@@ -78,6 +79,23 @@ at once.
 
 `availableActions` returns nothing unless the game is active and the seat is still in the game.
 It then takes the first of these cases that applies.
+
+### 0. A combat step is open
+
+Only the two combatants' Methuselahs get offers ([Combat](#combat)).
+
+| Offer | Shown when | Command |
+|---|---|---|
+| **Maneuver to long…** / **to close…** | Range step, holding the impulse. Step: the card it comes from (optional), from the hand or in play | `Maneuver { to, source? }` |
+| **Hand strike** (highlighted), **Strike with a card…**, **Dodge…**, **Combat ends…**, **Steal blood…**, **No strike** | Strike step, holding the impulse, no strike chosen yet. Strike with a card asks for the card, the damage, its type (normal, R, aggravated, both) and first strike | `Strike` |
+| **Play a card** | Holding the impulse, the hand isn't empty | `PlayCard { card }` |
+| **Use a card…** | Holding the impulse, with a face-up card in play. Steps: the card, what it does (optional text) | `UseCard` |
+| **Pass** (highlighted, except in the strike step) | Holding the impulse; in the strike step, once a strike is chosen | `Pass` |
+| **Pass to strikes** / **Pass to the end of the round** | Before the strike step / after it | `PassUntil` |
+| **End combat** | Always | `EndCombat` |
+
+An action at `resolution` also offers its Methuselah **Enter combat…**: the minion to fight, from
+another Methuselah's ready region (`ResolveAction { outcome: 'combat', opponent }`).
 
 ### 1. A window is open
 
@@ -368,12 +386,58 @@ Batch 95). It is public. They play on as usual, but the withdrawal no longer hol
   influence transfers included); gaining some back doesn't repair it;
 - a **vampire** of theirs in play (ready or torpor) loses or spends **blood**; a minion leaving
   play with its blood doesn't count, nor does an ally's life;
-- a **minion** of theirs **enters combat** (blocked, or blocking).
+- a **minion** of theirs **enters combat** (blocked, blocking, or in an action that enters combat).
 
 Their own actions count as much as anyone's. Once it no longer holds, they may announce it again
 in a later unlock phase, if the conditions hold. If it still holds when their next turn would
 start, they leave the game instead (`Withdrew`): ½ VP, the turn goes on to the next Methuselah,
 their predator gains nothing, and their cards leave the game as an ousted Methuselah's do.
+
+## Combat
+
+Combat runs like the phases (docs/m6-plan.md M6.4). It starts when a block succeeds, or when an
+unblocked action enters combat (`ResolveAction { outcome: 'combat', opponent }`, `resolve combat
+<minion>`). The acting minion and its opponent are fixed for the whole combat.
+
+Each round goes through the rulebook's steps, each an impulse window (`kind: 'combat'`):
+
+**Before range → Range → Before strikes → Strikes → Damage → Press → End of round**
+
+- **Who is in it.** Only the two combatants' Methuselahs, the acting minion's first. Other players
+  can't play cards in a combat step (they keep the free-form commands). Auto-pass settings and
+  stops don't apply.
+- **Moving on.** Doing something (`Maneuver`, `PlayCard`, `UseCard`) hands the impulse to the other
+  combatant and voids the passes (`ImpulseReset { to }`). Two passes in a row end the step and open
+  the next (`CombatStepped`).
+- **Card timing isn't checked.** Any card may be played or used in any step. Every log line in a
+  step starts with the round and step ("Round 1 · Before strikes: Beast plays Immortal Grapple"),
+  so the table sees what was played when.
+- **Sources.** `Maneuver` and `Strike` may name the card they come from. A card in the hand is
+  played with the move (to the ash heap, and replaced): "Tomas Grey plays Quick Feed to maneuver
+  to close". A face-up card in play (a weapon, the minion itself) is only named: "Vera Nightfall
+  maneuvers to long using Iron Ward".
+- **The end.** For now (M6.4a), after End of round the combat ends, and with it the action:
+  blocked, or done for an action that entered combat. Damage, prevention and presses come with
+  M6.4b; until then players adjust blood and life by hand. `EndCombat` ends the combat at once,
+  in any step.
+
+| Step | What the engine does |
+|---|---|
+| Range | Keeps the range (close to start) and who maneuvered last. `Maneuver { to, source? }` is refused outside this step or to the current range |
+| Strikes | The acting minion's Methuselah chooses first: `Strike { kind, amount?, ranged?, aggravated?, first?, source?, note? }`. Choosing is their pass, so the other chooses next. Nobody can pass before choosing (`kind: 'none'` doesn't strike); one strike per combatant a round. A judge passing for a combatant who hasn't chosen means no strike |
+| Every step | `PlayCard`, `UseCard`, `Pass`, `PassUntil`, `EndCombat` |
+
+**Standing passes** (`PassUntil { until: 'strikes' | 'end' }`, "Pass to strikes", "Pass to the end
+of the round"): the combatant passes each step automatically, up to the strikes or to the end of
+the round, but never past a strike still to choose. It's dropped as soon as anyone does something
+in the combat, so the other side can answer.
+
+**Using a card** (`UseCard { card, note? }`): an ability of one of your face-up cards in play,
+logged ("Vera Nightfall uses Iron Ward: +1 strength"); nothing else happens. It works outside
+combat too; in any window it needs the impulse and hands it on, like playing a card.
+
+Combats from before combat steps (an action at `combat` with no `combat` state) still wait on
+both players until one of them ends it with `EndCombat`.
 
 ## How windows close
 
@@ -396,7 +460,8 @@ When a window closes:
 |---|---|---|
 | `phase` | – | The phase advances (or the next turn starts) |
 | `blocks` | No block attempt pending | The action moves to `resolution` |
-| `blocks` | Block attempt pending | The action is blocked and moves to `combat`; the blocking minion is locked |
+| `blocks` | Block attempt pending | The action is blocked and moves to `combat`; the blocking minion is locked, and the first combat step opens |
+| `combat` | – | The next combat step, or after End of round, the end of the combat and the action |
 
 ### Later: player-defined stops
 
@@ -415,7 +480,8 @@ point. Trigger ideas:
 ```
 DeclareAction ──► blocks window
                    │ every seat passes, no attempt ──► resolution ──► ResolveAction ──► ended (success | failure)
-                   │ every seat passes, attempt ─────► combat ──────► EndCombat ──────► ended (blocked)
+                   │ every seat passes, attempt ─────► combat steps ─► End of round, or EndCombat ─► ended (blocked)
+                   resolution ──► ResolveAction combat ──► combat steps ──► … ──────────────────► ended (success)
                    │ Block ──► impulse back to acting player, passes reset
                    │ WithdrawBlock ──► seat declined
 CancelAction (any stage) ───────────────────────────────────────────────────────────► ended (cancelled)

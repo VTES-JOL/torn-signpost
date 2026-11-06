@@ -1156,6 +1156,55 @@ body.dragging {
   font-size: 0.9rem;
 }
 
+/* Combat (M6.4): the round's steps, the range, and both combatants */
+
+.combat-panel {
+  border-top: 1px solid var(--border);
+  padding-top: 0.3rem;
+  margin-bottom: 0.3rem;
+}
+
+.combat-panel p {
+  margin: 0 0 0.25rem;
+}
+
+.combat-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.25rem;
+  font-size: 0.8rem;
+}
+
+.combat-steps li {
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+}
+
+.combat-steps li.current {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.combatants {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  font-size: 0.9rem;
+}
+
+.combatants .badge {
+  margin-left: 0.35rem;
+}
+
 .autopass {
   position: relative;
   margin-left: auto;

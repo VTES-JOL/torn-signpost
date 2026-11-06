@@ -15,6 +15,8 @@ import type { BloodHolder, Command } from './commands.ts';
 import type { EventBody, GameEvent } from './events.ts';
 import { evolve } from './evolve.ts';
 import {
+  combatantOf,
+  combatSeats,
   eligibleBlockers,
   impulseHolder,
   isHolding,
@@ -25,6 +27,7 @@ import type {
   Actor,
   ActorRef,
   CardInstance,
+  CombatState,
   GameEndReason,
   GameSettings,
   GameState,
@@ -34,7 +37,16 @@ import type {
   StopRule,
   ZoneId,
 } from './model.ts';
-import { ACTION_KINDS, PHASES, PLAYER_CALL_REASONS, STOP_ACTORS, STOP_TRIGGERS } from './model.ts';
+import {
+  ACTION_KINDS,
+  COMBAT_STEPS,
+  PHASES,
+  PLAYER_CALL_REASONS,
+  STOP_ACTORS,
+  STOP_TRIGGERS,
+  STRIKE_KINDS,
+  type Strike,
+} from './model.ts';
 import { canSee } from './projection.ts';
 import { newInstanceId, type Rng, shuffled } from './rng.ts';
 import { nextTurnSeat, predator, prey, type SeatId, windowOrder } from './seating.ts';
@@ -101,6 +113,7 @@ function reject(code: RejectionCode, message: string): never {
 export function decide(state: GameState, cmd: Command, ctx: DecideContext): DecideResult {
   try {
     const by = actorRef(state, cmd, ctx.actor);
+    const ids = idSource(state, ctx.rng);
     const dq =
       cmd.type === 'ResolveJudgeCall' && cmd.ruling.kind === 'disqualify'
         ? cmd.ruling.seat
@@ -111,7 +124,7 @@ export function decide(state: GameState, cmd: Command, ctx: DecideContext): Deci
         state,
         withWithdrawals(
           state,
-          withOusts(state, bodiesFor(state, cmd, ctx, by), ctx.now, by, dq),
+          withOusts(state, bodiesFor(state, cmd, ctx, by, ids), ctx.now, by, ids, dq),
           ctx.now,
           by,
         ),
@@ -156,6 +169,8 @@ const ALLOWED_WHILE_PAUSED: ReadonlySet<Command['type']> = new Set([
 ]);
 
 const MAX_CALL_NOTE = 500;
+/** A note on a strike or a card used. */
+const MAX_NOTE = 200;
 
 function actorRef(state: GameState, cmd: Command, actor: Actor): ActorRef {
   if (cmd.type === 'StartGame') {
@@ -204,8 +219,13 @@ function actorRef(state: GameState, cmd: Command, actor: Actor): ActorRef {
   }
 }
 
-function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: ActorRef): EventBody[] {
-  const ids = idSource(state, ctx.rng);
+function bodiesFor(
+  state: GameState,
+  cmd: Command,
+  ctx: DecideContext,
+  by: ActorRef,
+  ids: () => InstanceId,
+): EventBody[] {
   const mySeat = by.kind === 'seat' ? by.seat : undefined;
 
   const card = (id: InstanceId): CardInstance =>
@@ -298,56 +318,55 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
   };
   const hasAttachments = (c: CardInstance) =>
     Object.values(state.cards).some((x) => x.attachedTo === c.id);
-  /** A card leaving the hand face up, replaced from the library. */
-  const played = (
-    c: CardInstance,
-    to: ZoneId,
-    replace: boolean,
-    controller?: SeatId,
-  ): EventBody[] => {
-    const owner = parseZoneId(c.zone).seat;
-    const bodies: EventBody[] = [
-      withOptional(
-        {
-          type: 'CardMoved',
-          card: c.id,
-          from: c.zone,
-          to,
-          position: 'bottom',
-          faceDown: false,
-          played: true,
-        } as const,
-        { cardId: c.cardId, controller },
-      ),
-    ];
-    const top = zoneCards(state, zoneId(owner, 'library'))[0];
-    if (replace && top !== undefined) {
-      bodies.push({
-        type: 'CardsDrawn',
-        seat: owner,
-        from: 'library',
-        cards: [withOptional({ id: top, newId: ids() }, { cardId: card(top).cardId })],
-      });
-    }
-    return bodies;
-  };
-  /** Where the action card goes when the action ends: into play on success, else the ash heap. */
+  const played = (c: CardInstance, to: ZoneId, replace: boolean, controller?: SeatId) =>
+    playedFromHand(state, ids, c, to, replace, controller);
   const finishActionCard = (
     a: NonNullable<GameState['action']>,
     outcome: 'success' | 'failure' | 'blocked',
-  ): EventBody[] => {
-    const c = a.card === undefined ? undefined : state.cards[a.card];
-    if (!c || c.zone !== zoneId(a.seat, 'hand')) return [];
-    const minion = state.cards[a.minion];
-    const intoPlay = outcome === 'success' && ['equip', 'recruit', 'employ'].includes(a.kind);
-    if (!intoPlay) return played(c, zoneId(a.seat, 'ashHeap'), true);
-    if (a.kind === 'equip' && minion && IN_PLAY_ZONES.has(parseZoneId(minion.zone).name)) {
-      const [move, ...rest] = played(c, minion.zone, true);
-      return [move as EventBody, { type: 'CardAttached', card: c.id, to: minion.id }, ...rest];
-    }
-    return played(c, zoneId(a.seat, 'ready'), true);
+  ) => finishedActionCard(state, ids, a, outcome);
+  /** The impulse back to the other side after a play: the acting Methuselah, or in combat the other combatant. */
+  const impulseBack = (s: SeatId): EventBody => {
+    const w = state.window;
+    if (w?.kind !== 'combat') return { type: 'ImpulseReset' };
+    const other = w.order.find((x) => x !== s);
+    return other === undefined ? { type: 'ImpulseReset' } : { type: 'ImpulseReset', to: other };
   };
-  const settle = (from: GameState, bodies: EventBody[]) => settleWindow(from, bodies, ctx.now, by);
+  /** The combat in progress, with the step open, and the sender's combatant holding the impulse. */
+  const combatTurn = () => {
+    const s = holdingImpulse();
+    const c = state.action?.combat;
+    if (state.window?.kind !== 'combat' || !c) reject('not-now', 'There is no combat step open');
+    const minion =
+      combatantOf(state, s) ?? reject('forbidden', 'You have no minion in this combat');
+    return { s, c, minion };
+  };
+  /**
+   * Where a combat move comes from (docs/flow.md, "Combat"): a card in the hand is played with it
+   * (to the ash heap, and replaced); a face-up card in play is only named.
+   */
+  const combatSource = (
+    id: InstanceId | undefined,
+    s: SeatId,
+  ): { source?: CardInstance; played: boolean; with: (move: EventBody) => EventBody[] } => {
+    if (id === undefined) return { played: false, with: (move) => [move] };
+    const c = card(id);
+    if (c.zone === zoneId(s, 'hand')) {
+      if (state.action?.card === c.id) reject('invalid', 'That card is part of the current action');
+      const [play, ...rest] = played(c, zoneId(s, 'ashHeap'), true);
+      const shown = {
+        ...(play as Extract<EventBody, { type: 'CardMoved' }>),
+        source: true as const,
+      };
+      // Played first, so the card is public when the move names it; replaced after.
+      return { source: c, played: true, with: (move) => [shown, move, ...rest] };
+    }
+    if (!faceUpInPlay(c, s)) {
+      reject('invalid', 'Name a card in your hand or one of your face-up cards in play');
+    }
+    return { source: c, played: false, with: (move) => [move] };
+  };
+  const settle = (from: GameState, bodies: EventBody[]) =>
+    settleWindow(from, bodies, ctx.now, by, ids);
 
   switch (cmd.type) {
     case 'StartGame':
@@ -678,6 +697,13 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
 
     case 'Pass': {
       const s = holdingImpulse();
+      const c = state.action?.combat;
+      if (state.window?.kind === 'combat' && c?.step === 'strikes') {
+        const minion = combatantOf(state, s);
+        if (minion !== undefined && !c.strikes.some((x) => x.minion === minion)) {
+          reject('not-now', 'Choose a strike first (or no strike)');
+        }
+      }
       return settle(state, [{ type: 'Passed', seat: s }]);
     }
 
@@ -757,13 +783,32 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
       const bodies: EventBody[] = played(c, to, cmd.replace ?? true, controller);
       if (attachTo !== undefined)
         bodies.splice(1, 0, { type: 'CardAttached', card: c.id, to: attachTo });
-      if (state.window) bodies.push({ type: 'ImpulseReset' });
+      if (state.window) bodies.push(impulseBack(s));
       return settle(state, bodies);
     }
 
     case 'ResolveAction': {
       const a = actingAction();
       if (a.stage !== 'resolution') reject('not-now', 'The action is not ready to resolve');
+      if (cmd.outcome === 'combat') {
+        // An action that enters combat (docs/flow.md, "Combat"): the acting minion fights another.
+        const opponent = card(cmd.opponent ?? reject('invalid', 'Which minion does it fight?'));
+        const acting = card(a.minion);
+        if (opponent.id === acting.id) reject('invalid', 'A minion cannot fight itself');
+        if (acting.zone !== zoneId(acting.controller, 'ready')) {
+          reject('invalid', 'The acting minion is no longer ready');
+        }
+        if (
+          opponent.zone !== zoneId(opponent.controller, 'ready') ||
+          opponent.attachedTo !== undefined
+        ) {
+          reject('invalid', 'Choose a minion in a ready region');
+        }
+        if (opponent.controller === acting.controller) {
+          reject('invalid', 'Choose a minion another Methuselah controls');
+        }
+        return settle(state, combatOpening(state, 'action', acting.id, opponent.id));
+      }
       const amount = cmd.amount ?? 1;
       if (!Number.isInteger(amount) || amount < 0) reject('invalid', `Invalid amount: ${amount}`);
       const bodies: EventBody[] = [];
@@ -791,10 +836,99 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
       const a = state.action ?? reject('not-now', 'No action in progress');
       if (a.stage !== 'combat') reject('not-now', 'There is no combat');
       const blockerSeat = a.blocker ? state.cards[a.blocker]?.controller : undefined;
-      if (mySeat !== undefined && mySeat !== a.seat && mySeat !== blockerSeat) {
+      const fighting = a.combat ? combatSeats(state) : [a.seat, blockerSeat];
+      if (mySeat !== undefined && mySeat !== a.seat && !fighting.includes(mySeat)) {
         reject('forbidden', 'Only the players in combat can end it');
       }
-      return [...finishActionCard(a, 'blocked'), { type: 'ActionEnded', outcome: 'blocked' }];
+      return combatEnd(state, ids);
+    }
+
+    case 'Maneuver': {
+      const { s, c, minion } = combatTurn();
+      if (c.step !== 'range') reject('not-now', 'Maneuvers come in the range step');
+      if (cmd.to !== 'close' && cmd.to !== 'long') reject('invalid', `No range ${cmd.to}`);
+      if (c.range === cmd.to) reject('no-change', `The range is already ${cmd.to}`);
+      const src = combatSource(cmd.source, s);
+      const move: EventBody = withOptional({ type: 'Maneuvered', minion, to: cmd.to } as const, {
+        source: src.source?.id,
+        sourceCardId: src.source?.cardId,
+        played: src.played ? (true as const) : undefined,
+      });
+      return settle(state, [...src.with(move), impulseBack(s)]);
+    }
+
+    case 'Strike': {
+      const { s, c, minion } = combatTurn();
+      if (c.step !== 'strikes') reject('not-now', 'Strikes are chosen in the strike step');
+      if (c.strikes.some((x) => x.minion === minion)) {
+        reject('no-change', 'You already chose a strike this round');
+      }
+      if (!STRIKE_KINDS.includes(cmd.kind)) reject('invalid', `Unknown strike ${cmd.kind}`);
+      const counts = cmd.kind === 'hand' || cmd.kind === 'damage' || cmd.kind === 'steal-blood';
+      const amount = counts ? (cmd.amount ?? 1) : undefined;
+      if (amount !== undefined && (!Number.isInteger(amount) || amount < 0 || amount > 99)) {
+        reject('invalid', `Invalid amount: ${amount}`);
+      }
+      const note = cmd.note?.trim();
+      if (note && note.length > MAX_NOTE) reject('invalid', 'The note is too long');
+      const src = combatSource(cmd.source, s);
+      const strike: Strike = withOptional(
+        { kind: cmd.kind },
+        {
+          amount,
+          ranged: cmd.ranged ? (true as const) : undefined,
+          aggravated: cmd.aggravated ? (true as const) : undefined,
+          first: cmd.first ? (true as const) : undefined,
+          source: src.source?.id,
+          sourceCardId: src.source?.cardId,
+          note: note || undefined,
+        },
+      );
+      const chosen: EventBody = withOptional({ type: 'StrikeChosen', minion, strike } as const, {
+        played: src.played ? (true as const) : undefined,
+      });
+      // Announcing a strike is the striker's pass: the other combatant chooses next.
+      return settle(state, [...src.with(chosen), { type: 'Passed', seat: s, auto: true }]);
+    }
+
+    case 'PassUntil': {
+      const s = mySeat ?? reject('not-seated', 'Only players pass');
+      const c = state.action?.combat;
+      if (state.window?.kind !== 'combat' || !c) reject('not-now', 'There is no combat step open');
+      const minion =
+        combatantOf(state, s) ?? reject('forbidden', 'You have no minion in this combat');
+      if (cmd.until !== 'strikes' && cmd.until !== 'end') reject('invalid', `Pass until what?`);
+      if (
+        cmd.until === 'strikes' &&
+        COMBAT_STEPS.indexOf(c.step) >= COMBAT_STEPS.indexOf('strikes')
+      ) {
+        reject('no-change', 'The strikes have come already');
+      }
+      const bodies: EventBody[] = [{ type: 'PassingUntil', seat: s, until: cmd.until }];
+      const struck = c.strikes.some((x) => x.minion === minion);
+      if (impulseHolder(state) === s && (c.step !== 'strikes' || struck)) {
+        bodies.push({ type: 'Passed', seat: s });
+      }
+      return settle(state, bodies);
+    }
+
+    case 'UseCard': {
+      const s = mySeat ?? reject('not-seated', 'Only players use cards');
+      const c = card(cmd.card);
+      if (!faceUpInPlay(c, s)) reject('invalid', 'Use one of your face-up cards in play');
+      if (state.window && impulseHolder(state) !== s) {
+        reject('not-now', 'Wait for the impulse to use a card');
+      }
+      const note = cmd.note?.trim();
+      if (note && note.length > MAX_NOTE) reject('invalid', 'The note is too long');
+      const bodies: EventBody[] = [
+        withOptional({ type: 'CardUsed', card: c.id } as const, {
+          cardId: c.cardId,
+          note: note || undefined,
+        }),
+      ];
+      if (state.window) bodies.push(impulseBack(s));
+      return settle(state, bodies);
     }
 
     case 'CancelAction': {
@@ -1000,7 +1134,21 @@ function bodiesFor(state: GameState, cmd: Command, ctx: DecideContext, by: Actor
           liveSeat(r.seat);
           if (impulseHolder(state) !== r.seat)
             reject('not-now', 'That player does not hold the impulse');
-          const pass = bodiesFor(state, { type: 'Pass' }, ctx, { kind: 'seat', seat: r.seat });
+          // In the strike step, a combatant who hasn't chosen one yet doesn't strike.
+          const c = state.action?.combat;
+          const minion = combatantOf(state, r.seat);
+          const unstruck =
+            state.window?.kind === 'combat' &&
+            c?.step === 'strikes' &&
+            minion !== undefined &&
+            !c.strikes.some((x) => x.minion === minion);
+          const pass = bodiesFor(
+            state,
+            unstruck ? { type: 'Strike', kind: 'none' } : { type: 'Pass' },
+            ctx,
+            { kind: 'seat', seat: r.seat },
+            ids,
+          );
           return [...claim, resolved, ...pass];
         }
         case 'disqualify': {
@@ -1055,13 +1203,14 @@ function settleWindow(
   bodies: EventBody[],
   now: string,
   by: ActorRef,
+  ids: () => InstanceId,
 ): EventBody[] {
   const out = [...bodies];
   let s = applyBodies(from, bodies, now, by);
   for (let guard = 0; guard < 100 && s.window; guard++) {
     const w = s.window;
     let next: EventBody[];
-    if (w.passes >= w.order.length) next = closeWindow(s);
+    if (w.passes >= w.order.length) next = closeWindow(s, ids);
     else {
       const holder = w.order[w.cursor];
       if (holder === undefined || !passesAutomatically(s, holder)) break;
@@ -1170,6 +1319,7 @@ function withOusts(
   bodies: EventBody[],
   now: string,
   by: ActorRef,
+  ids: () => InstanceId,
   /** A seat a judge disqualified: out like an oust, but nobody is rewarded. */
   disqualify?: SeatId,
 ): EventBody[] {
@@ -1185,7 +1335,7 @@ function withOusts(
   next.push(...oustedCards(after, ousting));
   const a = after.action;
   const blockerSeat = a?.blocker ? after.cards[a.blocker]?.controller : undefined;
-  const inAction = [a?.seat, a?.target, blockerSeat];
+  const inAction = [a?.seat, a?.target, blockerSeat, ...combatSeats(after)];
   if (a && inAction.some((x) => x !== undefined && ousting.has(x))) {
     // The action (and any combat in it) ends at once: its actor, target or blocker is gone.
     if (after.window) next.push({ type: 'WindowClosed' });
@@ -1220,7 +1370,7 @@ function withOusts(
     ];
     next.push(...endTurn, ...nextTurn(applyBodies(s, endTurn, now, by), now, by));
   }
-  return [...bodies, ...settleWindow(after, next, now, by)];
+  return [...bodies, ...settleWindow(after, next, now, by, ids)];
 }
 
 /**
@@ -1271,11 +1421,20 @@ function oustedCards(state: GameState, ousting: ReadonlySet<SeatId>): EventBody[
 }
 
 /** The events that end a fully passed window. */
-function closeWindow(state: GameState): EventBody[] {
+function closeWindow(state: GameState, ids: () => InstanceId): EventBody[] {
   const closed: EventBody = { type: 'WindowClosed' };
   if (state.window?.kind === 'phase') return [closed, ...advancePhase(state)];
-  const attempt = state.action?.blockAttempt;
-  if (!attempt) return [closed, { type: 'ActionResolving' }];
+  const a = state.action;
+  if (state.window?.kind === 'combat' && a?.combat) {
+    // Both passed: the next step, or after the end of the round, the end of the combat (M6.4a:
+    // there are no presses yet).
+    const c = a.combat;
+    const next = COMBAT_STEPS[COMBAT_STEPS.indexOf(c.step) + 1];
+    if (next) return [{ type: 'CombatStepped', step: next, round: c.round }];
+    return combatEnd(state, ids);
+  }
+  const attempt = a?.blockAttempt;
+  if (!a || !attempt) return [closed, { type: 'ActionResolving' }];
   const blocker = state.cards[attempt.minion];
   return [
     closed,
@@ -1283,7 +1442,108 @@ function closeWindow(state: GameState): EventBody[] {
     ...(blocker && !blocker.locked
       ? [{ type: 'CardLocked', card: blocker.id, locked: true } as const]
       : []),
+    ...combatOpening(state, 'block', a.minion, attempt.minion),
   ];
+}
+
+/**
+ * Combat starts (docs/flow.md, "Combat"): round 1, close range, before range is determined; each
+ * step a window between the two combatants' Methuselahs, the acting minion's first.
+ */
+function combatOpening(
+  state: GameState,
+  cause: CombatState['cause'],
+  acting: InstanceId,
+  opposing: InstanceId,
+): EventBody[] {
+  const order = [acting, opposing]
+    .map((id) => state.cards[id]?.controller)
+    .filter((s, i, all): s is SeatId => s !== undefined && all.indexOf(s) === i);
+  return [
+    {
+      type: 'CombatStarted',
+      combat: {
+        cause,
+        acting,
+        opposing,
+        round: 1,
+        step: COMBAT_STEPS[0],
+        range: 'close',
+        strikes: [],
+      },
+    },
+    {
+      type: 'WindowOpened',
+      window: { kind: 'combat', phase: state.turn?.phase ?? 'minion', order, cursor: 0, passes: 0 },
+    },
+  ];
+}
+
+/** The combat is over, and with it the action: blocked, or done for an action that entered it. */
+function combatEnd(state: GameState, ids: () => InstanceId): EventBody[] {
+  const a = state.action;
+  if (!a) return [];
+  const outcome = a.combat?.cause === 'action' ? 'success' : 'blocked';
+  return [
+    ...(state.window ? [{ type: 'WindowClosed' } as const] : []),
+    ...finishedActionCard(state, ids, a, outcome),
+    { type: 'ActionEnded', outcome },
+  ];
+}
+
+/** A card leaving the hand face up, replaced from the library. */
+function playedFromHand(
+  state: GameState,
+  ids: () => InstanceId,
+  c: CardInstance,
+  to: ZoneId,
+  replace: boolean,
+  controller?: SeatId,
+): EventBody[] {
+  const owner = parseZoneId(c.zone).seat;
+  const bodies: EventBody[] = [
+    withOptional(
+      {
+        type: 'CardMoved',
+        card: c.id,
+        from: c.zone,
+        to,
+        position: 'bottom',
+        faceDown: false,
+        played: true,
+      } as const,
+      { cardId: c.cardId, controller },
+    ),
+  ];
+  const top = zoneCards(state, zoneId(owner, 'library'))[0];
+  if (replace && top !== undefined) {
+    bodies.push({
+      type: 'CardsDrawn',
+      seat: owner,
+      from: 'library',
+      cards: [withOptional({ id: top, newId: ids() }, { cardId: state.cards[top]?.cardId })],
+    });
+  }
+  return bodies;
+}
+
+/** Where the action card goes when the action ends: into play on success, else the ash heap. */
+function finishedActionCard(
+  state: GameState,
+  ids: () => InstanceId,
+  a: NonNullable<GameState['action']>,
+  outcome: 'success' | 'failure' | 'blocked',
+): EventBody[] {
+  const c = a.card === undefined ? undefined : state.cards[a.card];
+  if (!c || c.zone !== zoneId(a.seat, 'hand')) return [];
+  const minion = state.cards[a.minion];
+  const intoPlay = outcome === 'success' && ['equip', 'recruit', 'employ'].includes(a.kind);
+  if (!intoPlay) return playedFromHand(state, ids, c, zoneId(a.seat, 'ashHeap'), true);
+  if (a.kind === 'equip' && minion && IN_PLAY_ZONES.has(parseZoneId(minion.zone).name)) {
+    const [move, ...rest] = playedFromHand(state, ids, c, minion.zone, true);
+    return [move as EventBody, { type: 'CardAttached', card: c.id, to: minion.id }, ...rest];
+  }
+  return playedFromHand(state, ids, c, zoneId(a.seat, 'ready'), true);
 }
 
 /** The next phase, or the next turn, which starts by unlocking the new Methuselah's cards. */

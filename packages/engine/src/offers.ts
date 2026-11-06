@@ -6,8 +6,15 @@
  */
 import type { CardCatalog } from './catalog.ts';
 import type { ClientCommand } from './commands.ts';
-import { impulseHolder, isHolding, seatRefs } from './flow.ts';
-import type { ActionKind, CardId, GameState, InstanceId, PHASES } from './model.ts';
+import { combatantOf, impulseHolder, isHolding, seatRefs } from './flow.ts';
+import {
+  type ActionKind,
+  type CardId,
+  COMBAT_STEPS,
+  type GameState,
+  type InstanceId,
+  type PHASES,
+} from './model.ts';
 import { prey, type SeatId } from './seating.ts';
 import { canWithdraw } from './withdrawal.ts';
 import { zoneCards, zoneId } from './zones.ts';
@@ -16,7 +23,14 @@ export type OfferStep =
   | { kind: 'card'; label: string; candidates: readonly InstanceId[]; optional?: boolean }
   | { kind: 'seat'; label: string; candidates: SeatId[]; default?: SeatId }
   | { kind: 'amount'; label: string; min: number; default: number }
-  | { kind: 'toggle'; label: string; default: boolean };
+  | { kind: 'toggle'; label: string; default: boolean }
+  | {
+      kind: 'choice';
+      label: string;
+      options: readonly { value: string; label: string }[];
+      default?: string;
+    }
+  | { kind: 'text'; label: string; optional?: boolean };
 
 export type StepValue = InstanceId | SeatId | number | boolean | undefined;
 
@@ -96,6 +110,10 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
     steps: [{ kind: 'card', label: 'Card to play', candidates }],
     build: (values) => ({ type: 'PlayCard', card: id(values, 0) }),
   });
+
+  if (window?.kind === 'combat' && action?.combat) {
+    return combatOffers(view, seat, { hand, inPlay, playCard });
+  }
 
   if (window) {
     if (impulseHolder(view) !== seat) {
@@ -214,6 +232,24 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
         steps: [],
         build: () => ({ type: 'ResolveAction', outcome: 'failure' }),
       });
+      // An action that enters combat: the acting minion fights a minion of another Methuselah.
+      const opponents = view.seats
+        .filter((x) => x.id !== seat && !x.ousted && !x.withdrawn)
+        .flatMap((x) => zoneCards(view, zoneId(x.id, 'ready')))
+        .filter((m) => view.cards[m]?.attachedTo === undefined);
+      if (opponents.length) {
+        offers.push({
+          id: 'enter-combat',
+          label: 'Enter combat…',
+          confirm: true,
+          steps: [{ kind: 'card', label: 'Minion to fight', candidates: opponents }],
+          build: (values) => ({
+            type: 'ResolveAction',
+            outcome: 'combat',
+            opponent: id(values, 0),
+          }),
+        });
+      }
     }
     const blockerSeat = action.blocker ? view.cards[action.blocker]?.controller : undefined;
     if (action.stage === 'combat' && (mine || blockerSeat === seat)) {
@@ -357,4 +393,186 @@ function hasType(cardId: CardId | undefined, types: string[], catalog: CardCatal
   const info = catalog.get(cardId);
   if (!info?.types) return true;
   return info.types.some((t) => types.includes(t));
+}
+
+const DAMAGE_TYPES = [
+  { value: 'normal', label: 'Normal' },
+  { value: 'R', label: 'Ranged (R)' },
+  { value: 'A', label: 'Aggravated' },
+  { value: 'RA', label: 'Ranged, aggravated' },
+] as const;
+
+/**
+ * Offers in a combat step (docs/flow.md, "Combat"), for the two combatants' Methuselahs: the
+ * moves of the step for whoever holds the impulse, standing passes and ending the combat for both.
+ */
+function combatOffers(
+  view: GameState,
+  seat: SeatId,
+  my: {
+    hand: readonly InstanceId[];
+    inPlay: readonly InstanceId[];
+    playCard: (label: string, candidates: readonly InstanceId[], primary?: boolean) => Offer;
+  },
+): Offer[] {
+  const c = view.action?.combat;
+  const minion = combatantOf(view, seat);
+  if (!c || minion === undefined) return [];
+  const offers: Offer[] = [];
+  const sources = [...my.hand, ...my.inPlay];
+  const source = (label: string, optional: boolean): OfferStep => ({
+    kind: 'card',
+    label,
+    candidates: sources,
+    optional,
+  });
+  const str = (values: StepValue[], i: number) =>
+    typeof values[i] === 'string' ? (values[i] as string) : undefined;
+  const at = COMBAT_STEPS.indexOf(c.step);
+  const struck = c.strikes.some((x) => x.minion === minion);
+  if (impulseHolder(view) === seat) {
+    if (c.step === 'range') {
+      const to = c.range === 'close' ? 'long' : 'close';
+      offers.push({
+        id: 'maneuver',
+        label: `Maneuver to ${to}…`,
+        confirm: true,
+        steps: [source('Card it comes from', true)],
+        build: (values) => {
+          const src = str(values, 0);
+          return src ? { type: 'Maneuver', to, source: src } : { type: 'Maneuver', to };
+        },
+      });
+    }
+    if (c.step === 'strikes' && !struck) {
+      const strike = (
+        id: string,
+        label: string,
+        kind: Extract<ClientCommand, { type: 'Strike' }>['kind'],
+        steps: OfferStep[],
+        build: (values: StepValue[]) => Partial<Extract<ClientCommand, { type: 'Strike' }>>,
+        primary = false,
+      ): Offer => ({
+        id: `strike:${id}`,
+        label,
+        primary,
+        confirm: true,
+        steps,
+        build: (values) => ({ type: 'Strike', kind, ...build(values) }),
+      });
+      const withSource = (values: StepValue[], i: number) => {
+        const src = str(values, i);
+        return src ? { source: src } : {};
+      };
+      offers.push(
+        strike(
+          'hand',
+          'Hand strike',
+          'hand',
+          [{ kind: 'amount', label: 'Damage', min: 0, default: 1 }],
+          (values) => ({ amount: typeof values[0] === 'number' ? values[0] : 1 }),
+          true,
+        ),
+        strike(
+          'damage',
+          'Strike with a card…',
+          'damage',
+          [
+            source('Card it comes from', false),
+            { kind: 'amount', label: 'Damage', min: 0, default: 1 },
+            { kind: 'choice', label: 'Damage type', options: DAMAGE_TYPES, default: 'normal' },
+            { kind: 'toggle', label: 'First strike', default: false },
+          ],
+          (values) => {
+            const type = str(values, 2) ?? 'normal';
+            return {
+              ...withSource(values, 0),
+              amount: typeof values[1] === 'number' ? values[1] : 1,
+              ...(type.includes('R') ? { ranged: true } : {}),
+              ...(type.includes('A') ? { aggravated: true } : {}),
+              ...(values[3] === true ? { first: true } : {}),
+            };
+          },
+        ),
+        strike('dodge', 'Dodge…', 'dodge', [source('Card it comes from', true)], (values) =>
+          withSource(values, 0),
+        ),
+        strike(
+          'combat-ends',
+          'Combat ends…',
+          'combat-ends',
+          [source('Card it comes from', true)],
+          (values) => withSource(values, 0),
+        ),
+        strike(
+          'steal-blood',
+          'Steal blood…',
+          'steal-blood',
+          [
+            source('Card it comes from', true),
+            { kind: 'amount', label: 'Blood', min: 0, default: 1 },
+          ],
+          (values) => ({
+            ...withSource(values, 0),
+            amount: typeof values[1] === 'number' ? values[1] : 1,
+          }),
+        ),
+        strike('none', 'No strike', 'none', [], () => ({})),
+      );
+    }
+    if (my.hand.length) offers.push(my.playCard('Play a card', my.hand));
+    if (my.inPlay.length) {
+      offers.push({
+        id: 'use',
+        label: 'Use a card…',
+        confirm: true,
+        steps: [
+          { kind: 'card', label: 'Card to use', candidates: my.inPlay },
+          { kind: 'text', label: 'What it does', optional: true },
+        ],
+        build: (values) => {
+          const note = str(values, 1);
+          return { type: 'UseCard', card: values[0] as InstanceId, ...(note ? { note } : {}) };
+        },
+      });
+    }
+    if (c.step !== 'strikes' || struck) {
+      offers.push({
+        id: 'pass',
+        label: 'Pass',
+        primary: c.step !== 'strikes',
+        confirm: false,
+        steps: [],
+        build: () => ({ type: 'Pass' }),
+      });
+    }
+  }
+  const until = c.passUntil?.[seat];
+  if (at < COMBAT_STEPS.indexOf('strikes') && until !== 'strikes') {
+    offers.push({
+      id: 'pass-strikes',
+      label: 'Pass to strikes',
+      confirm: false,
+      steps: [],
+      build: () => ({ type: 'PassUntil', until: 'strikes' }),
+    });
+  }
+  if (at > COMBAT_STEPS.indexOf('strikes') && until !== 'end') {
+    offers.push({
+      id: 'pass-end',
+      label: 'Pass to the end of the round',
+      confirm: false,
+      steps: [],
+      build: () => ({ type: 'PassUntil', until: 'end' }),
+    });
+  }
+  offers.push({
+    id: 'endcombat',
+    label: 'End combat',
+    confirm: true,
+    explain: 'Ends the combat at once, whatever step it is at.',
+    steps: [],
+    build: () => ({ type: 'EndCombat' }),
+  });
+  return offers;
 }

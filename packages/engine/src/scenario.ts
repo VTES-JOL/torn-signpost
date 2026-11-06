@@ -400,6 +400,11 @@ function check(
       const a = state.action;
       return same('action', a ? `${a.kind} ${a.seat} ${a.stage}` : 'none', rest.join(' '));
     }
+    case 'combat': {
+      // `expect combat <round> <step> <range>`, e.g. `expect combat 1 strikes long`, or none.
+      const c = state.action?.combat;
+      return same('combat', c ? `${c.round} ${c.step} ${c.range}` : 'none', rest.join(' '));
+    }
     case 'window': {
       const w = state.window;
       return same('window', w ? `${w.kind} ${w.phase}` : 'none', rest.join(' '));

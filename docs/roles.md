@@ -35,7 +35,8 @@ what the API or engine would refuse anyway).
 - **Lobby**: create games; join and leave open ones; start a game they created [API].
 - **At their seat** (GAME-10) [engine]: anything on their own cards and zones and on public ones;
   never another player's hidden zones. The structured flow: phases, actions, blocks, passes,
-  holds, auto-pass and stops.
+  holds, auto-pass and stops. In combat, only the two combatants' Methuselahs act in its steps
+  (maneuvers, strikes, cards, passes); either of them can end it (M6.4).
 - **Chat** in games they're seated in (or have joined) [API], also once the game is over (F3).
   `@name` mentions notify.
 - **Call a judge**, one open call each (GAME-18) [engine].
@@ -64,7 +65,7 @@ what the API or engine would refuse anyway).
   don't (GAME-03, §4.5) [engine projection].
 - **Judge calls** (GAME-18) [engine, API]: see the judge queue (`GET /judge/calls`, the `/judge`
   page); claim calls; rule: answered, more time for an away player's decision, pass for the
-  player holding the impulse, add time to the timer (timed games), disqualify (tournament games),
+  player holding the impulse (in a combat's strike step, before they chose one: no strike), add time to the timer (timed games), disqualify (tournament games),
   refer to the admins (casual games).
 - **Pause** without the players' allowance, and **lift anyone's pause** [engine].
 - **Notified** of every new judge call, if they've connected in the last 30 days [API].

@@ -41,7 +41,12 @@ player. The parser lives in `packages/engine/src/console` and is shared by every
 | `pass` | Pass the impulse. With no block attempt pending, an eligible blocker's pass declines to block |
 | `play <card> [ready] [on <host>] [noreplace]` | Play a card from your hand: to the ash heap, into your ready region, or attached to a minion. It is replaced from your library unless `noreplace`. In a window it needs the impulse and returns it to the acting player |
 | `resolve success\|failure [n] [edge]` | Resolve your unblocked action. A successful bleed takes `n` (default 1) pool from the target and, with `edge`, gives you the Edge; a successful hunt adds `n` blood, up to capacity |
-| `endcombat` | End the combat from a block; the action counts as blocked |
+| `resolve combat <minion>` | Your unblocked action enters combat: your acting minion fights that minion |
+| `maneuver long\|close [via <card>]` | In the range step of a combat: change the range. `via` names the card it comes from: in your hand (played with it) or in play |
+| `strike hand [n]` · `strike <n>[R][A]` · `strike dodge` · `strike ends` · `strike steal <n>` · `strike other "text"` · `strike none`, then `[first] [via <card>]` | In the strike step: choose your strike. `2R` is 2 ranged damage, `2A` aggravated, `2RA` both; `ends` is a combat-ends strike; `first` marks a first strike. The acting minion chooses first |
+| `pass strikes` / `pass round` | In combat: pass every step up to the strikes, or to the end of the round, unless the other combatant does something first |
+| `use <card> ["what it does"]` | Use an ability of one of your face-up cards in play: logged for the table, with the combat step if in one. In a window it needs the impulse |
+| `endcombat` | End the combat at once, in any step; a blocked action counts as blocked |
 | `cancel` | Cancel your action (an override; nothing else happens) |
 | `look <card>` | **Judges**: look at a hidden card. Every player sees that it happened |
 | `replace <seat> <user>` | **Admins**, non-tournament games: hand a seat to another player (GAME-19) |
@@ -127,6 +132,7 @@ expect count A:hand 7          # cards in a zone
 expect sees B A:hand 0         # how many cards in a zone the viewer can identify (seat, judge, public)
 expect impulse B               # who holds the impulse, or none
 expect action bleed A blocks   # kind, acting seat, stage (blocks, combat, resolution), or none
+expect combat 1 range long     # round, step and range of the combat, or none
 expect window phase master     # open window kind and phase, or none
 expect autopass B none         # phases a seat auto-passes, comma-separated, or none
 expect holds C                 # seats holding the open window, comma-separated, or none

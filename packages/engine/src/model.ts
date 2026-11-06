@@ -164,6 +164,68 @@ export interface ActionState {
   blockAttempt?: { seat: SeatId; minion: InstanceId; override?: Override };
   stage: 'blocks' | 'combat' | 'resolution';
   blocker?: InstanceId;
+  /** The fight at stage `combat` (docs/m6-plan.md M6.4). Missing in games from before it. */
+  combat?: CombatState;
+}
+
+/** The steps of a combat round, in order (VTES rulebook, combat; docs/flow.md "Combat"). */
+export const COMBAT_STEPS = [
+  'before-range',
+  'range',
+  'before-strikes',
+  'strikes',
+  'damage',
+  'press',
+  'end-of-round',
+] as const;
+export type CombatStep = (typeof COMBAT_STEPS)[number];
+export type Range = 'close' | 'long';
+
+export const STRIKE_KINDS = [
+  'hand',
+  'damage',
+  'dodge',
+  'combat-ends',
+  'steal-blood',
+  'other',
+  'none',
+] as const;
+export type StrikeKind = (typeof STRIKE_KINDS)[number];
+
+/** A strike as announced. The engine doesn't apply it yet (M6.4b). */
+export interface Strike {
+  kind: StrikeKind;
+  /** Damage for `hand` and `damage`, blood for `steal-blood`. */
+  amount?: number;
+  /** R: usable at long range. */
+  ranged?: true;
+  aggravated?: true;
+  first?: true;
+  /** The card it comes from: played from the hand, or in play. Public. */
+  source?: InstanceId;
+  sourceCardId?: CardId;
+  /** Free text, for an `other` strike or anything the kind doesn't say. */
+  note?: string;
+}
+
+/** Up to which step a combatant passes automatically (`PassUntil`): `end` is the round's end. */
+export type PassTarget = 'strikes' | 'end';
+
+export interface CombatState {
+  /** Started by a block, or by an action that enters combat. */
+  cause: 'block' | 'action';
+  /** The acting minion and its opponent, fixed for the whole combat. */
+  acting: InstanceId;
+  opposing: InstanceId;
+  round: number;
+  step: CombatStep;
+  range: Range;
+  /** The minion that maneuvered last this round. */
+  lastManeuver?: InstanceId;
+  /** This round's strikes, in the order announced. */
+  strikes: { minion: InstanceId; strike: Strike }[];
+  /** Standing passes (C6), by seat; dropped when anyone does something in the combat. */
+  passUntil?: Partial<Record<SeatId, PassTarget>>;
 }
 
 export const JUDGE_CALL_REASONS = [
@@ -260,7 +322,8 @@ export interface Override {
  * every seat has passed in a row.
  */
 export interface ImpulseWindow {
-  kind: 'phase' | 'blocks';
+  /** `combat`: a step of a combat round, between the two combatants' Methuselahs (M6.4). */
+  kind: 'phase' | 'blocks' | 'combat';
   /** The phase this window belongs to (an end-of-phase round, or an action in the minion phase). */
   phase: Phase;
   order: SeatId[];

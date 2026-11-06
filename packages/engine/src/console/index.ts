@@ -83,7 +83,17 @@ export const CONSOLE_COMMANDS: Record<string, Syntax> = {
   action: { args: ['card', 'seat', 'options'], usage: 'action <minion> [seat] [with <card>]' },
   block: { args: ['card', 'options'], usage: 'block <minion> [via <card>|override]' },
   unblock: { args: [], usage: 'unblock  (withdraw your block attempt)' },
-  pass: { args: [], usage: 'pass' },
+  pass: {
+    args: ['options'],
+    usage: 'pass [strikes|round]  (in combat: until the strikes, or the round’s end)',
+  },
+  maneuver: { args: ['options'], usage: 'maneuver long|close [via <card>]' },
+  strike: {
+    args: ['options'],
+    usage:
+      'strike hand [n] | <n>[R][A] | dodge | ends | steal <n> | other "text" | none  [first] [via <card>]',
+  },
+  use: { args: ['card', 'options'], usage: 'use <card> ["what it does"]' },
   hold: { args: [], usage: 'hold  (ask the open window to wait for you)' },
   pause: { args: ['count'], usage: 'pause [minutes]  (1–5, games with a table timer)' },
   resume: { args: [], usage: 'resume  (lift your pause early)' },
@@ -96,7 +106,10 @@ export const CONSOLE_COMMANDS: Record<string, Syntax> = {
     args: ['card', 'options'],
     usage: 'play <card> [ready] [on <host>] [noreplace]',
   },
-  resolve: { args: ['outcome', 'count', 'options'], usage: 'resolve success|failure [n] [edge]' },
+  resolve: {
+    args: ['outcome', 'count', 'options'],
+    usage: 'resolve success|failure [n] [edge]  |  resolve combat <minion>',
+  },
   endcombat: { args: [], usage: 'endcombat' },
   cancel: { args: [], usage: 'cancel  (cancel your action)' },
   autopass: {
@@ -321,9 +334,66 @@ function parse(tokens: string[], ctx: ConsoleContext): Command {
     case 'unblock':
       extra(0);
       return { type: 'WithdrawBlock' };
-    case 'pass':
-      extra(0);
-      return { type: 'Pass' };
+    case 'pass': {
+      extra(1);
+      const until = args[0]?.toLowerCase();
+      if (until === undefined) return { type: 'Pass' };
+      if (until === 'strikes') return { type: 'PassUntil', until: 'strikes' };
+      if (until === 'round') return { type: 'PassUntil', until: 'end' };
+      return usage();
+    }
+    case 'maneuver': {
+      const opts = options(['via']);
+      if (opts.positional !== 1) usage();
+      const t = arg(0).toLowerCase();
+      const to = t === 'long' || t === 'close' ? t : usage();
+      const via = opts.at.get('via');
+      return via === undefined
+        ? { type: 'Maneuver', to }
+        : { type: 'Maneuver', to, source: card(via).id };
+    }
+    case 'strike': {
+      const opts = options(['via']);
+      const words = args.slice(0, opts.positional);
+      const first = words.some((w) => w.toLowerCase() === 'first');
+      const [what = '', ...rest] = words.filter((w) => w.toLowerCase() !== 'first');
+      const cmd: Extract<Command, { type: 'Strike' }> = { type: 'Strike', kind: 'none' };
+      const w = what.toLowerCase();
+      const damage = /^(\d+)(r?)(a?)$/i.exec(what) ?? /^(\d+)(a?)(r?)$/i.exec(what);
+      if (w === 'hand') {
+        cmd.kind = 'hand';
+        if (rest.length > 1) usage();
+        cmd.amount = rest[0] === undefined ? 1 : integer(rest[0]);
+      } else if (damage) {
+        if (rest.length) usage();
+        cmd.kind = 'damage';
+        cmd.amount = Number(damage[1]);
+        const flags = what.slice((damage[1] ?? '').length).toLowerCase();
+        if (flags.includes('r')) cmd.ranged = true;
+        if (flags.includes('a')) cmd.aggravated = true;
+      } else if (w === 'dodge' || w === 'ends' || w === 'none') {
+        if (rest.length) usage();
+        cmd.kind = w === 'ends' ? 'combat-ends' : w;
+      } else if (w === 'steal') {
+        if (rest.length !== 1) usage();
+        cmd.kind = 'steal-blood';
+        cmd.amount = integer(rest[0] ?? '');
+      } else if (w === 'other') {
+        const note = rest.join(' ').trim();
+        if (!note) usage();
+        cmd.kind = 'other';
+        cmd.note = note;
+      } else usage();
+      if (first) cmd.first = true;
+      const via = opts.at.get('via');
+      if (via !== undefined) cmd.source = card(via).id;
+      return cmd;
+    }
+    case 'use': {
+      const c = card(0);
+      const note = args.slice(1).join(' ').trim();
+      return note ? { type: 'UseCard', card: c.id, note } : { type: 'UseCard', card: c.id };
+    }
     case 'hold':
       extra(0);
       return { type: 'Hold' };
@@ -436,6 +506,10 @@ function parse(tokens: string[], ctx: ConsoleContext): Command {
     }
     case 'resolve': {
       const outcome = arg(0).toLowerCase();
+      if (outcome === 'combat') {
+        extra(2);
+        return { type: 'ResolveAction', outcome: 'combat', opponent: card(1).id };
+      }
       if (outcome !== 'success' && outcome !== 'failure') usage();
       const cmd: Extract<Command, { type: 'ResolveAction' }> = {
         type: 'ResolveAction',
@@ -596,10 +670,15 @@ export function completeConsole(input: string, ctx: ConsoleContext): string[] {
       if (verb === 'move') return match(['top', 'bottom', 'facedown', 'faceup']);
       if (verb === 'bleed') return match(['with', 'via', 'override']);
       if (verb === 'block') return match(['via', 'override']);
+      if (verb === 'pass') return match(['strikes', 'round']);
+      if (verb === 'maneuver') return match(['long', 'close', 'via']);
+      if (verb === 'strike')
+        return match(['hand', 'dodge', 'ends', 'steal', 'other', 'none', 'first', 'via']);
+      if (verb === 'use') return [];
       return match(['with']);
     }
     case 'outcome':
-      return match(['success', 'failure']);
+      return match(['success', 'failure', 'combat']);
     case 'phases':
       return match(['all', 'none', ...PHASES]);
     case 'stops':

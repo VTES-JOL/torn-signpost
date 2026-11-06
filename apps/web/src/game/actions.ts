@@ -95,6 +95,10 @@ export function cardActions(
       break;
     default: {
       if (IN_PLAY_ZONES.has(name) || name === 'research') {
+        // Using an ability of the card: logged for the table, with the combat step if in one.
+        if (IN_PLAY_ZONES.has(name) && card.controller === seat && !card.faceDown) {
+          items.push({ label: 'Use', command: { type: 'UseCard', card: id } });
+        }
         items.push({
           label: card.locked ? 'Unlock' : 'Lock',
           command: { type: 'SetLocked', card: id, locked: !card.locked },

@@ -141,3 +141,84 @@ describe('completeConsole', () => {
     expect(completeConsole('lock "Iron', asB)).toEqual([]);
   });
 });
+
+describe('combat commands (M6.4a)', () => {
+  const ilse = state.zones['A:ready']?.[0] ?? '';
+  const ok = (input: string) => {
+    const r = parse(input);
+    if (!r.ok) throw new Error(r.error);
+    return r.command;
+  };
+
+  it('parses maneuvers, strikes, standing passes, uses and entering combat', () => {
+    expect(ok('maneuver long')).toEqual({ type: 'Maneuver', to: 'long' });
+    expect(ok('maneuver close via A:ready:1')).toEqual({
+      type: 'Maneuver',
+      to: 'close',
+      source: ilse,
+    });
+    expect(ok('strike hand')).toEqual({ type: 'Strike', kind: 'hand', amount: 1 });
+    expect(ok('strike hand 2 first')).toEqual({
+      type: 'Strike',
+      kind: 'hand',
+      amount: 2,
+      first: true,
+    });
+    expect(ok('strike 2R via A:ready:1')).toEqual({
+      type: 'Strike',
+      kind: 'damage',
+      amount: 2,
+      ranged: true,
+      source: ilse,
+    });
+    expect(ok('strike 3ar')).toMatchObject({ amount: 3, ranged: true, aggravated: true });
+    expect(ok('strike 1A')).toMatchObject({ kind: 'damage', amount: 1, aggravated: true });
+    expect(ok('strike dodge')).toEqual({ type: 'Strike', kind: 'dodge' });
+    expect(ok('strike ends')).toEqual({ type: 'Strike', kind: 'combat-ends' });
+    expect(ok('strike steal 2')).toEqual({ type: 'Strike', kind: 'steal-blood', amount: 2 });
+    expect(ok('strike other "Destroys equipment"')).toEqual({
+      type: 'Strike',
+      kind: 'other',
+      note: 'Destroys equipment',
+    });
+    expect(ok('strike none')).toEqual({ type: 'Strike', kind: 'none' });
+    expect(ok('pass strikes')).toEqual({ type: 'PassUntil', until: 'strikes' });
+    expect(ok('pass round')).toEqual({ type: 'PassUntil', until: 'end' });
+    expect(ok('use A:ready:1 +1 strength')).toEqual({
+      type: 'UseCard',
+      card: ilse,
+      note: '+1 strength',
+    });
+    expect(ok('use A:ready:1')).toEqual({ type: 'UseCard', card: ilse });
+    expect(ok('resolve combat A:ready:1')).toEqual({
+      type: 'ResolveAction',
+      outcome: 'combat',
+      opponent: ilse,
+    });
+  });
+
+  it('rejects malformed combat commands with their usage', () => {
+    for (const bad of [
+      'maneuver far',
+      'maneuver',
+      'strike',
+      'strike sideways',
+      'strike dodge 2',
+      'strike steal',
+      'strike other',
+      'strike hand 1 2',
+      'strike 2R extra',
+      'pass later',
+    ]) {
+      expect(parse(bad).ok, bad).toBe(false);
+    }
+  });
+
+  it('completes the combat keywords', () => {
+    expect(completeConsole('strike ', asA)).toContain('dodge');
+    expect(completeConsole('maneuver ', asA)).toEqual(['close', 'long', 'via']);
+    expect(completeConsole('pass ', asA)).toEqual(['round', 'strikes']);
+    expect(completeConsole('resolve c', asA)).toEqual(['combat']);
+    expect(completeConsole('use A:ready:1 ', asA)).toEqual([]);
+  });
+});

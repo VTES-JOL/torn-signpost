@@ -1,0 +1,171 @@
+# Combat steps (docs/flow.md, "Combat"; docs/m6-plan.md M6.4a): each step of the round is a window
+# between the two combatants' Methuselahs, the acting minion's first; doing something hands the
+# impulse to the other; two passes in a row move on. Moves name the card they come from: a card in
+# the hand is played with them, a card in play is only named. Card timing isn't checked.
+# Seating A B C: A's prey is B, its predator C. Iron Ward stands in for a weapon, Quick Feed for a
+# combat card.
+seed 5
+seat A alice
+seat B bob
+seat C carol
+crypt A "Vera Nightfall" *12
+library A "Iron Ward" *40
+crypt B "Tomas Grey" *12
+library B "Quick Feed" *40
+crypt C "Ilse Várga" *12
+library C "Signal Fire" *40
+start
+
+A> move A:uncontrolled:1 ready
+B> move B:uncontrolled:1 ready
+C> move C:uncontrolled:1 ready
+A> play "Iron Ward" on A:ready:1
+A> next
+A> next
+expect turn 1 A minion
+
+# A hunt, blocked by B: combat starts before range is determined, at close range.
+A> hunt A:ready:1
+B> block B:ready:1
+A> pass
+B> pass
+C> pass
+expect action hunt A combat
+expect combat 1 before-range close
+expect window combat minion
+expect impulse A
+expect waiting A:combat
+log public Tomas Grey blocks: combat
+reject:not-now A> maneuver long
+reject:not-now C> pass
+reject:forbidden C> endcombat
+A> pass
+log public Round 1 · Before range: A passed
+expect impulse B
+B> pass
+
+# Range: each maneuver hands the impulse to the other side.
+expect combat 1 range close
+A> maneuver long via A:ready:2
+log public Round 1 · Range: Vera Nightfall maneuvers to long using Iron Ward
+expect combat 1 range long
+expect impulse B
+reject:no-change B> maneuver long
+B> maneuver close via "Quick Feed"
+log public Round 1 · Range: Tomas Grey plays Quick Feed to maneuver to close
+expect count B:hand 7
+expect count B:ashHeap 1
+expect impulse A
+A> pass
+B> pass
+
+# Before strikes: using a card in play, logged with the step.
+expect combat 1 before-strikes close
+A> use A:ready:2 "+1 strength"
+log public Round 1 · Before strikes: Vera Nightfall uses Iron Ward: +1 strength
+expect impulse B
+B> pass
+A> pass
+
+# Strikes: the acting minion announces first; announcing is the striker's pass.
+expect combat 1 strikes close
+reject:not-now A> pass
+reject:not-now B> strike hand
+A> strike 2R via A:ready:2
+log public Round 1 · Strikes: Vera Nightfall strikes with Iron Ward: 2R damage
+expect impulse B
+expect waiting B:combat
+B> strike hand
+log public Round 1 · Strikes: Tomas Grey strikes: a hand strike for 1
+
+# Damage, press and end of round are plain windows for now; A passes to the end of the round.
+expect combat 1 damage close
+expect impulse A
+A> pass round
+log public Round 1 · Damage: A passes until the end of the round
+expect impulse B
+B> pass
+expect combat 1 press close
+expect impulse B
+B> pass
+expect combat 1 end-of-round close
+B> pass
+expect action none
+expect combat none
+expect window none
+log public Combat is over; the action was blocked
+
+# Standing passes: B passes to the strikes, but A maneuvering drops it, so B can answer.
+A> unlock A:ready:1
+B> unlock B:ready:1
+A> hunt A:ready:1
+B> block B:ready:1
+A> pass
+B> pass
+C> pass
+B> pass strikes
+expect impulse A
+A> pass
+expect combat 1 range close
+expect impulse A
+A> maneuver long
+expect impulse B
+B> pass
+A> pass
+expect combat 1 before-strikes long
+A> pass strikes
+expect impulse B
+B> pass strikes
+expect combat 1 strikes long
+expect impulse A
+A> strike none
+log public Round 1 · Strikes: Vera Nightfall doesn't strike
+B> strike dodge via B:hand:1
+log public Round 1 · Strikes: Tomas Grey plays Quick Feed to strike: dodge
+expect combat 1 damage long
+B> endcombat
+expect action none
+
+# An action that enters combat: Vera fights Ilse, and only A and C are in it.
+A> unlock A:ready:1
+A> action A:ready:1
+B> pass
+C> pass
+expect action other A resolution
+A> resolve combat C:ready:1
+log public Vera Nightfall enters combat with Ilse Várga
+expect action other A combat
+expect combat 1 before-range close
+expect waiting A:combat
+reject:not-now B> pass
+reject:forbidden B> endcombat
+A> pass
+expect impulse C
+C> endcombat
+log public The action succeeded
+expect action none
+
+# Others aren't in the combat windows: they can't play cards there. A judge passing for a
+# combatant who hasn't struck yet means no strike.
+A> unlock A:ready:1
+B> unlock B:ready:1
+A> hunt A:ready:1
+B> block B:ready:1
+A> pass
+B> pass
+C> pass
+reject:not-now C> play C:hand:1
+A> pass strikes
+B> pass strikes
+expect combat 1 strikes close
+A> strike hand 2
+B> call slow-play
+judge> rule passfor B
+log public Round 1 · Strikes: Tomas Grey doesn't strike
+expect combat 1 damage close
+A> endcombat
+expect action none
+
+# Using a card in play works outside combat too; in a window it needs the impulse.
+A> use A:ready:2 "Prepares for the next fight"
+log public Vera Nightfall uses Iron Ward: Prepares for the next fight

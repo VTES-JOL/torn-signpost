@@ -106,7 +106,13 @@ describe('available actions (UX-03)', () => {
     expect(hold[0]?.build([])).toEqual({ type: 'Hold' });
     expect(offersAfter(`${declared}\nC> hold`, 'C')).toEqual([]);
     const resolving = `${declared}\nB> pass`;
-    expect(ids(offersAfter(resolving, 'A'))).toEqual(['success', 'failure', 'play', 'cancel']);
+    expect(ids(offersAfter(resolving, 'A'))).toEqual([
+      'success',
+      'failure',
+      'enter-combat',
+      'play',
+      'cancel',
+    ]);
     const success = offersAfter(resolving, 'A').find((o) => o.id === 'success');
     expect(success?.build([3, true])).toEqual({
       type: 'ResolveAction',
@@ -122,5 +128,100 @@ describe('available actions (UX-03)', () => {
     expect(ids(offersAfter(combat, 'A'))).toContain('endcombat');
     expect(ids(offersAfter(combat, 'B'))).toContain('endcombat');
     expect(ids(offersAfter(combat, 'C'))).not.toContain('endcombat');
+  });
+});
+
+describe('combat offers (docs/m6-plan.md M6.4a)', () => {
+  const COMBAT =
+    'A> next\nA> next\nA> hunt A:ready:1\nB> block B:ready:1\nA> pass\nB> pass\nC> pass';
+  const at = (script: string, seat: string) => {
+    const run = runScenario(SETUP + script, catalog);
+    expect(run.failure).toBeUndefined();
+    const view = project(run.state, { kind: 'player', seat });
+    return { view, offers: availableActions(view, seat, catalog) };
+  };
+  const byId = (offers: ReturnType<typeof availableActions>, id: string) => {
+    const o = offers.find((x) => x.id === id);
+    if (!o) throw new Error(`no offer ${id} in ${offers.map((x) => x.id).join(', ')}`);
+    return o;
+  };
+
+  it('offers each step’s moves to the combatant holding the impulse, and passes to both', () => {
+    const start = at(COMBAT, 'A');
+    expect(start.offers.map((o) => o.id)).toEqual([
+      'play',
+      'use',
+      'pass',
+      'pass-strikes',
+      'endcombat',
+    ]);
+    expect(at(COMBAT, 'B').offers.map((o) => o.id)).toEqual(['pass-strikes', 'endcombat']);
+    expect(at(COMBAT, 'C').offers).toEqual([]);
+    expect(byId(start.offers, 'pass-strikes').build([])).toEqual({
+      type: 'PassUntil',
+      until: 'strikes',
+    });
+    expect(byId(start.offers, 'endcombat').build([])).toEqual({ type: 'EndCombat' });
+    const card = start.view.zones['A:ready']?.[0] ?? '';
+    expect(byId(start.offers, 'use').build([card, 'note'])).toEqual({
+      type: 'UseCard',
+      card,
+      note: 'note',
+    });
+
+    const range = at(`${COMBAT}\nA> pass\nB> pass`, 'A');
+    const maneuver = byId(range.offers, 'maneuver');
+    expect(maneuver.label).toBe('Maneuver to long…');
+    expect(maneuver.build([undefined])).toEqual({ type: 'Maneuver', to: 'long' });
+    expect(maneuver.build(['x'])).toEqual({ type: 'Maneuver', to: 'long', source: 'x' });
+  });
+
+  it('offers the strikes until one is chosen, then the end-of-round pass', () => {
+    const strikes = `${COMBAT}\nA> pass strikes\nB> pass strikes`;
+    const { offers } = at(strikes, 'A');
+    expect(offers.some((o) => o.id === 'pass')).toBe(false);
+    expect(byId(offers, 'strike:hand').build([2])).toEqual({
+      type: 'Strike',
+      kind: 'hand',
+      amount: 2,
+    });
+    expect(byId(offers, 'strike:damage').build(['w', 3, 'RA', true])).toEqual({
+      type: 'Strike',
+      kind: 'damage',
+      source: 'w',
+      amount: 3,
+      ranged: true,
+      aggravated: true,
+      first: true,
+    });
+    expect(byId(offers, 'strike:dodge').build([undefined])).toEqual({
+      type: 'Strike',
+      kind: 'dodge',
+    });
+    expect(byId(offers, 'strike:combat-ends').build(['c'])).toEqual({
+      type: 'Strike',
+      kind: 'combat-ends',
+      source: 'c',
+    });
+    expect(byId(offers, 'strike:steal-blood').build([undefined, 2])).toEqual({
+      type: 'Strike',
+      kind: 'steal-blood',
+      amount: 2,
+    });
+    expect(byId(offers, 'strike:none').build([])).toEqual({ type: 'Strike', kind: 'none' });
+
+    const damage = at(`${strikes}\nA> strike hand\nB> strike none`, 'B');
+    expect(byId(damage.offers, 'pass-end').build([])).toEqual({ type: 'PassUntil', until: 'end' });
+  });
+
+  it('offers entering combat when resolving an action', () => {
+    const resolving = 'A> next\nA> next\nA> action A:ready:1\nB> pass\nC> pass';
+    const { view, offers } = at(resolving, 'A');
+    const opponent = view.zones['B:ready']?.[0] ?? '';
+    expect(byId(offers, 'enter-combat').build([opponent])).toEqual({
+      type: 'ResolveAction',
+      outcome: 'combat',
+      opponent,
+    });
   });
 });

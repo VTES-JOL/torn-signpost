@@ -456,11 +456,105 @@ describe('withdrawal (GAME-09, docs/m6-plan.md M6.2)', () => {
   it('is nullified by a minion of theirs entering combat', () => {
     const { s, t, vampire } = ready();
     const w = apply(s, { type: 'Withdraw' }, as(t));
-    // Straight to combat: a blocked action, as a judge would record it.
+    // Straight to combat: a combat starting with one of theirs in it.
     const broke = withdrawalBreaks(
       { ...w, action: { seat: t, minion: vampire, kind: 'bleed', stage: 'blocks' } } as GameState,
-      { type: 'ActionBlocked', blocker: vampire },
+      {
+        type: 'CombatStarted',
+        combat: {
+          cause: 'block',
+          acting: vampire,
+          opposing: vampire,
+          round: 1,
+          step: 'before-range',
+          range: 'close',
+          strikes: [],
+        },
+      },
     );
     expect(broke).toEqual([[t, 'combat']]);
+  });
+});
+
+describe('combat steps (docs/m6-plan.md M6.4a)', () => {
+  const as = (seat: string): Actor => ({ kind: 'player', user: seat.toLowerCase() });
+  /** A's vampire against B's, already in combat the way games before combat steps recorded it. */
+  function oldCombat(): GameState {
+    let s = started();
+    const minion = (seat: string) => {
+      const id = s.zones[`${seat}:uncontrolled`]?.[0] ?? '';
+      s = apply(s, { type: 'MoveCard', card: id, to: `${seat}:ready` }, as(seat));
+      return id;
+    };
+    const a = minion('A');
+    const b = minion('B');
+    return {
+      ...s,
+      turn: { number: 1, seat: 'A', phase: 'minion' },
+      action: {
+        seat: 'A',
+        minion: a,
+        kind: 'bleed',
+        target: 'B',
+        eligible: ['B'],
+        declined: [],
+        stage: 'combat',
+        blocker: b,
+      },
+    };
+  }
+
+  it('leaves a combat from before them to be ended by hand, as before', () => {
+    const s = oldCombat();
+    expect(waitingOn(s).map((w) => `${w.seat}:${w.kind}`)).toEqual(['A:combat', 'B:combat']);
+    expect(availableActions(s, 'B', catalog).map((o) => o.id)).toContain('endcombat');
+    expect(run(s, { type: 'Pass' }, as('A')).ok).toBe(false);
+    const ended = apply(s, { type: 'EndCombat' }, as('B'));
+    expect(ended.action).toBeUndefined();
+  });
+
+  it('accepts a combat move only from the combatant holding the impulse, in its step', () => {
+    let s = oldCombat();
+    const { action } = s;
+    if (!action) throw new Error('no action');
+    const [acting, opposing] = [action.minion, action.blocker ?? ''];
+    s = {
+      ...s,
+      action: {
+        ...action,
+        combat: {
+          cause: 'block',
+          acting,
+          opposing,
+          round: 1,
+          step: 'strikes',
+          range: 'close',
+          strikes: [],
+        },
+      },
+      window: { kind: 'combat', phase: 'minion', order: ['A', 'B'], cursor: 0, passes: 0 },
+    };
+    expect(run(s, { type: 'Strike', kind: 'hand' }, as('B'))).toMatchObject({
+      ok: false,
+      rejection: { code: 'not-now' },
+    });
+    expect(run(s, { type: 'Strike', kind: 'hand', amount: -1 }, as('A'))).toMatchObject({
+      ok: false,
+      rejection: { code: 'invalid' },
+    });
+    expect(run(s, { type: 'Maneuver', to: 'long' }, as('A'))).toMatchObject({
+      ok: false,
+      rejection: { code: 'not-now' },
+    });
+    const struck = apply(s, { type: 'Strike', kind: 'damage', amount: 3, ranged: true }, as('A'));
+    expect(struck.action?.combat?.strikes).toEqual([
+      { minion: acting, strike: { kind: 'damage', amount: 3, ranged: true } },
+    ]);
+    expect(struck.window?.cursor).toBe(1);
+    // Not the source of a strike: someone else's card.
+    expect(run(s, { type: 'Strike', kind: 'damage', source: opposing }, as('A'))).toMatchObject({
+      ok: false,
+      rejection: { code: 'invalid' },
+    });
   });
 });

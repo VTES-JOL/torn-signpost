@@ -109,7 +109,7 @@ A> pass
 B> pass
 C> pass
 expect action equip A combat
-expect waiting A:combat B:combat
+expect waiting A:combat
 expect card B:ready:1 locked true
 log public Tomas Grey blocks: combat
 reject:forbidden C> endcombat

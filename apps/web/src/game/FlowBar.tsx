@@ -8,6 +8,11 @@ import {
   type ActionKind,
   autoPassPhases,
   type CardCatalog,
+  COMBAT_STEP_LABELS,
+  COMBAT_STEPS,
+  type CombatState,
+  combatantOf,
+  combatStepLabel,
   deadlines,
   type GameState,
   impulseHolder,
@@ -18,6 +23,7 @@ import {
   PHASES,
   type StepValue,
   stopRules,
+  strikeText,
   type Wait,
   type WaitKind,
   waitingOn,
@@ -85,6 +91,18 @@ export function promptFor(
   if (!turn || !first) return undefined;
   const a = view.action;
   const action = a ? `${name(a.minion)}'s ${NOUNS[a.kind]}` : 'the action';
+  const fight = view.window?.kind === 'combat' ? a?.combat : undefined;
+  if (fight && seat !== undefined && waits.some((w) => w.seat === seat)) {
+    const minion = combatantOf(view, seat);
+    const struck = fight.strikes.some((x) => x.minion === minion);
+    const what =
+      fight.step === 'strikes' && !struck
+        ? 'choose a strike'
+        : fight.step === 'range'
+          ? `maneuver, play a card or pass (${fight.range} range)`
+          : 'play a card or pass';
+    return { mine: true, text: `Combat, ${combatStepLabel(fight)}: ${what}` };
+  }
   if (seat !== undefined && waits.some((w) => w.seat === seat)) {
     switch (first.kind) {
       case 'phase':
@@ -113,7 +131,12 @@ export function promptFor(
   }
   const names = waits.map((w) => who(w.seat));
   const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0];
-  const why = first.kind === 'phase' ? `${turn.phase} phase` : WAIT_LABELS[first.kind];
+  const why =
+    first.kind === 'phase'
+      ? `${turn.phase} phase`
+      : fight
+        ? `combat, ${combatStepLabel(fight)}`
+        : WAIT_LABELS[first.kind];
   return { mine: false, text: `Waiting on ${list} (${why})` };
 }
 
@@ -168,6 +191,8 @@ export function FlowBar(props: {
     if (s.kind === 'card') return v === undefined ? 'no card' : name(v as string);
     if (s.kind === 'seat') return client.seatName(v as string);
     if (s.kind === 'toggle') return v ? s.label : '';
+    if (s.kind === 'choice') return s.options.find((o) => o.value === v)?.label ?? '';
+    if (s.kind === 'text') return v ? `“${v}”` : '';
     return `${s.label}: ${v}`;
   };
 
@@ -198,6 +223,9 @@ export function FlowBar(props: {
         )}
       </div>
       <p className="flow-status muted small">{statusLine(view, client, name)}</p>
+      {view.status === 'active' && view.action?.combat && (
+        <CombatPanel view={view} combat={view.action.combat} name={name} />
+      )}
       {choosing ? (
         <div className="flow-choose toolbar">
           <strong>{choosing.offer.label}</strong>
@@ -323,7 +351,95 @@ function StepInput(props: {
           </button>
         </>
       );
+    case 'choice':
+      return (
+        <>
+          <span className="muted small">{step.label}:</span>
+          {step.options.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              className={o.value === step.default ? 'primary' : undefined}
+              onClick={() => onChoose(o.value)}
+            >
+              {o.label}
+            </button>
+          ))}
+        </>
+      );
+    case 'text':
+      return (
+        <form
+          className="toolbar"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const text = String(new FormData(e.currentTarget).get('text') ?? '').trim();
+            onChoose(text || undefined);
+          }}
+        >
+          <label className="small">
+            {step.label}
+            {step.optional ? ' (optional)' : ''} <input name="text" maxLength={200} />
+          </label>
+          <button type="submit">OK</button>
+        </form>
+      );
   }
+}
+
+/**
+ * The combat (docs/flow.md, "Combat"): the round's steps with the current one lit, the range, and
+ * both combatants with their blood or life and the strike each announced.
+ */
+function CombatPanel(props: {
+  view: GameState;
+  combat: CombatState;
+  name: (id: string | undefined) => string;
+}) {
+  const { view, combat: c, name } = props;
+  const fighter = (id: string, role: string) => {
+    const card = view.cards[id];
+    const strike = c.strikes.find((x) => x.minion === id)?.strike;
+    const blood = card?.counters.blood ?? 0;
+    const life = card?.counters.life;
+    return (
+      <li key={id}>
+        <strong>{name(id)}</strong> <span className="muted small">({role})</span>{' '}
+        <span className="small">
+          {blood} blood{life !== undefined ? ` · ${life} life` : ''}
+        </span>
+        {strike && (
+          <span className="badge">
+            {strike.kind === 'none'
+              ? 'no strike'
+              : `${strikeText(strike)}${strike.source ? `: ${name(strike.source)}` : ''}`}
+          </span>
+        )}
+      </li>
+    );
+  };
+  return (
+    <section className="combat-panel" aria-label="Combat">
+      <p className="small">
+        <strong>Combat · round {c.round}</strong> · <span className="badge">{c.range} range</span>
+      </p>
+      <ol className="combat-steps">
+        {COMBAT_STEPS.map((step) => (
+          <li
+            key={step}
+            aria-current={step === c.step ? 'step' : undefined}
+            className={step === c.step ? 'current' : undefined}
+          >
+            {COMBAT_STEP_LABELS[step]}
+          </li>
+        ))}
+      </ol>
+      <ul className="combatants">
+        {fighter(c.acting, 'acting')}
+        {fighter(c.opposing, c.cause === 'block' ? 'blocking' : 'opposing')}
+      </ul>
+    </section>
+  );
 }
 
 const STOP_CHOICES = [
@@ -437,6 +553,10 @@ function statusLine(
       : '';
     const card = a.cardId ? ` with ${name(a.card)}` : '';
     const what = `${name(a.minion)} ${VERBS[a.kind]}${target}${card}${overrideNote(a.override, name, a.card)}`;
+    if (a.combat) {
+      const c = a.combat;
+      return `${what} · ${name(c.acting)} against ${name(c.opposing)}: ${combatStepLabel(c)}, ${c.range} range`;
+    }
     if (a.stage === 'combat') return `${what} · blocked by ${name(a.blocker)}: combat`;
     if (a.stage === 'resolution') return `${what} · not blocked: ${who(a.seat)} resolves it`;
     const attempt = a.blockAttempt

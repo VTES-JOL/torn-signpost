@@ -3,7 +3,9 @@
  * automatically, and who may block. Shared by `decide`, the toolbar offers and the clients.
  */
 import {
+  COMBAT_STEPS,
   type GameState,
+  type InstanceId,
   type Instant,
   PHASES,
   type Phase,
@@ -33,7 +35,8 @@ export function tempo(state: GameState): Tempo {
  * - `impulse`: the impulse holder in a window, to play a card or pass;
  * - `block`: an eligible blocker holding the impulse in a block window, to block or not;
  * - `resolve`: the acting Methuselah, to resolve an unblocked action;
- * - `combat`: the two Methuselahs in combat, to end it.
+ * - `combat`: in a combat step, the combatant holding the impulse; in a combat from before
+ *   combat steps (M6.4), the two Methuselahs in it, to end it.
  */
 export type WaitKind = 'phase' | 'impulse' | 'block' | 'resolve' | 'combat';
 
@@ -69,7 +72,14 @@ export function waitKey(state: GameState): string {
   const waits = currentWaits(state);
   if (!waits.length) return '';
   const t = state.turn;
-  return [t ? `${t.number}.${t.phase}` : '', ...waits.map((w) => `${w.kind}:${w.seat}`)].join(' ');
+  // Each combat step is a decision of its own.
+  const c = state.action?.combat;
+  const step = c && state.window?.kind === 'combat' ? [`${c.round}.${c.step}`] : [];
+  return [
+    t ? `${t.number}.${t.phase}` : '',
+    ...step,
+    ...waits.map((w) => `${w.kind}:${w.seat}`),
+  ].join(' ');
 }
 
 function currentWaits(state: GameState): Omit<Wait, 'since'>[] {
@@ -81,6 +91,7 @@ function currentWaits(state: GameState): Omit<Wait, 'since'>[] {
   if (state.window) {
     const holder = impulseHolder(state);
     if (!live(holder)) return [];
+    if (state.window.kind === 'combat') return [{ seat: holder, kind: 'combat' }];
     const blocking =
       state.window.kind === 'blocks' &&
       a !== undefined &&
@@ -145,7 +156,15 @@ export function isHolding(state: GameState, seat: SeatId): boolean {
  */
 export function passesAutomatically(state: GameState, seat: SeatId): boolean {
   const w = state.window;
-  if (!w || w.order[0] === seat) return false;
+  if (!w) return false;
+  // Combat steps: only a standing pass (C6), and never past a strike still to announce.
+  if (w.kind === 'combat') {
+    const c = state.action?.combat;
+    const until = c?.passUntil?.[seat];
+    if (!c || !until || c.step === 'strikes') return false;
+    return until === 'end' || COMBAT_STEPS.indexOf(c.step) < COMBAT_STEPS.indexOf(until);
+  }
+  if (w.order[0] === seat) return false;
   const a = state.action;
   if (w.kind === 'blocks' && a) {
     if (a.seat === seat) return false;
@@ -172,4 +191,21 @@ export function eligibleBlockers(
     if (s !== undefined && s !== acting && !out.includes(s)) out.push(s);
   }
   return out;
+}
+
+/** The Methuselahs of the two combatants: the acting minion's first (M6.4). */
+export function combatSeats(state: GameState): SeatId[] {
+  const c = state.action?.combat;
+  if (!c) return [];
+  const seats = [c.acting, c.opposing]
+    .map((id) => state.cards[id]?.controller)
+    .filter((s): s is SeatId => s !== undefined);
+  return seats.filter((s, i) => seats.indexOf(s) === i);
+}
+
+/** The combatant `seat` controls, if any. */
+export function combatantOf(state: GameState, seat: SeatId): InstanceId | undefined {
+  const c = state.action?.combat;
+  if (!c) return undefined;
+  return [c.acting, c.opposing].find((id) => state.cards[id]?.controller === seat);
 }

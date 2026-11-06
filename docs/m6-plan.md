@@ -313,7 +313,7 @@ card…** is also in the card menu of every card in play.
 
 **Split:**
 
-- **M6.4a** (2–3 days): the steps and windows (C1, C2, C6), Maneuver, Strike (announced, not yet
+- **M6.4a** (2–3 days), **done**: the steps and windows (C1, C2, C6), Maneuver, Strike (announced, not yet
   applied), UseCard, the round and step in the log (C3), `resolve combat`, the combat panel.
   Damage, Press and End of round are plain windows; the combatants adjust blood by hand.
 - **M6.4b** (2–3 days): damage pending and applied (C5), Prevent, first strike, dodge, combat

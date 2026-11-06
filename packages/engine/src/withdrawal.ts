@@ -73,10 +73,10 @@ export function withdrawalBreaks(
           out.push([id, 'blood']);
         }
         break;
-      case 'ActionBlocked': {
-        const actor = state.action ? state.cards[state.action.minion]?.controller : undefined;
-        const blocker = state.cards[body.blocker]?.controller;
-        if (actor === id || blocker === id) out.push([id, 'combat']);
+      case 'CombatStarted': {
+        const { acting, opposing } = body.combat;
+        const fighting = [acting, opposing].map((m) => state.cards[m]?.controller);
+        if (fighting.includes(id)) out.push([id, 'combat']);
         break;
       }
     }

@@ -5,6 +5,8 @@ import {
   type ActionState,
   type CardId,
   type CardInstance,
+  COMBAT_STEPS,
+  type CombatState,
   type GameId,
   type GameState,
   type ImpulseWindow,
@@ -17,7 +19,7 @@ import {
 import type { SeatId } from './seating.ts';
 import { HIDDEN_ZONES, IN_PLAY_ZONES, parseZoneId, zoneId } from './zones.ts';
 
-export const ENGINE_VERSION = '0.2.0';
+export const ENGINE_VERSION = '0.3.0';
 
 export function newGame(id: GameId): GameState {
   return {
@@ -244,9 +246,18 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
       }
       break;
     }
-    case 'ImpulseReset':
-      d.window = { ...windowOf(d), cursor: 0, passes: 0 };
+    case 'ImpulseReset': {
+      const w = windowOf(d);
+      const to = ev.to === undefined ? 0 : w.order.indexOf(ev.to);
+      d.window = { ...w, cursor: to < 0 ? 0 : to, passes: 0 };
+      // Doing something in combat drops the standing passes (C6): the other side may answer it.
+      const c = d.action?.combat;
+      if (w.kind === 'combat' && c?.passUntil) {
+        const { passUntil: _, ...rest } = c;
+        d.action = { ...actionOf(d), combat: rest };
+      }
       break;
+    }
     case 'WindowClosed':
       delete d.window;
       break;
@@ -278,6 +289,51 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
     }
     case 'ActionResolving':
       d.action = { ...actionOf(d), stage: 'resolution' };
+      break;
+    case 'CombatStarted':
+      d.action = { ...actionOf(d), stage: 'combat', combat: copyCombat(ev.combat) };
+      break;
+    case 'CombatStepped': {
+      const c = combatOf(d);
+      const next: CombatState = { ...c, step: ev.step, round: ev.round };
+      if (ev.round !== c.round) {
+        next.strikes = [];
+        delete next.lastManeuver;
+        delete next.passUntil;
+      } else if (c.passUntil) {
+        // A standing pass to the strikes is used up once they come.
+        const reached = COMBAT_STEPS.indexOf(ev.step) >= COMBAT_STEPS.indexOf('strikes');
+        const left = Object.entries(c.passUntil).filter(([, t]) => !(t === 'strikes' && reached));
+        if (left.length) next.passUntil = Object.fromEntries(left);
+        else delete next.passUntil;
+      }
+      d.action = { ...actionOf(d), combat: next };
+      if (d.window) d.window = { ...d.window, cursor: 0, passes: 0 };
+      break;
+    }
+    case 'Maneuvered':
+      d.action = {
+        ...actionOf(d),
+        combat: { ...combatOf(d), range: ev.to, lastManeuver: ev.minion },
+      };
+      break;
+    case 'StrikeChosen': {
+      const c = combatOf(d);
+      d.action = {
+        ...actionOf(d),
+        combat: { ...c, strikes: [...c.strikes, { minion: ev.minion, strike: { ...ev.strike } }] },
+      };
+      break;
+    }
+    case 'PassingUntil': {
+      const c = combatOf(d);
+      d.action = {
+        ...actionOf(d),
+        combat: { ...c, passUntil: { ...c.passUntil, [ev.seat]: ev.until } },
+      };
+      break;
+    }
+    case 'CardUsed':
       break;
     case 'ActionEnded':
       delete d.action;
@@ -514,6 +570,18 @@ function withCardId(card: CardInstance, cardId: CardId | undefined): CardInstanc
 function windowOf(d: GameState): ImpulseWindow {
   if (!d.window) throw new Error('No impulse window open');
   return d.window;
+}
+
+function combatOf(d: GameState): CombatState {
+  const c = d.action?.combat;
+  if (!c) throw new Error('No combat in progress');
+  return c;
+}
+
+function copyCombat(c: CombatState): CombatState {
+  const out: CombatState = { ...c, strikes: c.strikes.map((x) => ({ ...x })) };
+  if (c.passUntil) out.passUntil = { ...c.passUntil };
+  return out;
 }
 
 function actionOf(d: GameState): ActionState {

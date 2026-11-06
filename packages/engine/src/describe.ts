@@ -11,11 +11,14 @@ import type {
   ActionKind,
   ActorRef,
   CardId,
+  CombatState,
+  CombatStep,
   GameState,
   InstanceId,
   JudgeCallReason,
   Override,
   Ruling,
+  Strike,
   ZoneId,
   ZoneName,
 } from './model.ts';
@@ -74,7 +77,53 @@ export interface DescribeOptions {
   seatName?: (seat: SeatId) => string;
 }
 
+/** What each combat step is called. */
+export const COMBAT_STEP_LABELS: Record<CombatStep, string> = {
+  'before-range': 'Before range',
+  range: 'Range',
+  'before-strikes': 'Before strikes',
+  strikes: 'Strikes',
+  damage: 'Damage',
+  press: 'Press',
+  'end-of-round': 'End of round',
+};
+
+/** "Round 1 · Range" for a combat step (docs/flow.md, "Combat"). */
+export function combatStepLabel(c: Pick<CombatState, 'round' | 'step'>): string {
+  return `Round ${c.round} · ${COMBAT_STEP_LABELS[c.step]}`;
+}
+
+/** "2R damage", "a hand strike for 1", "dodge"… (without the striker). */
+export function strikeText(s: Strike): string {
+  const n = s.amount ?? 1;
+  const what = {
+    hand: `a hand strike for ${n}`,
+    damage: `${n}${s.ranged ? 'R' : ''}${s.aggravated ? ' aggravated' : ''} damage`,
+    dodge: 'dodge',
+    'combat-ends': 'combat ends',
+    'steal-blood': `steal ${n} blood`,
+    other: s.note ?? 'a strike',
+    none: 'no strike',
+  }[s.kind];
+  const ranged = s.ranged && s.kind !== 'damage' ? ', ranged' : '';
+  const first = s.first ? ', first strike' : '';
+  const note = s.note && s.kind !== 'other' ? ` (“${s.note}”)` : '';
+  return `${what}${ranged}${first}${note}`;
+}
+
+/**
+ * The log line for an event. Everything said during a combat step is prefixed with the round and
+ * step, so the table can see what was played when (docs/m6-plan.md M6.4, C3).
+ */
 export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOptions): string {
+  const line = describeBare(ev, before, opts);
+  const c = before.action?.combat;
+  if (!line || !c || before.window?.kind !== 'combat') return line;
+  if (ev.type === 'ActionEnded' || ev.type === 'CombatStepped') return line;
+  return `${combatStepLabel(c)}: ${line}`;
+}
+
+function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): string {
   const seatName = opts.seatName ?? ((s: SeatId) => s);
   const who = actorName(ev.by, seatName);
   const cardName = (id: InstanceId, cardId?: CardId) => {
@@ -109,6 +158,8 @@ export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOp
           parseZoneId(ev.to).name === 'removed' ? 'is removed from the game' : 'is burned';
         return `${capitalize(name)} ${fate}: ${seatName(ev.ousted)} was ousted`;
       }
+      // Played as the source of a combat move, whose own line tells it.
+      if (ev.source) return '';
       if (ev.played) {
         const into = parseZoneId(ev.to).name === 'ashHeap' ? '' : ` into ${zone(ev.to)}`;
         // Whoever's hand it left: an action card is finished off by whoever ends the action.
@@ -255,6 +306,34 @@ export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOp
       return `${cardName(ev.blocker)} blocks: combat`;
     case 'ActionResolving':
       return 'The action was not blocked';
+    // A block's combat was announced with the block.
+    case 'CombatStarted':
+      return ev.combat.cause === 'block'
+        ? ''
+        : `${cardName(ev.combat.acting)} enters combat with ${cardName(ev.combat.opposing)}`;
+    case 'CombatStepped':
+      return '';
+    case 'Maneuvered': {
+      const m = cardName(ev.minion);
+      const src = ev.source === undefined ? undefined : cardName(ev.source, ev.sourceCardId);
+      if (src && ev.played) return `${m} plays ${src} to maneuver to ${ev.to}`;
+      return `${m} maneuvers to ${ev.to}${src ? ` using ${src}` : ''}`;
+    }
+    case 'StrikeChosen': {
+      const m = cardName(ev.minion);
+      const st = ev.strike;
+      if (st.kind === 'none') return `${m} doesn't strike`;
+      const src = st.source === undefined ? undefined : cardName(st.source, st.sourceCardId);
+      if (src && ev.played) return `${m} plays ${src} to strike: ${strikeText(st)}`;
+      return `${m} strikes${src ? ` with ${src}` : ''}: ${strikeText(st)}`;
+    }
+    case 'PassingUntil':
+      return `${seatName(ev.seat)} passes until ${ev.until === 'strikes' ? 'the strikes' : 'the end of the round'}`;
+    case 'CardUsed': {
+      const host = before.cards[ev.card]?.attachedTo;
+      const user = host === undefined ? who : cardName(host);
+      return `${user} uses ${cardName(ev.card, ev.cardId)}${ev.note ? `: ${ev.note}` : ''}`;
+    }
     case 'ActionEnded':
       return {
         success: 'The action succeeded',
