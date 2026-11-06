@@ -22,7 +22,7 @@ export async function waitForDynamo(client: DynamoDBClient, attempts = 30): Prom
   }
 }
 
-/** Creates the table unless it exists; returns whether it was created. */
+/** Creates the table (locally and in tests) unless it exists; returns whether it was created. */
 export async function ensureTable(client: DynamoDBClient, tableName: string): Promise<boolean> {
   try {
     await client.send(new DescribeTableCommand({ TableName: tableName }));
@@ -52,7 +52,8 @@ export async function ensureTable(client: DynamoDBClient, tableName: string): Pr
         ],
         Projection: { ProjectionType: 'ALL' },
       })),
-      StreamSpecification: { StreamEnabled: true, StreamViewType: 'NEW_AND_OLD_IMAGES' },
+      // No stream, unlike the AWS table: nothing reads one locally, and DynamoDB Local keeps
+      // stream records even of deleted tables, which slows every write down as they pile up.
     }),
   );
   await client.send(
