@@ -260,8 +260,67 @@ change. Result corrections by organisers come with tournaments (TOURN-05, M7).
 
 ### M6.6 Spectators and the finished game (GAME-16)
 
-- A finished game stays viewable as it ended, with its result and log; the lobby lists recent
-  results; spectators see the final standings live.
+**Already in place** (M6.1, M6.3): a finished game refuses commands, stops its timers, deadlines
+and judge calls, and shows the Game over panel to everyone watching, spectators and guests
+included, pushed live as it ends; its table and log stay viewable; counted games have results on
+players' pages.
+
+**Gaps found while planning:**
+
+- The lobby never shows finished games: the web asks only for open, active and "mine", and the
+  finished lobby index is sorted by when a game was *created*, not when it ended.
+- A game summary carries no result, so a list of games can't say who won.
+- A player's page links every counted game to its table, but a private game's table is 404 for
+  everyone outside it, while its result is meant to be public (S1).
+- A finished table still reads as live for its players: "you are seat A", their hand, the console
+  input, and a flow bar with nothing to wait on.
+- Nothing tests a spectator seeing the end live.
+
+**Decisions** (recommendations; F1–F4 below):
+
+- **F1 Hidden information stays hidden after the end.** Hands, libraries and face-down cards are
+  never revealed by the game ending, to spectators or players: GAME-16 says public information
+  only, and decks are only shown when public (S5). Judges and admins still see what they see now.
+- **F2 A private counted game's result is public; its table isn't.** Anyone can open the result
+  (standings, VP, who won, how each seat finished, end reason, players' links); the table, log
+  and chat stay with its players, judges and admins.
+- **F3 Chat stays open after the end** for the players and judges, for "gg" and rulings talk; no
+  time limit for now.
+- **F4 The lobby's "Recent results" lists every public finished game**, newest ended first (the
+  last 20), counted or not, with the winner and a "counted" mark on the ones that count. Private
+  games appear only in their players' own lists, as now.
+
+**Backend:**
+
+- At the end, the game meta gains `ended {at, reason, winner?, gameWin?, standings[{seat, name,
+  vp, finish}]}`, written in the same append that sets `status: 'finished'`, and the finished
+  lobby index is keyed by the end time (`GSI1SK = ended.at`). `GameSummary` gains `ended`.
+- `GET /games?status=finished` returns the last 20.
+- `GET /games/:id/result`: the result of a counted game (the `RESULT` item) to anyone; for a game
+  that doesn't count, the same to those who can view the game, else 404.
+- `stats:rebuild` also backfills `ended` and the index key on games finished before this ships.
+
+**Web:**
+
+- Games page: a "Recent results" list under the running games: name, format, end time, winner
+  (with a game win marked), each player's VP.
+- Finished table: the title reads "finished · you were seat A" (or "spectating"); the Game over
+  panel sits at the top; no hand toolbar or console input (the console still reads, with
+  "The game is over" on input); the flow bar says the game is over and why.
+- A result page at `/games/:id/result` (the Game over panel, standalone), used for a private
+  game's link on a player's page, and where `/games/:id` sends someone who can't view a private
+  counted game.
+
+**Tests:**
+
+- Integration: `ended` and the index order; the finished list newest ended first; the result
+  route for a private counted game (anyone), a private uncounted one (404 outside it), a public
+  one; the rebuild backfilling `ended`.
+- Browser: a guest watching a public game sees Game over appear live when an admin ends it, then
+  finds it under "Recent results"; a player of a finished game sees no toolbar, hand actions or
+  console input; a stranger opening a private counted game from a player's page gets its result.
+- Docs: `docs/roles.md` (anyone can see a counted game's result, F2; chat after the end, F3),
+  architecture §5.3 (the meta's `ended`, the finished index key) and §4.4.
 
 ## M5b leftovers folded in
 
@@ -280,7 +339,7 @@ change. Result corrections by organisers come with tournaments (TOURN-05, M7).
 | 3 | Results and stats | 1 | 2–3 days |
 | 4 | Combat steps | — | 4–6 days |
 | 5 | Referendums | — | 3–4 days |
-| 6 | Spectators and the finished game | 1 | 1 day |
+| 6 | Spectators and the finished game | 1 | 1–1½ days |
 | — | M5b leftovers | — | 1–2 days, alongside |
 
 1 first, as it fixes the beta bug and everything else reads its result. 4 and 5 are independent
