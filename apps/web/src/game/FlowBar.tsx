@@ -28,6 +28,7 @@ import { useConfig } from '../content.tsx';
 import { setWaitingTitle } from '../title.ts';
 import { Clock, formatLeft, useNow } from './Clock.tsx';
 import type { TableClient } from './client.ts';
+import { REASONS } from './GameEnd.tsx';
 
 export interface Choosing {
   offer: Offer;
@@ -175,14 +176,16 @@ export function FlowBar(props: {
       {/* Announced when it changes, without taking focus: the offers below stay where they are. */}
       <div className="flow-head">
         <p className="flow-prompt" aria-live="polite">
-          {paused
-            ? 'The game is paused'
-            : prompt &&
-              (prompt.mine ? (
-                <strong>Your decision: {prompt.text}</strong>
-              ) : (
-                `${prompt.text}${dueNote}`
-              ))}
+          {view.status === 'finished'
+            ? `The game is over: ${view.result ? REASONS[view.result.reason].toLowerCase() : 'ended'}`
+            : paused
+              ? 'The game is paused'
+              : prompt &&
+                (prompt.mine ? (
+                  <strong>Your decision: {prompt.text}</strong>
+                ) : (
+                  `${prompt.text}${dueNote}`
+                ))}
         </p>
         {clock && (
           <Clock
@@ -419,6 +422,7 @@ function statusLine(
   name: (id: string | undefined) => string,
 ): string {
   const turn = view.turn;
+  if (view.status === 'finished') return 'Finished';
   if (!turn) return 'Waiting to start';
   const who = client.seatName;
   const holder = impulseHolder(view);

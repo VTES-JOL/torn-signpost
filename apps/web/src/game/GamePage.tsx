@@ -8,6 +8,7 @@ import { Link, useParams } from 'react-router';
 import { ApiError, useApi } from '../api.ts';
 import { useAuth } from '../auth.tsx';
 import { useCards, useConfig } from '../content.tsx';
+import { GameResult } from '../pages/GameResultPage.tsx';
 import { ConsolePanel } from './ConsolePanel.tsx';
 import { GameClient, type GameSnapshot } from './client.ts';
 import { LogPanel } from './LogPanel.tsx';
@@ -66,6 +67,7 @@ function GameView({
   catalog: ReturnType<typeof createCatalog>;
 }) {
   const snapshot = useSyncExternalStore(client.subscribe, client.getSnapshot);
+  const { id: gameId = '' } = useParams();
   const auth = useAuth();
   const [error, setError] = useState<string>();
   const [panel, setPanel] = useState<'log' | 'console'>('log');
@@ -92,7 +94,10 @@ function GameView({
   }, [error]);
 
   if (snapshot.status === 'loading') return <p className="muted">Loading game…</p>;
-  if (snapshot.status === 'error') return <p className="notice">{snapshot.error}</p>;
+  // A private game's table stays with its players, but a counted game's result is public (M6.6).
+  if (snapshot.status === 'error') {
+    return <GameResult id={gameId} {...(snapshot.error ? { fallback: snapshot.error } : {})} />;
+  }
   const game = snapshot.game;
   if (!game) return null;
   if (game.status === 'open') return <LobbyRoom client={client} snapshot={snapshot} />;
@@ -105,7 +110,13 @@ function GameView({
         <h1>{game.name}</h1>
         <span className="muted small">
           {game.format} ·{' '}
-          {snapshot.seat ? `you are seat ${snapshot.seat}` : judge ? 'judging' : 'spectating'}
+          {snapshot.view.status === 'finished'
+            ? `finished · ${snapshot.seat ? `you were seat ${snapshot.seat}` : 'spectating'}`
+            : snapshot.seat
+              ? `you are seat ${snapshot.seat}`
+              : judge
+                ? 'judging'
+                : 'spectating'}
           {snapshot.status === 'reconnecting' && ' · reconnecting…'}
         </span>
         <button

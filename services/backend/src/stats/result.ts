@@ -4,7 +4,13 @@
  */
 import type { CardIndex } from '@torn-signpost/cards';
 import { clockElapsed, type GameState } from '@torn-signpost/engine';
-import type { Finish, GameResultRecord, SeatResult, StatLine } from '@torn-signpost/protocol';
+import type {
+  Finish,
+  GameEnding,
+  GameResultRecord,
+  SeatResult,
+  StatLine,
+} from '@torn-signpost/protocol';
 import type { GameMeta } from '../db/store.ts';
 
 /** Casual games of 5 players and tournament games of any size count; nothing else does. */
@@ -30,6 +36,33 @@ export function mainClans(state: GameState, seat: string, index: CardIndex): str
     : [];
 }
 
+/** How a seat finished the game. */
+export const finishOf = (s: GameState['seats'][number]): Finish =>
+  s.disqualified ? 'disqualified' : s.ousted ? 'ousted' : s.withdrawn ? 'withdrew' : 'in';
+
+/** A finished game's ending, kept on its meta for lists and the result page (M6.6). */
+export function ending(meta: GameMeta, state: GameState): GameEnding | undefined {
+  const r = state.result;
+  if (state.status !== 'finished' || !r) return undefined;
+  const standings = state.seats
+    .map((s) => ({
+      seat: s.id,
+      user: s.occupant,
+      name: meta.players.find((p) => p.user === s.occupant)?.name ?? s.occupant,
+      vp: s.vp,
+      finish: finishOf(s),
+    }))
+    .sort((a, b) => b.vp - a.vp);
+  return {
+    at: r.at,
+    reason: r.reason,
+    ...(r.winner ? { winner: r.winner } : {}),
+    ...(r.winner ? { gameWin: r.gameWin === r.winner } : {}),
+    counted: counts(state),
+    standings,
+  };
+}
+
 export function gameResult(input: {
   meta: GameMeta;
   state: GameState;
@@ -39,8 +72,6 @@ export function gameResult(input: {
   const { meta, state, startedAt, index } = input;
   const r = state.result;
   if (!counts(state) || !r) return undefined;
-  const finish = (s: GameState['seats'][number]): Finish =>
-    s.disqualified ? 'disqualified' : s.ousted ? 'ousted' : s.withdrawn ? 'withdrew' : 'in';
   const seats = state.seats.map((s): SeatResult => {
     const deck = meta.players.find((p) => p.user === s.occupants[0]?.user)?.deckRef;
     return {
@@ -49,7 +80,7 @@ export function gameResult(input: {
       replaced: s.occupants.filter((o) => o.user !== s.occupant).map((o) => o.user),
       vp: s.vp,
       gameWin: r.gameWin === s.id,
-      finish: finish(s),
+      finish: finishOf(s),
       ...(deck ? { deck } : {}),
       clans: mainClans(state, s.id, index),
     };

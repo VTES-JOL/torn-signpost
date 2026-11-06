@@ -46,6 +46,7 @@ import type { GameMeta, GameStore } from '../db/store.ts';
 import type { DeckService } from '../decks/service.ts';
 import { ApiError } from '../errors.ts';
 import type { Notifier } from '../notifications/service.ts';
+import { ending } from '../stats/result.ts';
 import type { GameTimerCommand, Timers } from '../timers/timers.ts';
 
 /** Delivers a message, built per recipient, to everyone watching a game. */
@@ -79,6 +80,8 @@ const SNAPSHOT_EVERY = 25;
 const MAX_ATTEMPTS = 3;
 const CACHE_SIZE = 200;
 const EVENTS_PAGE = 200;
+/** Finished public games the lobby lists (M6.6, F4). */
+const RECENT_RESULTS = 20;
 
 type User = Extract<Identity, { kind: 'user' }>;
 interface Step {
@@ -120,8 +123,30 @@ export class GameService {
     const metas =
       filter === 'mine'
         ? await this.deps.store.listUserGames(requireUser(identity).sub)
-        : await this.deps.store.listGames(filter);
+        : await this.deps.store.listGames(filter, filter === 'finished' ? RECENT_RESULTS : 50);
     return metas.map(summary);
+  }
+
+  /**
+   * A finished game's result (M6.6): anyone's for a counted game, even a private one (S1, F2);
+   * otherwise only for those who can view the game.
+   */
+  async result(identity: Identity, id: string): Promise<GameSummary> {
+    const meta = await this.meta(id);
+    if (meta.status !== 'finished') throw new ApiError(404, 'not_finished', 'The game is not over');
+    const state = await this.load(id, meta.seq);
+    const end = meta.ended ?? ending(meta, state);
+    if (!end?.counted) this.assertCanView(identity, meta, state);
+    return summary({ ...meta, ...(end ? { ended: end } : {}) });
+  }
+
+  /** The meta changes as a game finishes: its status, its ending, its lobby list. */
+  private finishing(meta: GameMeta, after: GameState) {
+    const end = ending(meta, after);
+    return {
+      meta: { status: 'finished' as const, ...(end ? { ended: end } : {}) },
+      listed: meta.visibility === 'public',
+    };
   }
 
   async join(identity: Identity, id: string, req: JoinGameRequest): Promise<GameSummary> {
@@ -434,9 +459,7 @@ export class GameService {
         commandId: `system-${this.deps.newId()}`,
         user: 'system',
         ...(crossesSnapshot(state, after) || ended(state, after) ? { snapshot: after } : {}),
-        ...(ended(state, after)
-          ? { meta: { status: 'finished' }, listed: meta.visibility === 'public' }
-          : {}),
+        ...(ended(state, after) ? this.finishing(meta, after) : {}),
       });
       if (appended === 'ok') {
         this.remember(after);
@@ -580,10 +603,8 @@ export class GameService {
         commandId: req.commandId,
         user: user.sub,
         ...(crosses || ended(state, after) ? { snapshot: after } : {}),
-        // A finished game moves to the lobby's finished list (GAME-09).
-        ...(ended(state, after)
-          ? { meta: { status: 'finished' }, listed: meta.visibility === 'public' }
-          : {}),
+        // A finished game moves to the lobby's finished list (GAME-09), newest ended first.
+        ...(ended(state, after) ? this.finishing(meta, after) : {}),
       });
       if (appended === 'ok') {
         this.remember(after);
@@ -764,5 +785,6 @@ function summary(meta: GameMeta): GameSummary {
     createdBy: meta.createdBy,
     createdAt: meta.createdAt,
     seq: meta.seq,
+    ...(meta.ended ? { ended: meta.ended } : {}),
   };
 }

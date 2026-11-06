@@ -3,13 +3,13 @@
  * the ways to end one early: an admin ends it, or the players of a casual game agree to.
  */
 import type { GameState } from '@torn-signpost/engine';
-import type { PlayerCommand } from '@torn-signpost/protocol';
+import type { Finish, GameEnding, PlayerCommand } from '@torn-signpost/protocol';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useConfig } from '../content.tsx';
 import { counted, vp } from '../stats/format.ts';
 
-const REASONS = {
+export const REASONS = {
   'last-standing': 'Last Methuselah standing',
   'no-survivors': 'Nobody left standing',
   'time-limit': 'Time is up',
@@ -17,6 +17,14 @@ const REASONS = {
   agreement: 'Ended by agreement',
 } as const;
 
+const FINISHED: Record<Finish, string> = {
+  in: 'still in',
+  ousted: 'ousted',
+  withdrew: 'withdrew',
+  disqualified: 'disqualified',
+};
+
+/** The live table's Game over panel, for everyone watching it (GAME-16). */
 export function GameOver({
   view,
   seatName,
@@ -24,20 +32,68 @@ export function GameOver({
   view: GameState;
   seatName: (seat: string) => string;
 }) {
+  const ending = endingOf(view, seatName);
+  return ending ? <ResultPanel ending={ending} /> : null;
+}
+
+/** The ending as the server records it (`GameSummary.ended`), from the table's own view. */
+export function endingOf(
+  view: GameState,
+  seatName: (seat: string) => string,
+): GameEnding | undefined {
   const r = view.result;
+  if (view.status !== 'finished' || !r) return undefined;
+  return {
+    at: r.at,
+    reason: r.reason,
+    ...(r.winner ? { winner: r.winner, gameWin: r.gameWin === r.winner } : {}),
+    counted: counted(view),
+    standings: view.seats
+      .map((s) => ({
+        seat: s.id,
+        user: s.occupant,
+        name: seatName(s.id),
+        vp: s.vp,
+        finish: (s.disqualified
+          ? 'disqualified'
+          : s.ousted
+            ? 'ousted'
+            : s.withdrawn
+              ? 'withdrew'
+              : 'in') as Finish,
+      }))
+      .sort((a, b) => b.vp - a.vp),
+  };
+}
+
+/** One line for lists of games: the winner, or why nobody won. */
+export function endingLine(e: GameEnding): string {
+  const winner = e.standings.find((s) => s.seat === e.winner);
+  return winner
+    ? `${winner.name} won${e.gameWin ? ' (a game win)' : ''}`
+    : `${REASONS[e.reason]}: nobody won`;
+}
+
+/** The final standings: on the table, and on a game's result page. */
+export function ResultPanel({
+  ending: e,
+  label = 'Game over',
+}: {
+  ending: GameEnding;
+  label?: string;
+}) {
   const stats = !!useConfig().flags.stats;
-  if (view.status !== 'finished' || !r) return null;
   // Counted games have results on each player's page (docs/m6-plan.md M6.3).
-  const linked = stats && counted(view);
-  const standings = [...view.seats].sort((a, b) => b.vp - a.vp);
+  const linked = stats && e.counted;
+  const winner = e.standings.find((s) => s.seat === e.winner);
   return (
-    <section className="game-over" aria-label="Game over">
-      <h2>Game over</h2>
+    <section className="game-over" aria-label={label}>
+      <h2>{label}</h2>
       <p>
-        {REASONS[r.reason]} ·{' '}
-        {r.winner ? (
+        {REASONS[e.reason]} ·{' '}
+        {winner ? (
           <strong>
-            {seatName(r.winner)} wins{r.gameWin ? ' (a game win)' : ''}
+            {winner.name} wins{e.gameWin ? ' (a game win)' : ''}
           </strong>
         ) : (
           'nobody wins'
@@ -52,25 +108,17 @@ export function GameOver({
           </tr>
         </thead>
         <tbody>
-          {standings.map((s) => (
-            <tr key={s.id} className={s.id === r.winner ? 'winner' : undefined}>
+          {e.standings.map((s) => (
+            <tr key={s.seat} className={s.seat === e.winner ? 'winner' : undefined}>
               <th scope="row">
                 {linked ? (
-                  <Link to={`/players/${encodeURIComponent(s.occupant)}`}>{seatName(s.id)}</Link>
+                  <Link to={`/players/${encodeURIComponent(s.user)}`}>{s.name}</Link>
                 ) : (
-                  seatName(s.id)
+                  s.name
                 )}
               </th>
               <td>{vp(s.vp)}</td>
-              <td className="muted">
-                {s.disqualified
-                  ? 'disqualified'
-                  : s.ousted
-                    ? 'ousted'
-                    : s.withdrawn
-                      ? 'withdrew'
-                      : 'still in'}
-              </td>
+              <td className="muted">{FINISHED[s.finish]}</td>
             </tr>
           ))}
         </tbody>

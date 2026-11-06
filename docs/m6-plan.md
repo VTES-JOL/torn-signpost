@@ -258,7 +258,7 @@ change. Result corrections by organisers come with tournaments (TOURN-05, M7).
 - **Tests**: scenarios for passing, failing, tied, the Edge, a title, a card played during
   polling reopening responses (5.3), a blood hunt.
 
-### M6.6 Spectators and the finished game (GAME-16)
+### M6.6 Spectators and the finished game (GAME-16): done
 
 **Already in place** (M6.1, M6.3): a finished game refuses commands, stops its timers, deadlines
 and judge calls, and shows the Game over panel to everyone watching, spectators and guests

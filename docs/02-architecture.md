@@ -390,7 +390,7 @@ sequenceDiagram
 
 | Entity | PK | SK | Notes / GSIs |
 |---|---|---|---|
-| Game meta | `GAME#<id>` | `META` | settings, seats, status, `seq`, `snapshotSeq`. GSI1 `LOBBY#<status>` / `<createdAt>` for open/public game lists (sparse) |
+| Game meta | `GAME#<id>` | `META` | settings, seats, status, `seq`, `snapshotSeq`. GSI1 `LOBBY#<status>` / `<createdAt>` for open/public game lists (sparse), `<endedAt>` once finished, so recent results list newest ended first; a finished game's `ended` (reason, winner, game win, whether it counts, standings) for lists and its result page (M6.6) |
 | Game event | `GAME#<id>` | `EV#<seq:010d>` | public + private payloads, `engineVersion`, `actor`, `commandId` |
 | Game snapshot | `GAME#<id>` | `SNAP#<seq:010d>` | gzip-compressed full state, written every 25 events |
 | Command dedupe | `GAME#<id>` | `CMD#<commandId>` | TTL 24 h |
@@ -592,7 +592,9 @@ primitives, and corrections are new commands.
   `withWithdrawals` post-step nullifies it on pool or blood lost or spent, or combat; `nextTurn`
   takes a seat still withdrawing out (`Withdrew`, ½ VP) as its turn would start. `GameEnded`
   carries the awards, the winner and any game win; `status: 'finished'`
-  then refuses every command, and the lobby lists the game as finished. The turn never passes to
+  then refuses every command, and the lobby lists the game under recent results. Its table stays
+  viewable as it ended, read-only for everyone; ending reveals no hidden information (M6.6, F1);
+  `GET /games/:id/result` gives a counted game's result to anyone, private or not (F2). The turn never passes to
   a seat that is out.
 - **Control**: a card is controlled by the seat whose zone it's in, except a master card put on
   another Methuselah's minion, which stays under the control of whoever played it

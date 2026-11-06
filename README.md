@@ -83,7 +83,8 @@ pnpm sandbox      # play the engine in the terminal as any seat, judge or admin
 - Results and stats can be rebuilt from the finished games' event logs (after a change to how they
   are counted, or to backfill): `TABLE_NAME=ts-local-main DYNAMODB_ENDPOINT=http://localhost:8000
   pnpm --filter @torn-signpost/backend stats:rebuild`; against the beta, set `TABLE_NAME=ts-beta-main`
-  and leave out `DYNAMODB_ENDPOINT` (it uses your AWS credentials).
+  and leave out `DYNAMODB_ENDPOINT` (it uses your AWS credentials). It also records each finished
+  game's result for the lobby's recent results, for games finished before that was kept.
 - To point the local web client at the live beta API instead:
   `TS_API_URL=https://api.tornsignpost.org pnpm dev:web`.
 - The sandbox starts a three-player table with invented test cards. Type `.help` for commands,

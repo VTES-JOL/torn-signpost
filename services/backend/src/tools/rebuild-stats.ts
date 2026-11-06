@@ -1,6 +1,7 @@
 /**
  * Rebuild every result, stat and history entry from the finished games' event logs (docs/m6-plan.md
  * M6.3, S4): for games finished before stats existed, and after a change to how they're counted.
+ * It also records each finished game's ending on its meta, which the lobby lists (M6.6).
  *
  *   TABLE_NAME=ts-local-main DYNAMODB_ENDPOINT=http://localhost:8000 pnpm stats:rebuild
  *   TABLE_NAME=ts-beta-main CONTENT_URL=https://content.tornsignpost.org pnpm stats:rebuild
@@ -15,6 +16,7 @@ import { DeckStore } from '../db/decks.ts';
 import { ProfileStore } from '../db/profiles.ts';
 import { StatsStore } from '../db/stats.ts';
 import { type GameMeta, GameStore } from '../db/store.ts';
+import { ending } from '../stats/result.ts';
 import { ResultsService } from '../stats/service.ts';
 
 const tableName = process.env.TABLE_NAME;
@@ -54,6 +56,8 @@ for (const id of finished) {
   const meta = (await games.getMeta(id)) as GameMeta;
   const base = (await games.snapshot(id)) ?? newGame(id);
   const state = (await games.events(id, base.seq)).reduce(evolve, base);
+  const end = ending(meta, state);
+  if (end) await games.setEnded(meta, end);
   if (await results.record(meta, state)) counted++;
 }
 console.log(`${finished.length} finished games, ${counted} counted.`);

@@ -11,7 +11,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import type { GameMeta } from '../db/store.ts';
 import { testContent, testDeck } from '../testing/content.ts';
-import { counts, gameResult, mainClans, statDeltas } from './result.ts';
+import { counts, ending, gameResult, mainClans, statDeltas } from './result.ts';
 
 const { catalog, index } = await testContent();
 const rng = seededRng(5);
@@ -120,5 +120,26 @@ describe('main clans', () => {
     const { s } = game(5, { decks: [mixed] });
     expect(mainClans(s, '1', index)).toEqual(['Brujah', 'Tremere']);
     expect(mainClans(s, '2', index)).toEqual(['Toreador']);
+  });
+});
+
+describe('the ending kept on the meta (docs/m6-plan.md M6.6)', () => {
+  it('has the standings, most VP first, with names, and whether the game counts', () => {
+    const { s, meta } = game(4);
+    expect(ending(meta, s)).toBeUndefined();
+    let st = apply(s, { type: 'AdjustVp', seat: '3', delta: 2 }, { kind: 'judge', user: 'jo' });
+    st = apply(st, { type: 'EndGame' }, admin);
+    const e = ending(meta, st);
+    expect(e).toMatchObject({ at, reason: 'admin', winner: '3', gameWin: true, counted: false });
+    expect(e?.standings[0]).toEqual({ seat: '3', user: 'u3', name: 'u3', vp: 2.5, finish: 'in' });
+    expect(e?.standings).toHaveLength(4);
+  });
+
+  it('has no winner when nobody has the most VP alone', () => {
+    const { s, meta } = game(5);
+    const e = ending(meta, apply(s, { type: 'EndGame' }, admin));
+    expect(e?.winner).toBeUndefined();
+    expect(e?.gameWin).toBeUndefined();
+    expect(e?.counted).toBe(true);
   });
 });

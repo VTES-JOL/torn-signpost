@@ -25,6 +25,9 @@ what the API or engine would refuse anyway).
   [API, engine projection].
 - See results and stats: players' pages and the leaderboards, for counted games (casual games of
   5 players, tournament games), private ones included (STATS-01..03) [API].
+- See a finished game's result (standings, VP, who won): any public game's, and a private
+  counted game's, though its table, log and chat stay with its players (docs/m6-plan.md M6.6,
+  F2) [API]. The lobby lists recent public results.
 - Nothing else: every change needs a signed-in user [API].
 
 ## Players (signed in)
@@ -33,7 +36,8 @@ what the API or engine would refuse anyway).
 - **At their seat** (GAME-10) [engine]: anything on their own cards and zones and on public ones;
   never another player's hidden zones. The structured flow: phases, actions, blocks, passes,
   holds, auto-pass and stops.
-- **Chat** in games they're seated in (or have joined) [API]. `@name` mentions notify.
+- **Chat** in games they're seated in (or have joined) [API], also once the game is over (F3).
+  `@name` mentions notify.
 - **Call a judge**, one open call each (GAME-18) [engine].
 - **Pause** a game with a table timer for 1–5 minutes, up to 15 minutes in all per game, and lift
   their own pause early (TEMPO-05) [engine].
@@ -52,7 +56,8 @@ what the API or engine would refuse anyway).
 
 ## Judges (`judge` group)
 
-- **Any game, without a seat** [API]: see private games; chat; act as a judge.
+- **Any game, without a seat** [API]: see private games; chat; act as a judge (not once the
+  game is over: a finished game takes no commands from anyone).
 - **Every primitive, on any seat** (GAME-10): move, lock, adjust counters and pools, reveal, and
   the rest, including other players' hidden zones; each change is logged as the judge's [engine].
 - **Look at hidden cards** with `JudgeReveal`; judges see the cards they've looked at, players

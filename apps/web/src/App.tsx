@@ -13,6 +13,7 @@ import { AuthCallback } from './pages/AuthCallback.tsx';
 import { CardsPage } from './pages/CardsPage.tsx';
 import { DeckEditor } from './pages/DeckEditor.tsx';
 import { DecksPage } from './pages/DecksPage.tsx';
+import { GameResultPage } from './pages/GameResultPage.tsx';
 import { GamesPage } from './pages/GamesPage.tsx';
 import { JudgePage } from './pages/JudgePage.tsx';
 import { LeaderboardsPage } from './pages/LeaderboardsPage.tsx';
@@ -45,6 +46,7 @@ export function App() {
                     <Route path="decks/:id" element={<DeckEditor />} />
                     <Route path="games" element={<GamesPage />} />
                     <Route path="games/:id" element={<GamePage />} />
+                    <Route path="games/:id/result" element={<GameResultPage />} />
                     {config.flags.replay && (
                       <>
                         <Route path="replay" element={<ReplayListPage />} />

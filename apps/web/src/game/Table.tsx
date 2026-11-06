@@ -70,13 +70,16 @@ export function Table(props: {
   judge: boolean;
   onError: (m: string) => void;
 }) {
-  const { client, snapshot, catalog, judge, onError } = props;
+  const { client, snapshot, catalog, onError } = props;
   const view = snapshot.view;
+  // Nobody acts on a finished table, judges included (docs/m6-plan.md M6.6).
+  const judge = props.judge && view.status !== 'finished';
   const judgeCalls = !!useConfig().flags.judgeCalls;
   const { user } = useAuth();
-  // An ousted (or withdrawn) player only watches from now on, like a spectator.
+  // An ousted (or withdrawn) player only watches from now on, like a spectator; so does everyone
+  // once the game is over (docs/m6-plan.md M6.6).
   const outOfGame = !!snapshot.seat && isOut(view, snapshot.seat);
-  const seat = outOfGame ? undefined : snapshot.seat;
+  const seat = outOfGame || view.status === 'finished' ? undefined : snapshot.seat;
   const [menu, setMenu] = useState<{ card: CardInstance; anchor: DOMRect }>();
   const [inspected, setInspected] = useState<CardInstance>();
   const [picking, setPicking] = useState<CardInstance>();
@@ -182,6 +185,7 @@ export function Table(props: {
           if (command) send(command);
         }}
       >
+        <GameOver view={view} seatName={client.seatName} />
         <FlowBar
           view={view}
           seat={seat}
@@ -203,7 +207,6 @@ export function Table(props: {
             send={send}
           />
         )}
-        <GameOver view={view} seatName={client.seatName} />
         <EndGameControls
           view={view}
           seat={seat}
@@ -336,20 +339,24 @@ function SeatArea({
         >
           Pool {s.pool}
         </span>
-        <button
-          type="button"
-          aria-label={`Lower ${client.seatName(seat)}'s pool`}
-          onClick={() => send({ type: 'AdjustPool', seat, delta: -1 })}
-        >
-          −
-        </button>
-        <button
-          type="button"
-          aria-label={`Raise ${client.seatName(seat)}'s pool`}
-          onClick={() => send({ type: 'AdjustPool', seat, delta: 1 })}
-        >
-          +
-        </button>
+        {view.status === 'active' && (
+          <>
+            <button
+              type="button"
+              aria-label={`Lower ${client.seatName(seat)}'s pool`}
+              onClick={() => send({ type: 'AdjustPool', seat, delta: -1 })}
+            >
+              −
+            </button>
+            <button
+              type="button"
+              aria-label={`Raise ${client.seatName(seat)}'s pool`}
+              onClick={() => send({ type: 'AdjustPool', seat, delta: 1 })}
+            >
+              +
+            </button>
+          </>
+        )}
         <span>VP {s.vp}</span>
       </header>
       <div className="seat-zones">

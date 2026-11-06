@@ -56,37 +56,41 @@ export function ConsolePanel(props: {
           </li>
         ))}
       </ol>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void run();
-        }}
-      >
-        <input
-          aria-label="Console command"
-          placeholder="e.g. blood +2 ready:1, draw 2, move hand:1 ready"
-          value={input}
-          autoComplete="off"
-          spellCheck={false}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Tab' && suggestions.length) {
-              e.preventDefault();
-              complete();
-            } else if (e.key === 'ArrowUp') {
-              e.preventDefault();
-              const next = Math.min(cursor + 1, history.length - 1);
-              setCursor(next);
-              setInput(history[next] ?? input);
-            } else if (e.key === 'ArrowDown') {
-              e.preventDefault();
-              const next = Math.max(cursor - 1, -1);
-              setCursor(next);
-              setInput(next < 0 ? '' : (history[next] ?? ''));
-            }
+      {props.snapshot.view.status === 'finished' ? (
+        <p className="muted small">The game is over: the console takes no more commands.</p>
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void run();
           }}
-        />
-      </form>
+        >
+          <input
+            aria-label="Console command"
+            placeholder="e.g. blood +2 ready:1, draw 2, move hand:1 ready"
+            value={input}
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Tab' && suggestions.length) {
+                e.preventDefault();
+                complete();
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                const next = Math.min(cursor + 1, history.length - 1);
+                setCursor(next);
+                setInput(history[next] ?? input);
+              } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                const next = Math.max(cursor - 1, -1);
+                setCursor(next);
+                setInput(next < 0 ? '' : (history[next] ?? ''));
+              }
+            }}
+          />
+        </form>
+      )}
       {suggestions.length > 0 && <p className="muted small">Tab: {suggestions.join(' · ')}</p>}
     </div>
   );

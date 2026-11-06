@@ -105,6 +105,10 @@ export function createApp(config: AppConfig): Hono<Env> {
   app.get('/games/:id', async (c) =>
     c.json(await games().details(c.var.identity, c.req.param('id'))),
   );
+  // A finished game's result: public for counted games, even private ones (M6.6, F2).
+  app.get('/games/:id/result', async (c) =>
+    c.json(await games().result(c.var.identity, c.req.param('id'))),
+  );
   app.post('/games/:id/join', async (c) =>
     c.json(
       await games().join(c.var.identity, c.req.param('id'), await body(c.req, JoinGameRequest)),

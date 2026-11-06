@@ -11,6 +11,7 @@ import type { ConnectionGateway } from '../realtime/gateway.ts';
 import { Fanout } from '../realtime/realtime.ts';
 import { testContent, testDeck } from '../testing/content.ts';
 import { dynamoAvailable, testStore } from '../testing/dynamo.ts';
+import { ending } from './result.ts';
 import { MIN_LEADERBOARD_GAMES, ResultsService } from './service.ts';
 
 const available = await dynamoAvailable();
@@ -179,6 +180,14 @@ describe.skipIf(!available)('results and stats (DynamoDB Local)', () => {
     const state = (await store.events(id, 0)).reduce(evolve, newGame(id));
     await results.record(meta as NonNullable<typeof meta>, state);
     expect(await snapshot()).toEqual(before);
+
+    // The rebuild also backfills the ending on games finished before it was kept (M6.6).
+    const end = ending(meta as NonNullable<typeof meta>, state);
+    await store.setEnded(meta as NonNullable<typeof meta>, end as NonNullable<typeof end>);
+    expect((await store.getMeta(id))?.ended).toEqual(
+      (await games.list(ada, 'finished')).find((g) => g.id === id)?.ended,
+    );
+    expect((await store.getMeta(id))?.ended?.at).toBe(before.result?.endedAt);
   });
 
   it('ranks players with enough games that season: game wins, then VP', {
@@ -204,5 +213,57 @@ describe.skipIf(!available)('results and stats (DynamoDB Local)', () => {
     const fresh = setup().results;
     const later = await fresh.leaderboard({ season: '2026' });
     expect(later.entries.some((e) => e.key === sub(few[0] as Identity))).toBe(false);
+  });
+
+  it('keeps the ending on the meta, and lists finished public games newest ended first (M6.6)', async () => {
+    const { games } = setup();
+    const five = players(5);
+    const first = await finishedGame(games, five, {
+      vp: { seatOf: five[3] as Identity, delta: 2 },
+    });
+    const second = await finishedGame(games, players(4));
+    const list = await games.list({ kind: 'guest' }, 'finished');
+    const ids = list.map((g) => g.id);
+    expect(ids.indexOf(second)).toBeGreaterThanOrEqual(0);
+    expect(ids.indexOf(second)).toBeLessThan(ids.indexOf(first));
+    expect(list.length).toBeLessThanOrEqual(20);
+    const ended = list.find((g) => g.id === first)?.ended;
+    expect(ended).toMatchObject({
+      reason: 'admin',
+      winner: expect.any(String),
+      gameWin: true,
+      counted: true,
+    });
+    expect(ended?.standings[0]).toMatchObject({
+      user: sub(five[3] as Identity),
+      vp: 2.5,
+      finish: 'in',
+    });
+    expect(list.find((g) => g.id === second)?.ended?.counted).toBe(false);
+  });
+
+  it('shows a private counted game’s result to anyone, and an uncounted one only to its players (F2)', async () => {
+    const { games } = setup();
+    const guest: Identity = { kind: 'guest' };
+    const stranger = user('stranger');
+    const five = players(5);
+    const counted = await finishedGame(games, five, { visibility: 'private' });
+    expect((await games.result(guest, counted)).ended?.standings).toHaveLength(5);
+    // Its table stays with its players.
+    await expect(games.details(stranger, counted)).rejects.toMatchObject({ status: 404 });
+
+    const four = players(4);
+    const uncounted = await finishedGame(games, four, { visibility: 'private' });
+    await expect(games.result(stranger, uncounted)).rejects.toMatchObject({ status: 404 });
+    expect((await games.result(four[0] as Identity, uncounted)).ended?.counted).toBe(false);
+
+    // A game still in progress has no result.
+    const g = await games.create(five[0] as Identity, {
+      name: 'Running',
+      format: 'standard',
+      visibility: 'public',
+      maxSeats: 5,
+    });
+    await expect(games.result(guest, g.id)).rejects.toMatchObject({ status: 404 });
   });
 });

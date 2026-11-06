@@ -49,7 +49,7 @@ export async function api<T = unknown>(
 /** A started game with these players (the first creates it), each with the test deck. */
 export async function startGame(
   players: string[],
-  opts: { timeLimitMinutes?: number } = {},
+  opts: { timeLimitMinutes?: number; visibility?: 'public' | 'private' } = {},
 ): Promise<{ id: string; name: string }> {
   const [host = ''] = players;
   const name = `E2E ${randomUUID().slice(0, 8)}`;

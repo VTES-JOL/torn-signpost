@@ -3,7 +3,7 @@
  *
  * | Item | PK | SK |
  * |---|---|---|
- * | Game meta | `GAME#<id>` | `META` (GSI1 `LOBBY#<status>` / createdAt, public games only) |
+ * | Game meta | `GAME#<id>` | `META` (GSI1 `LOBBY#<status>` / createdAt, or the end time once finished; public games only) |
  * | Event | `GAME#<id>` | `EV#<seq:010d>` |
  * | Snapshot | `GAME#<id>` | `SNAP#<seq:010d>` (gzip JSON) |
  * | Command dedupe | `GAME#<id>` | `CMD#<commandId>` (TTL 24 h) |
@@ -26,6 +26,7 @@ import {
   type QueryCommandInput,
   TransactWriteCommand,
   type TransactWriteCommandInput,
+  UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import type { GameEvent, GameState, JudgeCall } from '@torn-signpost/engine';
 import type {
@@ -33,6 +34,7 @@ import type {
   CreateGameRequest,
   DeckCards,
   Escalation,
+  GameEnding,
   JudgeQueueEntry,
   LobbyStatus,
 } from '@torn-signpost/protocol';
@@ -55,6 +57,8 @@ export interface GameMeta extends CreateGameRequest {
   createdAt: string;
   seq: number;
   engineVersion: string;
+  /** Set as the game finishes (M6.6). */
+  ended?: GameEnding;
 }
 
 export interface StoredCommand {
@@ -231,6 +235,22 @@ export class GameStore {
     return metas.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
+  /** Record a finished game's ending (the rebuild's backfill, M6.6); lists it by its end time. */
+  async setEnded(meta: GameMeta, ended: GameEnding): Promise<void> {
+    const listed = meta.visibility === 'public';
+    await this.db.send(
+      new UpdateCommand({
+        TableName: this.table,
+        Key: { PK: gameKey(meta.id), SK: 'META' },
+        UpdateExpression: `SET ended = :ended${listed ? ', GSI1PK = :pk, GSI1SK = :at' : ''}`,
+        ExpressionAttributeValues: {
+          ':ended': ended,
+          ...(listed ? { ':pk': 'LOBBY#finished', ':at': ended.at } : {}),
+        },
+      }),
+    );
+  }
+
   /** Events with seq > `after`, oldest first. */
   async events(id: string, after: number, limit?: number): Promise<GameEvent[]> {
     const items = await this.query(
@@ -287,7 +307,7 @@ export class GameStore {
     commandId: string;
     user: string;
     snapshot?: GameState;
-    meta?: Partial<Pick<GameMeta, 'status' | 'players'>>;
+    meta?: Partial<Pick<GameMeta, 'status' | 'players' | 'ended'>>;
     /** Public games move between lobby lists as their status changes. */
     listed?: boolean;
   }): Promise<AppendResult> {
@@ -303,7 +323,16 @@ export class GameStore {
       if (args.listed) {
         sets.push('GSI1PK = :lobby');
         values[':lobby'] = `LOBBY#${args.meta.status}`;
+        // Finished games list newest ended first.
+        if (args.meta.ended) {
+          sets.push('GSI1SK = :endedAt');
+          values[':endedAt'] = args.meta.ended.at;
+        }
       }
+    }
+    if (args.meta?.ended) {
+      sets.push('ended = :ended');
+      values[':ended'] = args.meta.ended;
     }
     if (args.meta?.players) {
       sets.push('players = :players');
@@ -542,12 +571,14 @@ export class GameStore {
     }));
   }
 
-  private lobbyIndex(meta: Pick<GameMeta, 'visibility' | 'status' | 'createdAt' | 'players'>) {
+  private lobbyIndex(
+    meta: Pick<GameMeta, 'visibility' | 'status' | 'createdAt' | 'players' | 'ended'>,
+  ) {
     return {
       playerCount: meta.players.length,
       userIds: meta.players.length ? new Set(meta.players.map((p) => p.user)) : undefined,
       ...(meta.visibility === 'public'
-        ? { GSI1PK: `LOBBY#${meta.status}`, GSI1SK: meta.createdAt }
+        ? { GSI1PK: `LOBBY#${meta.status}`, GSI1SK: meta.ended?.at ?? meta.createdAt }
         : {}),
     };
   }

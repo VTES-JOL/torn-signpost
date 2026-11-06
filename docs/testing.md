@@ -60,7 +60,8 @@ the measured numbers.
   the part under test is driven through the UI. Covered so far: a bleed with a block decision and
   its resolution, pausing and resuming, and a judge call from the table through the judge queue to
   a ruling, a notification reaching a player elsewhere on the site, and email settings and
-  unsubscribe links, game end, withdrawal, and results on players' pages and the leaderboard. Run with `pnpm build` and `pnpm db:up`, then `pnpm --filter @torn-signpost/web
+  unsubscribe links, game end, withdrawal, results on players' pages and the leaderboard, and the finished game (a
+  guest seeing it end live, recent results, a read-only finished table, a private game's result). Run with `pnpm build` and `pnpm db:up`, then `pnpm --filter @torn-signpost/web
   test:e2e`; it uses its own ports and table, so a running `pnpm dev` is left alone. CI keeps
   traces of failures (`npx playwright show-trace`). Add a test when a change touches one of these
   flows or adds a new one players depend on; layout and styling are still checked by hand.

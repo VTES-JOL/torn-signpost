@@ -16,6 +16,7 @@ import {
 import { z } from 'zod';
 import { DeckCards } from './decks.ts';
 import type { Notification } from './notifications.ts';
+import type { EndReason, Finish } from './stats.ts';
 
 const Id = z.string().min(1).max(64);
 const ZoneId = z.templateLiteral([z.string().min(1).max(64), ':', z.enum(ZONE_NAMES)]);
@@ -196,6 +197,21 @@ export interface GameSummary {
   createdBy: string;
   createdAt: string;
   seq: number;
+  /** A finished game's result, for lists and the result page (docs/m6-plan.md M6.6). */
+  ended?: GameEnding;
+}
+
+/** How a finished game ended: what a list of games, or its result page, shows. */
+export interface GameEnding {
+  at: string;
+  reason: EndReason;
+  /** The winning seat, if any. */
+  winner?: string;
+  gameWin?: boolean;
+  /** Counted in results and stats (casual games of 5 players, tournament games). */
+  counted: boolean;
+  /** Most VP first. */
+  standings: { seat: string; user: string; name: string; vp: number; finish: Finish }[];
 }
 
 /** An open judge call in the judge queue (GAME-18), across all games. */
