@@ -50,7 +50,7 @@ Increment 1 fixes it.
 | Q1 | How much is a withdrawal worth? | Rulebook: 1 VP. VEKN Tournament Rules and zero-vtes 90.9: half a VP | **Half a VP everywhere**, as zero-vtes rules (one scoring rule for every game) |
 | Q2 | When does a game at its time limit end? | M5b plan, from Tournament Rules 3.1.1: with the current minion action, if any, or at the end of the current phase | As in the M5b plan: the engine ends it there; an admin can end it at once |
 | Q3 | Can a casual game end early by agreement? | Not in the rules; tournaments allow no such thing | **Yes for casual games**: every Methuselah still in the game agrees, scored as a timeout. Tournament games end only naturally, at the time limit, or by an admin |
-| Q4 | How far does combat go? | GAME-07 is a "should"; zero-vtes batches 4, 21, 22, 29 | **Guided steps** (range, strikes chosen each round, damage, prevention, presses, torpor), with card effects by hand. No card-specific automation |
+| Q4 | How far does combat go? | GAME-07 is a "should"; zero-vtes batches 4, 21, 22, 29 | **Guided steps** (range, strikes chosen each round, damage, prevention, presses, torpor), with card effects by hand. No card-specific automation. **Settled (2026-11-06)**: each step a window, like the phases; see M6.4 |
 | Q5 | Where do votes come from? | Titles, the Edge, political action cards, Prisci ballots (zero-vtes 5.1–5.4, Batch 19) | Players **declare** their votes from those sources; the engine checks what it can know (the Edge, the calling card's vote, titles printed on vampires in play) and tallies. Unknown sources are accepted as overrides, like grants |
 | Q6 | What do stats count? | STATS-01..03, DQ8 | ~~Every finished game; leaderboards from games with at least 4 players~~ **Superseded (2026-11-05, M6.3)**: only casual games of 5 players and tournament games count, by format, calendar-year seasons; replaced players as DQ8 |
 
@@ -233,18 +233,111 @@ change. Result corrections by organisers come with tournaments (TOURN-05, M7).
 
 ### M6.4 Combat steps (GAME-07)
 
-- **Engine**: combat as rounds of steps, each an ordered window like the action's: before range,
-  determine range (maneuvers), before strikes, strikes (each combatant chooses; a hand strike by
-  default, zero-vtes 4.3), strike resolution with damage and prevention (the preventer chooses
-  which points go unprevented, 4.2), damage applied (blood to mend, torpor or burning for
-  vampires; life for allies), presses, end of round, and the after-combat window (4.1). Additional
-  strikes come after the normal pair (47.2). A combatant no longer ready plays end-of-round cards
-  only (4.5).
-- **Commands**: `ChooseRange`, `ChooseStrike{kind, damage?, ...}`, `Prevent{points}`,
-  `Press{continue|end}`, with overrides for anything a card changes.
-- **Web**: the combat panel with the current step, both combatants, and the choices.
-- **Tests**: scenarios for a plain fight, ranged combat, prevention, presses, torpor, an ally
-  burned; property tests extended to combat.
+Combat runs like the phases: a window for each step of the round, with the two combatants
+passing in priority order. The engine keeps track of the mechanics (round, step, range, strikes,
+damage); which card may be played in which step is left to the players, as everywhere else, and
+shown to the table in the log.
+
+**Today:** a successful block moves the action to `combat`, which waits on both players until
+either sends `EndCombat`. Everything in between is done by hand with the free-form commands.
+
+**Decisions** (2026-11-06, from the user's design):
+
+- **C1 Steps are windows.** Each round goes Before range → Range → Before strikes → Strikes →
+  Damage → Press → End of round (the rulebook's combat sequence). Each is a `combat` window
+  holding the acting minion's controller, then the opposing minion's (the acting minion has the
+  first opportunity at every step). Anything done in a step returns the impulse to the other
+  combatant and resets the passes; two passes in a row end the step and open the next.
+- **C2 Only the two combatants are in the windows.** Other players can still `hold` and use the
+  free-form commands. Combat windows ignore auto-pass settings: a combatant passes by hand, or
+  with C6.
+- **C3 Card timing isn't enforced, but every move is in context.** Every log line in combat names
+  the round and step ("Round 1 · Before strikes: Beast plays Immortal Grapple"), so the table can
+  see what was played when, and a judge can be called on it.
+- **C4 Every combat move can name a source.** A card in hand is played as `play` would play it
+  (ash heap, or wherever it goes, and replaced); a card in play (a weapon, equipment, the minion
+  itself) is only referenced. Same `via` as `block` today. A hand strike needs none.
+- **C5 The engine applies the damage** when the Damage step closes, from the strikes and
+  preventions declared: vampires mend normal damage with blood, unmended damage sends them to
+  torpor, aggravated damage on a wounded vampire burns blood or burns the vampire; allies lose
+  life and burn at 0. Mistakes are fixed with the usual commands.
+- **C6 Pass to strikes.** A combatant can pass every step up to Strikes in one go (and, from
+  Damage, up to the end of the round). The standing pass is dropped as soon as the other combatant
+  does anything in between, so they never miss a response.
+
+**State:** the action at `combat` gains `combat { round, step, range: 'close'|'long', acting,
+opposing, lastManeuver?, strikes, pending?, press?, passUntil? }`; `ImpulseWindow.kind` gains
+`combat` (with its `step`). An action already at `combat` without it (games from before this)
+keeps today's behaviour: `EndCombat` only.
+
+**Commands** (engine, then console):
+
+| Engine | Console | Checks and effect |
+|---|---|---|
+| `Maneuver { to, source? }` | `maneuver long\|close [via <card>]` | Range step, the sender's combatant. Refused if the range is already `to`. Sets the range and who maneuvered last. "Theo Bell maneuvers to long using .44 Magnum" |
+| `Strike { kind, damage?, ranged?, aggravated?, first?, source?, note? }` | `strike hand [n]` · `strike 2R via ".44 Magnum"` · `strike dodge [via <card>]` · `strike ends via <card>` · `strike steal <n> via <card>` · `strike none` · flags `first`, `A` in the damage (`2A`, `2RA`) | Strikes step: the acting combatant announces first, then the opposing one, so each sees what they face. Kinds `hand`, `damage` (from a card or weapon), `dodge`, `combat-ends`, `steal-blood`, `other` (with a note), `none`. A strike without R at long range is shown as having no effect and does nothing. "Theo Bell strikes with .44 Magnum for 2R damage" |
+| `Prevent { points, source? }` | `prevent <n> [via <card>]` | Damage step: reduces the damage pending against the sender's combatant, in the order played. "Beast prevents 1 with Skin of Rock" |
+| `Press { mode, source? }` | `press continue\|end [via <card>]` | Press step. A press to end cancels a press to continue. "Theo Bell presses to continue with Pursuit" |
+| `UseCard { card, note? }` | `use <card> ["note"]` | Uses an ability of a card in play, anywhere in the game, not only in combat: "Theo Bell uses .44 Magnum: +1 strength". Logged; nothing else happens |
+| `PassUntil { step }` | `pass strikes` · `pass round` | C6 |
+| `PlayCard`, `Pass`, `EndCombat` | `play`, `pass`, `endcombat` | As now, with the step in the log. `EndCombat` stays the escape hatch: either combatant or a judge ends the combat at once |
+
+**How a round resolves:**
+
+- Strikes closes once both have announced (they can still `play` and `use` around that).
+- Damage pending is worked out from the strikes: Combat ends first (combat ends, End of round
+  follows), then first strikes, then the rest; a dodge cancels the other strike's effect on the
+  dodger; steal blood moves blood and isn't damage. With a first strike, Damage runs for first
+  strikes, then again for normal ones if the striker is still ready.
+- When Damage closes, C5 applies the damage, normal before aggravated. A combatant no longer
+  ready (torpor, burned) ends the combat after End of round.
+- **Additional strikes**: in Damage, a combatant can announce one (`strike … extra`, with a
+  source); after the damage is applied, Strikes and Damage run again for the additional strikes
+  only, at the same range, without the steps before.
+- Press closes with a press to continue standing → round 2 from Before range; otherwise End of
+  round, then the combat ends and the action ends as blocked.
+
+**Starting combat other ways:** an unblocked action can end in combat ("enter combat" actions):
+`ResolveAction { outcome: 'combat', opponent }` (`resolve combat <minion>`) starts it with the
+acting minion against that minion, without ending the action first. Combat started by card
+effects outside an action stays by hand for now.
+
+**Who the game waits on:** `waitingOn` in combat is the combatant holding the impulse, kind
+`combat`, so deadlines, notifications and the status bar work as for other windows.
+
+**Web:** a combat panel in place of the flow bar: the step track (current step lit), round and
+range; both combatants with blood or life, the strikes announced and the damage pending; the
+buttons for the step (Maneuver…, Strike…, Prevent…, Press…, Play a card, Use a card…, Pass, Pass
+to strikes). Each source picker lists the hand, then the minion and its cards in play. **Use a
+card…** is also in the card menu of every card in play.
+
+**Split:**
+
+- **M6.4a** (2–3 days): the steps and windows (C1, C2, C6), Maneuver, Strike (announced, not yet
+  applied), UseCard, the round and step in the log (C3), `resolve combat`, the combat panel.
+  Damage, Press and End of round are plain windows; the combatants adjust blood by hand.
+- **M6.4b** (2–3 days): damage pending and applied (C5), Prevent, first strike, dodge, combat
+  ends, steal blood, additional strikes, presses and later rounds, torpor and burning ending the
+  combat.
+
+**Tests:**
+
+- Engine: each step's window order and closing; responses resetting passes; the range and last
+  maneuver; strike order (acting first); a strike without R at long range; pass to strikes
+  dropped when the other combatant acts; old games at `combat` keeping `EndCombat`.
+- Scenarios (`.scenario` files through the console): a plain hand-strike fight; a maneuver war
+  with a gun; Immortal Grapple before strikes; prevention; aggravated damage burning a wounded
+  vampire; an ally burned; a press to continue answered by a press to end; additional strikes;
+  first strike sending the other to torpor before it strikes; combat ends.
+- Properties: a combat always ends; the game never waits on nobody; damage applied never takes
+  blood or life below 0.
+- Browser: two players fight a round through the panel, the spectator sees each step in the log.
+- Docs: `docs/flow.md` (the combat steps, commands and lifecycle), `docs/console.md` (the new
+  commands), architecture §4.3–4.4, `docs/roles.md` if a role's powers change (none planned:
+  judges can already end combat).
+
+**Later:** diablerie (with torpor's rescue and leave actions), card-specific combat effects
+(GAME-14), combat outside an action.
 
 ### M6.5 Referendums
 
@@ -337,7 +430,7 @@ players' pages.
 | 1 | Game end and scoring | — | 2–3 days |
 | 2 | Withdrawal | 1 | 1–2 days |
 | 3 | Results and stats | 1 | 2–3 days |
-| 4 | Combat steps | — | 4–6 days |
+| 4 | Combat steps (4a steps and strikes, 4b damage and presses) | — | 4–6 days |
 | 5 | Referendums | — | 3–4 days |
 | 6 | Spectators and the finished game | 1 | 1–1½ days |
 | — | M5b leftovers | — | 1–2 days, alongside |
