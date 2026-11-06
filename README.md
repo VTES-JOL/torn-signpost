@@ -85,6 +85,11 @@ pnpm sandbox      # play the engine in the terminal as any seat, judge or admin
   pnpm --filter @torn-signpost/backend stats:rebuild`; against the beta, set `TABLE_NAME=ts-beta-main`
   and leave out `DYNAMODB_ENDPOINT` (it uses your AWS credentials). It also records each finished
   game's result for the lobby's recent results, for games finished before that was kept.
+- To clear out test games, `pnpm --filter @torn-signpost/backend games:clear` (same `TABLE_NAME`
+  and `DYNAMODB_ENDPOINT` as above) deletes every game, with its log, chat and result, the judge
+  and admin queues, notifications, and every player's game history and stats. Accounts, handles,
+  email settings and decks stay. It only lists what it would delete until you add `--yes`, and
+  refuses while anyone has a game open. Stats are empty afterwards: no rebuild needed.
 - To point the local web client at the live beta API instead:
   `TS_API_URL=https://api.tornsignpost.org pnpm dev:web`.
 - The sandbox starts a three-player table with invented test cards. Type `.help` for commands,

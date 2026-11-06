@@ -9,7 +9,8 @@
     "db:init": "tsx src/local/init-db.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "stats:rebuild": "tsx src/tools/rebuild-stats.ts"
+    "stats:rebuild": "tsx src/tools/rebuild-stats.ts",
+    "games:clear": "tsx src/tools/clear-games.ts"
   },
   "dependencies": {
     "@aws-sdk/client-apigatewaymanagementapi": "3.1151.0",
