@@ -725,6 +725,9 @@ function bodiesFor(
       if (a.declined.includes(s)) reject('forbidden', 'You already declined to block this action');
       if (a.blockAttempt) reject('not-now', 'A block attempt is already pending');
       const minion = readyMinion(cmd.minion, s);
+      // Only ready unlocked minions block (rulebook, "Locking and Unlocking").
+      if (minion.locked)
+        reject('invalid', 'Locked minions cannot block; unlock it first if allowed');
       if (a.eligible.includes(s)) {
         return settle(state, [{ type: 'BlockAttempted', seat: s, minion: minion.id }]);
       }
@@ -824,7 +827,10 @@ function bodiesFor(
       if (cmd.outcome === 'success' && a.kind === 'bleed' && a.target !== undefined) {
         const loss = Math.min(amount, seat(a.target).pool);
         if (loss > 0) bodies.push({ type: 'PoolAdjusted', seat: a.target, delta: -loss });
-        if (cmd.edge && !seat(a.seat).hasEdge) bodies.push({ type: 'EdgeSet', seat: a.seat });
+        // Only a bleed of 1 or more is successful and takes the Edge (zero-vtes rules-qa 24.4).
+        if (cmd.edge && amount > 0 && !seat(a.seat).hasEdge) {
+          bodies.push({ type: 'EdgeSet', seat: a.seat });
+        }
       }
       if (cmd.outcome === 'success' && a.kind === 'hunt') {
         const m = state.cards[a.minion];

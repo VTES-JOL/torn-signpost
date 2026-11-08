@@ -196,7 +196,8 @@ Checks:
 - The sender isn't the acting player and hasn't declined. A decision not to block stands, whatever
   card effect comes later.
 - No block attempt is pending.
-- The minion is the sender's, in their ready region.
+- The minion is the sender's, in their ready region, and unlocked (rulebook: only ready unlocked
+  minions block; a card that lets a locked minion block means unlocking it first).
 - A sender that isn't an eligible blocker needs a card effect; see [Overrides](#overrides).
 
 Effect: records the block attempt and returns the impulse to the acting player with the passes
@@ -229,7 +230,8 @@ is a whole number of 0 or more (default 1).
 
 Effect:
 - Successful bleed: the target loses that much pool (no more than they have). With `edge`, the
-  acting seat takes the Edge if it doesn't already have it.
+  acting seat takes the Edge if it doesn't already have it, unless the amount is 0: only a bleed
+  of 1 or more is successful (zero-vtes rules-qa 24.4).
 - Successful hunt: the minion gains that much blood, capped at its capacity when the catalog
   knows it.
 - The action card is finished and the action ends.

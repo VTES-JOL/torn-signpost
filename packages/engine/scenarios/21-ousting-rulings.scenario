@@ -1,0 +1,52 @@
+# The rulebook's ousting example (vekn.net/rulebook, "Ending the Game"): Justine, Lisa, Richard,
+# Scott and Steve sit clockwise in that order. Whoever ousts them, a Methuselah gains 1 VP and 6
+# pool when their prey is ousted, and the next Methuselah on becomes their prey. The last one left
+# gains 1 more VP. The most VP wins, ousted or not.
+seed 5
+seat J justine
+seat L lisa
+seat R richard
+seat S scott
+seat T steve
+crypt J "Vera Nightfall" *12
+library J "Iron Ward" *40
+crypt L "Tomas Grey" *12
+library L "Quick Feed" *40
+crypt R "Ilse Várga" *12
+library R "Gate Hound" *40
+crypt S "Vera Nightfall" *12
+library S "Iron Ward" *40
+crypt T "Tomas Grey" *12
+library T "Quick Feed" *40
+start
+
+# Steve is ousted first: he is Scott's prey, so Scott gains 6 pool and 1 VP.
+J> pool -30 T
+expect ousted T true
+expect vp S 1
+expect pool S 36
+log public T was ousted; S gains 1 VP and 6 pool
+
+# Scott is ousted next, by Richard: Scott is Richard's prey, so Richard gains 6 pool and 1 VP. Scott
+# keeps his VP.
+R> pool -36 S
+expect vp R 1
+expect pool R 36
+expect vp S 1
+
+# Lisa is ousted next, so Justine gains 6 pool and 1 VP.
+J> pool -30 L
+expect vp J 1
+expect pool J 36
+
+# Justine and Richard are each other's prey. Richard's pool doesn't save him: Justine gains 1 VP
+# for her prey, and 1 more for being the last Methuselah left.
+J> pool -36 R
+expect vp J 3
+expect vp R 1
+expect vp S 1
+expect vp L 0
+expect vp T 0
+expect ended last-standing
+expect winner J
+expect gamewin J

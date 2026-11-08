@@ -11,6 +11,9 @@ deploys only when they pass.
    and `log` lines. A bug fix starts with the scenario line that reproduces it. Scenarios use
    invented cards, so they run everywhere. Scenarios with real cards
    (`scenarios/real-cards/`) only run where a local content pack exists, never in CI (LEGAL-08).
+   Build rules scenarios from real-world examples: the rulebook's worked examples and published
+   rulings (zero-vtes `docs/rules-qa.md`, VEKN card rulings, judges' forum answers). Cite the
+   source in a comment and expect what it says; scenarios 19–21 show the pattern.
 2. **Unit tests** (`decide.test.ts` and others) for rejections, permissions and edge cases that would
    clutter a scenario.
 3. **Property tests** (`projection.property.test.ts`, fast-check) play 150 random games per

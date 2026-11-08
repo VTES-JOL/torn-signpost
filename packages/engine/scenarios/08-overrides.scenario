@@ -87,6 +87,7 @@ expect action none
 A> unlock A:ready:1
 
 # An untagged reaction is accepted as unverified.
+C> unlock C:ready:1
 A> bleed A:ready:1
 C> hold
 B> pass

@@ -452,6 +452,12 @@ and `docs/roles.md` whenever a role gains or loses a power (every milestone, fro
 - **Turn limits the engine doesn't enforce yet**: hand size (and the cards that change it), the
   influence phase's transfer limit, and one master phase action a turn. When hand size is
   enforced, withdrawal's "less than a full hand" (M6.2) uses it instead of 7.
+- **Other rules left to the players** (found checking the commands against the rulebook,
+  scenarios 20 and 21): the first turns' 1, 2 and 3 transfers and the transfer costs; the Edge's
+  pool in the unlock phase; one bleed and one political action per minion a turn, and the same
+  action card or card in play once a turn; a ready vampire with no blood must hunt; allies don't
+  hunt or take political actions, and can't act the turn they're recruited; stealth and
+  intercept; one discard phase action; unique cards and contests.
 - Card-specific automation (GAME-14).
 - Replays of finished games from their event log (GAME-17).
 - Tournament results, standings and the archon export: with tournaments, M7.

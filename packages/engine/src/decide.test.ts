@@ -346,6 +346,21 @@ describe('game end (GAME-08/09, docs/m6-plan.md M6.1)', () => {
     expect(s.result?.gameWin).toBeUndefined();
   });
 
+  it('ousted with their prey: the VP, but not the 6 pool (rulebook, "Ending the Game")', () => {
+    // A B C D clockwise: B's prey is C. C is at 0 pool as B goes out, so both go at once.
+    const r = start({ seats: seats(4) });
+    if (!r.ok) throw new Error(r.rejection.message);
+    let s = r.events.reduce(evolve, newGame('g'));
+    s = { ...s, seats: s.seats.map((x) => (x.id === 'C' ? { ...x, pool: 0 } : x)) };
+    s = apply(s, { type: 'AdjustPool', seat: 'B', delta: -30 }, judge);
+    const at = (id: string) => s.seats.find((x) => x.id === id);
+    expect(at('B')?.ousted).toBeDefined();
+    expect(at('C')?.ousted).toBeDefined();
+    expect(at('B')).toMatchObject({ vp: 1, pool: 0 });
+    expect(at('A')).toMatchObject({ vp: 1, pool: 36 });
+    expect(s.status).toBe('active');
+  });
+
   it('never passes the turn to a seat that is out: the last oust ends the game', () => {
     // The beta's "every seat ousted, turn passed to an ousted seat" game: here the player whose
     // turn it is goes out last, leaving one Methuselah.

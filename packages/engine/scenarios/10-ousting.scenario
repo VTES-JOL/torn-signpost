@@ -88,6 +88,7 @@ D> move D:uncontrolled:1 ready
 D> next
 D> next
 expect turn 3 D minion
+A> unlock A:ready:1
 D> hunt D:ready:1
 expect impulse A
 A> block A:ready:1

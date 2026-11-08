@@ -1,0 +1,83 @@
+# Actions and blocks, by the rulebook's own examples (vekn.net/rulebook, "Game Setup", "Minion
+# Phase", "Bleed", "Hunt", "Who May Attempt to Block") and zero-vtes docs/rules-qa.md (24.4).
+# Sarah plays first; her prey is Alexis, her predator Pieter.
+seed 5
+seat S sarah
+seat X alexis
+seat P pieter
+crypt S "Vera Nightfall" *12
+library S "Iron Ward" *40
+crypt X "Tomas Grey" *12
+library X "Quick Feed" *40
+crypt P "Ilse Várga" *12
+library P "Gate Hound" *40
+start
+
+# Game Setup: 30 pool each, 7 cards in hand, 4 crypt cards in the uncontrolled region, and the
+# Edge in the centre, nobody's.
+expect pool S 30
+expect pool X 30
+expect count S:hand 7
+expect count S:uncontrolled 4
+expect edge none
+
+S> move S:uncontrolled:1 ready
+S> move S:uncontrolled:1 ready
+X> move X:uncontrolled:1 ready
+P> move P:uncontrolled:1 ready
+S> transfer +2 S:ready:1
+S> next
+S> next
+expect turn 1 S minion
+
+# "Belinde bleeds Alexis for 1": a bleed is directed at the prey, and only the target may block.
+# Unblocked and for 1 or more, it succeeds and Sarah takes the Edge.
+S> bleed S:ready:1
+expect action bleed S blocks
+reject P> block P:ready:1
+X> pass
+S> resolve success 1 edge
+expect pool X 29
+expect edge S
+expect action none
+
+# Only unlocked minions act. You can never bleed yourself: naming your own seat bleeds the prey.
+reject S> bleed S:ready:1
+S> bleed S:ready:2 S
+log public S: Vera Nightfall bleeds X
+S> cancel
+S> unlock S:ready:2
+
+# "The Dowager recruits the Underbridge Stray": undirected, so the prey and the predator may
+# block, the prey first. Alexis declines, and that decision is final; then Pieter may block.
+S> recruit S:ready:2 with S:hand:1
+expect action recruit S blocks
+expect impulse X
+X> pass
+reject X> block X:ready:1
+expect impulse P
+P> block P:ready:1
+S> pass
+P> pass
+expect action recruit S combat
+S> endcombat
+expect action none
+
+# A blocker must be ready and unlocked: Ilse, locked by her block, can't block again.
+S> unlock S:ready:1
+S> hunt S:ready:1
+X> pass
+reject P> block P:ready:1
+P> pass
+# Hunt: the vampire gains 1 blood (Vera: 2 → 3).
+S> resolve success
+expect card S:ready:1 blood 3
+
+# zero-vtes 24.4: a bleed is successful only for 1 or more; a bleed of 0 takes no Edge.
+S> edge none
+S> unlock S:ready:1
+S> bleed S:ready:1
+X> pass
+S> resolve success 0 edge
+expect pool X 29
+expect edge none
