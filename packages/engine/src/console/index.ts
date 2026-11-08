@@ -91,9 +91,11 @@ export const CONSOLE_COMMANDS: Record<string, Syntax> = {
   strike: {
     args: ['options'],
     usage:
-      'strike hand [n] | <n>[R][A] | dodge | ends | steal <n> | other "text" | none  [first] [via <card>]',
+      'strike hand [n] | <n>[R][A] | dodge | ends | steal <n> | other "text" | none  [first] [via <card>]  |  strike extra [via <card>]',
   },
   use: { args: ['card', 'options'], usage: 'use <card> ["what it does"]' },
+  prevent: { args: ['count', 'options'], usage: 'prevent <n> [via <card>]' },
+  press: { args: ['options'], usage: 'press continue|end [via <card>]' },
   hold: { args: [], usage: 'hold  (ask the open window to wait for you)' },
   pause: { args: ['count'], usage: 'pause [minutes]  (1–5, games with a table timer)' },
   resume: { args: [], usage: 'resume  (lift your pause early)' },
@@ -352,8 +354,33 @@ function parse(tokens: string[], ctx: ConsoleContext): Command {
         ? { type: 'Maneuver', to }
         : { type: 'Maneuver', to, source: card(via).id };
     }
+    case 'prevent': {
+      const opts = options(['via']);
+      if (opts.positional !== 1) usage();
+      const cmd: Command = { type: 'Prevent', points: integer(arg(0)) };
+      const via = opts.at.get('via');
+      if (via !== undefined) cmd.source = card(via).id;
+      return cmd;
+    }
+    case 'press': {
+      const opts = options(['via']);
+      if (opts.positional !== 1) usage();
+      const m = arg(0).toLowerCase();
+      const mode = m === 'continue' || m === 'end' ? m : usage();
+      const via = opts.at.get('via');
+      return via === undefined
+        ? { type: 'Press', mode }
+        : { type: 'Press', mode, source: card(via).id };
+    }
     case 'strike': {
       const opts = options(['via']);
+      if (args[0]?.toLowerCase() === 'extra') {
+        if (opts.positional !== 1) usage();
+        const via = opts.at.get('via');
+        return via === undefined
+          ? { type: 'AdditionalStrike' }
+          : { type: 'AdditionalStrike', source: card(via).id };
+      }
       const words = args.slice(0, opts.positional);
       const first = words.some((w) => w.toLowerCase() === 'first');
       const [what = '', ...rest] = words.filter((w) => w.toLowerCase() !== 'first');
@@ -673,7 +700,9 @@ export function completeConsole(input: string, ctx: ConsoleContext): string[] {
       if (verb === 'pass') return match(['strikes', 'round']);
       if (verb === 'maneuver') return match(['long', 'close', 'via']);
       if (verb === 'strike')
-        return match(['hand', 'dodge', 'ends', 'steal', 'other', 'none', 'first', 'via']);
+        return match(['hand', 'dodge', 'ends', 'steal', 'other', 'none', 'first', 'extra', 'via']);
+      if (verb === 'press') return match(['continue', 'end', 'via']);
+      if (verb === 'prevent') return match(['via']);
       if (verb === 'use') return [];
       return match(['with']);
     }

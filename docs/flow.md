@@ -406,26 +406,49 @@ Each round goes through the rulebook's steps, each an impulse window (`kind: 'co
 - **Who is in it.** Only the two combatants' Methuselahs, the acting minion's first. Other players
   can't play cards in a combat step (they keep the free-form commands). Auto-pass settings and
   stops don't apply.
-- **Moving on.** Doing something (`Maneuver`, `PlayCard`, `UseCard`) hands the impulse to the other
-  combatant and voids the passes (`ImpulseReset { to }`). Two passes in a row end the step and open
-  the next (`CombatStepped`).
+- **Moving on.** Doing something (`Maneuver`, `PlayCard`, `UseCard`, `Prevent`,
+  `AdditionalStrike`, `Press`) returns the impulse to the acting minion's Methuselah, who may play
+  again, and voids the passes (`ImpulseReset`; rulebook, "Impulse"). The other side answers once
+  the acting side passes. Two passes in a row end the step and open the next (`CombatStepped`). A
+  minion can't maneuver, or press, twice in a row.
 - **Card timing isn't checked.** Any card may be played or used in any step. Every log line in a
   step starts with the round and step ("Round 1 · Before strikes: Beast plays Immortal Grapple"),
   so the table sees what was played when.
-- **Sources.** `Maneuver` and `Strike` may name the card they come from. A card in the hand is
+- **Sources.** `Maneuver`, `Strike`, `Prevent`, `AdditionalStrike` and `Press` may name the card
+  they come from. A card in the hand is
   played with the move (to the ash heap, and replaced): "Tomas Grey plays Quick Feed to maneuver
   to close". A face-up card in play (a weapon, the minion itself) is only named: "Vera Nightfall
   maneuvers to long using Iron Ward".
-- **The end.** For now (M6.4a), after End of round the combat ends, and with it the action:
-  blocked, or done for an action that entered combat. Damage, prevention and presses come with
-  M6.4b; until then players adjust blood and life by hand. `EndCombat` ends the combat at once,
-  in any step.
+- **The end.** After End of round, another round follows if a press to continue stood;
+  otherwise the combat ends, and with it the action: blocked, or done for an action that entered
+  combat. `EndCombat` ends the combat at once, in any step.
 
 | Step | What the engine does |
 |---|---|
 | Range | Keeps the range (close to start) and who maneuvered last. `Maneuver { to, source? }` is refused outside this step or to the current range |
-| Strikes | The acting minion's Methuselah chooses first: `Strike { kind, amount?, ranged?, aggravated?, first?, source?, note? }`. Choosing is their pass, so the other chooses next. Nobody can pass before choosing (`kind: 'none'` doesn't strike); one strike per combatant a round. A judge passing for a combatant who hasn't chosen means no strike |
+| Strikes | The acting minion's Methuselah chooses first: `Strike { kind, amount?, ranged?, aggravated?, first?, source?, note? }`. Choosing is their pass, so the other chooses next. Nobody can pass before choosing (`kind: 'none'` doesn't strike); one strike per combatant an exchange. A judge passing for a combatant who hasn't chosen means no strike. When both are in, the engine works out the damage (below); a combat-ends strike skips to End of round, and the combat ends then |
+| Damage | Shows the damage each minion is about to take (`DamagePending`). `Prevent { points, source? }` takes points off the damage your combatant is about to take, aggravated first. `AdditionalStrike { source? }` claims another strike. When the step closes, the damage is applied (below); then any strikes still to resolve after first strikes, then an exchange of additional strikes (Strikes and Damage again, at the same range, by those who claimed one), then Press. A combatant no longer ready (torpor, burned) skips the presses: the combat ends after End of round |
+| Press | `Press { mode: 'continue' \| 'end', source? }`; a minion can't press twice in a row. If more presses to continue than to end stand when the step closes, another round follows the end of this one, from Before range |
 | Every step | `PlayCard`, `UseCard`, `Pass`, `PassUntil`, `EndCombat` |
+
+**Which strikes land** (`combat.ts`): a hand strike, a damage strike and steal blood do their
+amount; dodge, combat ends and `other` strikes do no damage. A dodge cancels the other strike
+against the dodger. At long range, only ranged strikes (R) land. First strikes resolve on their
+own first, when other strikes follow; those then resolve only if their striker is still ready.
+
+**Taking damage** (C5). Prevention comes off aggravated damage first.
+- A **vampire** (a crypt card) mends normal damage with blood, one for one; damage it can't mend
+  leaves it wounded. Aggravated damage can't be mended: the first point wounds an unwounded
+  vampire, and each point on a wounded vampire costs a blood, or the vampire is burned. A
+  wounded vampire goes to torpor, keeping its cards.
+- An **ally** (a library card) loses a life per point, aggravated or not, and is burned at 0.
+- **Steal blood** moves blood, or an ally's life, to the thief (an ally thief gains life), before
+  anyone mends: the thief can mend damage taken in the same exchange with it. What's over a
+  vampire thief's capacity drains off at once. An ally with no life left is burned. It isn't
+  damage, so it can't be prevented ("Vera Nightfall steals 2 life from Gate Hound; 1 drains off,
+  over capacity").
+- A burned minion goes to its owner's ash heap with the cards on it. The log tells each outcome
+  ("Tomas Grey takes 2 damage (1 blood) and goes to torpor").
 
 **Standing passes** (`PassUntil { until: 'strikes' | 'end' }`, "Pass to strikes", "Pass to the end
 of the round"): the combatant passes each step automatically, up to the strikes or to the end of
@@ -434,7 +457,8 @@ in the combat, so the other side can answer.
 
 **Using a card** (`UseCard { card, note? }`): an ability of one of your face-up cards in play,
 logged ("Vera Nightfall uses Iron Ward: +1 strength"); nothing else happens. It works outside
-combat too; in any window it needs the impulse and hands it on, like playing a card.
+combat too; in any window it needs the impulse and returns it to the acting side, like playing a
+card.
 
 Combats from before combat steps (an action at `combat` with no `combat` state) still wait on
 both players until one of them ends it with `EndCombat`.

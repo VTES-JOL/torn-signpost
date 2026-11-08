@@ -181,6 +181,10 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
         else addCounter(d, holder.card, 'blood', delta);
       }
       break;
+    case 'BloodStolen':
+      addCounter(d, ev.from, ev.taken, -ev.amount);
+      addCounter(d, ev.to, ev.gained, ev.amount - (ev.drained ?? 0));
+      break;
     case 'CardAttached': {
       const next: CardInstance = { ...cardOf(d, ev.card) };
       if (ev.to) next.attachedTo = ev.to;
@@ -295,11 +299,15 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
       break;
     case 'CombatStepped': {
       const c = combatOf(d);
-      const next: CombatState = { ...c, step: ev.step, round: ev.round };
+      // Damage pending belongs to the damage step that is closing.
+      const { pending: _p, later: _l, ...rest } = c;
+      const next: CombatState = { ...rest, step: ev.step, round: ev.round };
       if (ev.round !== c.round) {
         next.strikes = [];
-        delete next.lastManeuver;
-        delete next.passUntil;
+        for (const k of ['lastManeuver', 'passUntil', 'presses', 'continues', 'ending'] as const)
+          delete next[k];
+        delete next.exchange;
+        delete next.additional;
       } else if (c.passUntil) {
         // A standing pass to the strikes is used up once they come.
         const reached = COMBAT_STEPS.indexOf(ev.step) >= COMBAT_STEPS.indexOf('strikes');
@@ -307,8 +315,55 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
         if (left.length) next.passUntil = Object.fromEntries(left);
         else delete next.passUntil;
       }
+      if (ev.exchange) {
+        // An additional exchange: fresh strikes, by the minions that claimed one.
+        next.exchange = [...ev.exchange];
+        next.strikes = [];
+        delete next.additional;
+      }
+      if (ev.continues) next.continues = true;
+      if (ev.ending) next.ending = true;
       d.action = { ...actionOf(d), combat: next };
       if (d.window) d.window = { ...d.window, cursor: 0, passes: 0 };
+      break;
+    }
+    case 'DamagePending': {
+      const pending: CombatState['pending'] = {};
+      for (const [id, p] of Object.entries(ev.pending)) if (p) pending[id] = { ...p };
+      const next: CombatState = { ...combatOf(d), pending };
+      if (ev.later) next.later = true;
+      d.action = { ...actionOf(d), combat: next };
+      break;
+    }
+    case 'DamagePrevented': {
+      const c = combatOf(d);
+      const p = c.pending?.[ev.minion];
+      if (!p) break;
+      const prevented = Math.min(p.prevented + ev.points, p.normal + p.aggravated);
+      d.action = {
+        ...actionOf(d),
+        combat: { ...c, pending: { ...c.pending, [ev.minion]: { ...p, prevented } } },
+      };
+      break;
+    }
+    case 'DamageResolved':
+      break;
+    case 'AdditionalStrikeClaimed': {
+      const c = combatOf(d);
+      d.action = {
+        ...actionOf(d),
+        combat: { ...c, additional: [...(c.additional ?? []), ev.minion] },
+      };
+      break;
+    }
+    case 'Pressed': {
+      const c = combatOf(d);
+      const press = { minion: ev.minion, mode: ev.mode } as NonNullable<
+        CombatState['presses']
+      >[number];
+      if (ev.source !== undefined) press.source = ev.source;
+      if (ev.sourceCardId !== undefined) press.sourceCardId = ev.sourceCardId;
+      d.action = { ...actionOf(d), combat: { ...c, presses: [...(c.presses ?? []), press] } };
       break;
     }
     case 'Maneuvered':
@@ -578,10 +633,9 @@ function combatOf(d: GameState): CombatState {
   return c;
 }
 
+/** Combat state is plain data; copied whole (no structuredClone: the engine runs in JavaScriptCore too). */
 function copyCombat(c: CombatState): CombatState {
-  const out: CombatState = { ...c, strikes: c.strikes.map((x) => ({ ...x })) };
-  if (c.passUntil) out.passUntil = { ...c.passUntil };
-  return out;
+  return JSON.parse(JSON.stringify(c)) as CombatState;
 }
 
 function actionOf(d: GameState): ActionState {

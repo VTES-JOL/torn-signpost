@@ -22,6 +22,7 @@ import type {
   JudgeCall,
   Override,
   PassTarget,
+  PendingDamage,
   Phase,
   Range,
   Ruling,
@@ -78,6 +79,8 @@ export type EventBody =
       ousted?: SeatId;
       /** Played as the source of the combat move that follows, which tells it (M6.4). */
       source?: true;
+      /** Moved by combat damage (to torpor, or burned): `DamageResolved` tells it. */
+      combat?: true;
     }
   | { type: 'CardsDrawn'; seat: SeatId; from: 'library' | 'crypt'; cards: Rekey[] }
   | {
@@ -97,10 +100,25 @@ export type EventBody =
     }
   | { type: 'CardLocked'; card: InstanceId; locked: boolean }
   | { type: 'CardContested'; card: InstanceId; contested: boolean }
-  | { type: 'CounterAdjusted'; card: InstanceId; counter: Counter; delta: number }
+  /** `combat`: blood or life lost to combat damage, which `DamageResolved` tells. */
+  | { type: 'CounterAdjusted'; card: InstanceId; counter: Counter; delta: number; combat?: true }
   | { type: 'PoolAdjusted'; seat: SeatId; delta: number }
   | { type: 'VpAdjusted'; seat: SeatId; delta: number }
   | { type: 'BloodTransferred'; from: BloodHolder; to: BloodHolder; amount: number }
+  /**
+   * A strike steals blood (M6.4b): `amount` moves from the victim's blood, or an ally's life
+   * (`taken`), to the thief's blood, or an ally thief's life (`gained`). `drained` of it is over the
+   * thief's capacity, and drains off at once.
+   */
+  | {
+      type: 'BloodStolen';
+      from: InstanceId;
+      to: InstanceId;
+      amount: number;
+      taken: 'blood' | 'life';
+      gained: 'blood' | 'life';
+      drained?: number;
+    }
   | { type: 'CardAttached'; card: InstanceId; to?: InstanceId }
   | { type: 'CardRevealed'; card: InstanceId; cardId?: CardId }
   | { type: 'JudgeRevealed'; card: InstanceId; cardId?: CardId }
@@ -166,8 +184,60 @@ export type EventBody =
   | { type: 'ActionResolving' }
   /** Combat begins, at the first step of round 1, at close range. */
   | { type: 'CombatStarted'; combat: CombatState }
-  /** The combat moves on to `step` (and `round`, from a press, M6.4b); passes start over. */
-  | { type: 'CombatStepped'; step: CombatStep; round: number }
+  /**
+   * The combat moves on to `step` (and `round`, after a press to continue); passes start over.
+   * `exchange`: an additional exchange of strikes, by those minions only. `continues`: a press to
+   * continue stood. `ending`: the combat ends after this round's end.
+   */
+  | {
+      type: 'CombatStepped';
+      step: CombatStep;
+      round: number;
+      exchange?: InstanceId[];
+      continues?: true;
+      ending?: true;
+    }
+  /** The strikes are in: the damage and blood each minion is about to take. */
+  | { type: 'DamagePending'; pending: Partial<Record<InstanceId, PendingDamage>>; later?: true }
+  | {
+      type: 'DamagePrevented';
+      minion: InstanceId;
+      points: number;
+      source?: InstanceId;
+      sourceCardId?: CardId;
+      played?: true;
+    }
+  /**
+   * The damage step closed: what a minion took. Its blood, life and whereabouts change in the
+   * events that follow.
+   */
+  | {
+      type: 'DamageResolved';
+      minion: InstanceId;
+      /** Damage after prevention. */
+      damage: number;
+      aggravated: number;
+      /** Blood a vampire burned: mending, and for aggravated damage while wounded. */
+      blood: number;
+      /** Life an ally lost. */
+      life?: number;
+      outcome: 'unhurt' | 'mended' | 'hurt' | 'torpor' | 'burned';
+    }
+  | {
+      type: 'AdditionalStrikeClaimed';
+      minion: InstanceId;
+      source?: InstanceId;
+      sourceCardId?: CardId;
+      played?: true;
+    }
+  | {
+      type: 'Pressed';
+      minion: InstanceId;
+      mode: 'continue' | 'end';
+      source?: InstanceId;
+      sourceCardId?: CardId;
+      played?: true;
+    }
   | {
       type: 'Maneuvered';
       minion: InstanceId;

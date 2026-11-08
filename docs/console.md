@@ -44,6 +44,9 @@ player. The parser lives in `packages/engine/src/console` and is shared by every
 | `resolve combat <minion>` | Your unblocked action enters combat: your acting minion fights that minion |
 | `maneuver long\|close [via <card>]` | In the range step of a combat: change the range. `via` names the card it comes from: in your hand (played with it) or in play |
 | `strike hand [n]` · `strike <n>[R][A]` · `strike dodge` · `strike ends` · `strike steal <n>` · `strike other "text"` · `strike none`, then `[first] [via <card>]` | In the strike step: choose your strike. `2R` is 2 ranged damage, `2A` aggravated, `2RA` both; `ends` is a combat-ends strike; `first` marks a first strike. The acting minion chooses first |
+| `prevent <n> [via <card>]` | In the damage step: prevent damage your minion is about to take |
+| `strike extra [via <card>]` | In the damage step: take an additional strike, after this exchange |
+| `press continue\|end [via <card>]` | In the press step: press to continue the combat, or to end it |
 | `pass strikes` / `pass round` | In combat: pass every step up to the strikes, or to the end of the round, unless the other combatant does something first |
 | `use <card> ["what it does"]` | Use an ability of one of your face-up cards in play: logged for the table, with the combat step if in one. In a window it needs the impulse |
 | `endcombat` | End the combat at once, in any step; a blocked action counts as blocked |

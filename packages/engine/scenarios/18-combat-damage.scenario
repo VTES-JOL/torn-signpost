@@ -1,0 +1,146 @@
+# Combat damage, presses and additional strikes (docs/flow.md, "Combat"; docs/m6-plan.md M6.4b).
+# When the damage step closes, the engine applies the strikes: vampires mend normal damage with
+# blood, go to torpor with damage they can't mend, and are burned by aggravated damage they can't
+# pay for once wounded; allies lose life and burn at 0. A combatant who leaves ends the combat
+# after the end of the round. Seating A B C: A's prey is B, its predator C. Iron Ward stands in for
+# a weapon, Quick Feed for a combat card, Gate Hound is an ally.
+seed 5
+seat A alice
+seat B bob
+seat C carol
+crypt A "Vera Nightfall" *12
+library A "Iron Ward" *40
+crypt B "Tomas Grey" *12
+library B "Quick Feed" *40
+crypt C "Ilse Várga" *12
+library C "Gate Hound" *40
+start
+
+A> move A:uncontrolled:1 ready
+B> move B:uncontrolled:1 ready
+C> move C:uncontrolled:1 ready
+A> transfer +3 A:ready:1
+B> transfer +1 B:ready:1
+A> play "Iron Ward" on A:ready:1
+A> next
+A> next
+
+# Prevention, then torpor: Tomas takes 3, prevents 1, mends 1 with his only blood, and goes to
+# torpor with the last; the combat ends after the end of the round, with no press step.
+A> bleed A:ready:1
+B> block B:ready:1
+A> pass
+B> pass
+A> pass strikes
+B> pass strikes
+A> strike 3
+B> strike hand
+log public Round 1 · Damage: Tomas Grey is about to take 3 damage; Vera Nightfall is about to take 1 damage
+expect combat 1 damage close
+A> pass
+B> prevent 1 via B:hand:1
+log public Round 1 · Damage: Tomas Grey plays Quick Feed to prevent 1 damage
+expect impulse A
+A> pass
+B> pass
+log public Round 1 · Damage: Tomas Grey takes 2 damage (1 blood) and goes to torpor
+log public Round 1 · Damage: Vera Nightfall takes 1 damage and mends it (1 blood)
+expect count B:torpor 1
+expect card B:torpor:1 blood 0
+expect card A:ready:1 blood 2
+expect combat 1 end-of-round close
+A> pass
+B> pass
+expect action none
+log public Combat is over; the action was blocked
+
+# An ally: Gate Hound blocks a hunt. Round 1: it loses a life, and Vera takes an additional
+# strike, which only she uses. Presses: to continue, answered by a press to end, pressed again.
+C> play "Gate Hound" ready
+C> life +4 C:ready:2
+A> unlock A:ready:1
+A> hunt A:ready:1
+B> pass
+C> block C:ready:2
+A> pass
+C> pass
+A> pass strikes
+C> pass strikes
+A> strike 1
+C> strike hand
+A> strike extra
+log public Round 1 · Damage: Vera Nightfall takes an additional strike
+expect impulse A
+A> pass
+C> pass
+log public Round 1 · Damage: Gate Hound takes 1 damage: −1 life
+log public Additional strikes: Vera Nightfall
+expect combat 1 strikes close
+expect impulse A
+A> strike 1
+log public Round 1 · Strikes: Vera Nightfall strikes: 1 damage
+expect combat 1 damage close
+A> pass
+C> pass
+expect card C:ready:2 life 2
+expect card A:ready:1 blood 1
+expect combat 1 press close
+A> press continue
+log public Round 1 · Press: Vera Nightfall presses to continue
+reject:not-now A> press continue
+A> pass
+C> press end
+log public Round 1 · Press: Gate Hound presses to end the combat
+A> press continue
+A> pass
+C> pass
+expect combat 1 end-of-round close
+A> pass
+C> pass
+log public Round 2 of combat
+expect combat 2 before-range close
+
+# Round 2: aggravated damage burns the hound's last life.
+A> pass strikes
+C> pass strikes
+A> strike 2A
+C> strike hand
+A> pass
+C> pass
+log public Round 2 · Damage: Gate Hound takes 2 aggravated and is burned
+expect count C:ashHeap 1
+expect card A:ready:1 blood 0
+expect combat 2 end-of-round close
+A> pass
+C> pass
+expect action none
+
+# A first strike resolves before the other strike. Then aggravated damage on a vampire with no
+# blood: the first point wounds her, the second burns her, and her weapon goes with her.
+C> transfer +5 C:ready:1
+A> unlock A:ready:1
+A> hunt A:ready:1
+B> pass
+C> block C:ready:1
+A> pass
+C> pass
+A> pass strikes
+C> pass strikes
+A> strike 1 first
+C> strike 2A
+log public Round 1 · Damage: Ilse Várga is about to take 1 damage
+A> pass
+C> pass
+log public Round 1 · Damage: Ilse Várga takes 1 damage and mends it (1 blood)
+log public Round 1 · Damage: Vera Nightfall is about to take 2 aggravated damage
+expect combat 1 damage close
+A> pass
+C> pass
+log public Round 1 · Damage: Vera Nightfall takes 2 aggravated and is burned
+expect count A:ready 0
+expect count A:ashHeap 2
+expect card C:ready:1 blood 4
+expect combat 1 end-of-round close
+A> pass
+C> pass
+expect action none

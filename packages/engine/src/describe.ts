@@ -158,8 +158,8 @@ function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): 
           parseZoneId(ev.to).name === 'removed' ? 'is removed from the game' : 'is burned';
         return `${capitalize(name)} ${fate}: ${seatName(ev.ousted)} was ousted`;
       }
-      // Played as the source of a combat move, whose own line tells it.
-      if (ev.source) return '';
+      // Played as the source of a combat move, or moved by combat damage: their own lines tell it.
+      if (ev.source || ev.combat) return '';
       if (ev.played) {
         const into = parseZoneId(ev.to).name === 'ashHeap' ? '' : ` into ${zone(ev.to)}`;
         // Whoever's hand it left: an action card is finished off by whoever ends the action.
@@ -188,11 +188,16 @@ function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): 
     case 'CardContested':
       return `${who} marked ${cardName(ev.card)} as ${ev.contested ? 'contested' : 'uncontested'}`;
     case 'CounterAdjusted':
+      if (ev.combat) return '';
       return `${who}: ${cardName(ev.card)} ${signed(ev.delta)} ${ev.counter}`;
     case 'PoolAdjusted':
       return `${who}: ${seatName(ev.seat)}'s pool ${signed(ev.delta)}`;
     case 'VpAdjusted':
       return `${who}: ${seatName(ev.seat)} ${signed(ev.delta)} VP`;
+    case 'BloodStolen': {
+      const drained = ev.drained ? `; ${ev.drained} drains off, over capacity` : '';
+      return `${cardName(ev.to)} steals ${ev.amount} ${ev.taken} from ${cardName(ev.from)}${drained}`;
+    }
     case 'BloodTransferred':
       return `${who} moved ${ev.amount} blood from ${holder(ev.from)} to ${holder(ev.to)}`;
     case 'CardAttached':
@@ -311,8 +316,66 @@ function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): 
       return ev.combat.cause === 'block'
         ? ''
         : `${cardName(ev.combat.acting)} enters combat with ${cardName(ev.combat.opposing)}`;
-    case 'CombatStepped':
+    case 'CombatStepped': {
+      const c = before.action?.combat;
+      if (c && ev.round > c.round) return `Round ${ev.round} of combat`;
+      if (ev.exchange) {
+        return `Additional strikes: ${ev.exchange.map((m) => cardName(m)).join(' and ')}`;
+      }
       return '';
+    }
+    case 'DamagePending': {
+      const parts = Object.entries(ev.pending).flatMap(([id, p]) => {
+        if (!p) return [];
+        const what = [
+          ...(p.normal ? [`${p.normal} damage`] : []),
+          ...(p.aggravated ? [`${p.aggravated} aggravated damage`] : []),
+          ...(p.stolen ? [`${p.stolen} blood stolen`] : []),
+        ];
+        return what.length ? [`${cardName(id)} is about to take ${what.join(' and ')}`] : [];
+      });
+      return parts.length ? parts.join('; ') : 'No strike lands';
+    }
+    case 'DamagePrevented': {
+      const m = cardName(ev.minion);
+      const src = ev.source === undefined ? undefined : cardName(ev.source, ev.sourceCardId);
+      if (src && ev.played) return `${m} plays ${src} to prevent ${ev.points} damage`;
+      return `${m} prevents ${ev.points} damage${src ? ` with ${src}` : ''}`;
+    }
+    case 'DamageResolved': {
+      const m = cardName(ev.minion);
+      const took = [
+        ...(ev.damage ? [`${ev.damage} damage`] : []),
+        ...(ev.aggravated ? [`${ev.aggravated} aggravated`] : []),
+      ].join(' and ');
+      const blood = ev.blood ? ` (${ev.blood} blood)` : '';
+      switch (ev.outcome) {
+        case 'unhurt':
+          return `${m} takes no damage`;
+        case 'mended':
+          return `${m} takes ${took} and mends it${blood}`;
+        case 'hurt':
+          return `${m} takes ${took}: −${ev.life ?? 0} life`;
+        case 'torpor':
+          return `${m} takes ${took}${blood} and goes to torpor`;
+        case 'burned':
+          return took ? `${m} takes ${took} and is burned` : `${m} has no life left and is burned`;
+      }
+      return '';
+    }
+    case 'AdditionalStrikeClaimed': {
+      const m = cardName(ev.minion);
+      const src = ev.source === undefined ? undefined : cardName(ev.source, ev.sourceCardId);
+      if (src && ev.played) return `${m} plays ${src} for an additional strike`;
+      return `${m} takes an additional strike${src ? ` with ${src}` : ''}`;
+    }
+    case 'Pressed': {
+      const m = cardName(ev.minion);
+      const src = ev.source === undefined ? undefined : cardName(ev.source, ev.sourceCardId);
+      const what = ev.mode === 'continue' ? 'press to continue' : 'press to end the combat';
+      if (src && ev.played) return `${m} plays ${src} to ${what}`;
+      return `${m} ${ev.mode === 'continue' ? 'presses to continue' : 'presses to end the combat'}${src ? ` with ${src}` : ''}`;
+    }
     case 'Maneuvered': {
       const m = cardName(ev.minion);
       const src = ev.source === undefined ? undefined : cardName(ev.source, ev.sourceCardId);

@@ -130,6 +130,13 @@ export const PlayerCommand = z.discriminatedUnion('type', [
     source: opt(Id),
     note: opt(z.string().max(200)),
   }),
+  z.strictObject({
+    type: z.literal('Prevent'),
+    points: z.number().int().min(1).max(99),
+    source: opt(Id),
+  }),
+  z.strictObject({ type: z.literal('AdditionalStrike'), source: opt(Id) }),
+  z.strictObject({ type: z.literal('Press'), mode: z.enum(['continue', 'end']), source: opt(Id) }),
   z.strictObject({ type: z.literal('PassUntil'), until: z.enum(['strikes', 'end']) }),
   z.strictObject({ type: z.literal('UseCard'), card: Id, note: opt(z.string().max(200)) }),
   z.strictObject({ type: z.literal('CancelAction') }),

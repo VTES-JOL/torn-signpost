@@ -28,6 +28,7 @@
       "kind": "library",
       "types": ["Reaction"],
       "grants": ["block-any"]
-    }
+    },
+    { "id": "t-hound", "name": "Gate Hound", "kind": "library", "types": ["Ally"] }
   ]
 }

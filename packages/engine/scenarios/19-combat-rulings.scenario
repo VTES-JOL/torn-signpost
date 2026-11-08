@@ -1,0 +1,260 @@
+# Combat rulings (docs/flow.md, "Combat"): the rulebook's own worked examples and published rulings,
+# replayed on the engine. Sources: the VEKN rulebook (vekn.net/rulebook: "First Strike", "Combat
+# Ends", "Dodge", "Steal Blood", "Additional Strikes", "Damage Resolution", "Press", "End of Round")
+# and zero-vtes docs/rules-qa.md (4.3, 47.2, 58.2, 63.4). Seating A B C: A's prey is B, its predator
+# C. Gate Hound is an ally. Hunts are undirected: B, then C, may block.
+seed 5
+seat A alice
+seat B bob
+seat C carol
+crypt A "Vera Nightfall" *12
+library A "Iron Ward" *40
+crypt B "Tomas Grey" *12
+library B "Quick Feed" *40
+crypt C "Ilse Várga" *12
+library C "Gate Hound" *40
+start
+
+A> move A:uncontrolled:1 ready
+B> move B:uncontrolled:1 ready
+C> move C:uncontrolled:1 ready
+A> transfer +3 A:ready:1
+A> next
+A> next
+
+# Rulebook "Combat Ends": always the first strike to resolve, even before a first strike, and no
+# other strike lands (zero-vtes 63.4). "End of Round": the step still comes when combat ends early.
+A> bleed A:ready:1
+B> block B:ready:1
+A> pass
+B> pass
+A> pass strikes
+B> pass strikes
+A> strike 3 first
+B> strike ends
+expect combat 1 end-of-round close
+A> pass
+B> pass
+expect action none
+expect card A:ready:1 blood 3
+expect count B:torpor 0
+
+# Rulebook "Dodge": a dodge protects even from a first strike (zero-vtes 58.2). Nothing lands, both
+# stay ready, so the press step comes.
+A> unlock A:ready:1
+C> transfer +2 C:ready:1
+A> hunt A:ready:1
+B> pass
+C> block C:ready:1
+A> pass
+C> pass
+A> pass strikes
+C> pass strikes
+A> strike 2 first
+C> strike dodge
+log public Round 1 · Damage: No strike lands
+A> pass
+C> pass
+expect combat 1 press close
+A> pass
+C> pass
+A> pass
+C> pass
+expect action none
+expect card C:ready:1 blood 2
+
+# Rulebook "First Strike": a minion sent to torpor by a first strike doesn't strike at all. With no
+# blood, Tomas can't mend the point. An additional strike claimed then is lost: additional strikes
+# need both combatants still ready (zero-vtes 47.2), and so does the press step.
+A> unlock A:ready:1
+B> unlock B:ready:1
+A> hunt A:ready:1
+B> block B:ready:1
+A> pass
+B> pass
+C> pass
+A> pass strikes
+B> pass strikes
+A> strike 1 first
+B> strike 3
+log public Round 1 · Damage: Tomas Grey is about to take 1 damage
+A> strike extra
+A> pass
+B> pass
+log public Round 1 · Damage: Tomas Grey takes 1 damage and goes to torpor
+expect count B:torpor 1
+expect combat 1 end-of-round close
+A> pass
+B> pass
+expect action none
+expect card A:ready:1 blood 3
+
+# Rulebook "Aggravated damage", Nassir: 1 blood, 1 aggravated damage. It can't be mended: wounded,
+# he goes to torpor with his 1 blood.
+C> transfer -1 C:ready:1
+A> unlock A:ready:1
+C> unlock C:ready:1
+A> hunt A:ready:1
+B> pass
+C> block C:ready:1
+A> pass
+C> pass
+A> pass strikes
+C> pass strikes
+A> strike 1A
+C> strike none
+A> pass
+C> pass
+expect count C:torpor 1
+expect card C:torpor:1 blood 1
+expect combat 1 end-of-round close
+A> pass
+C> pass
+expect action none
+
+# Tamoszius: 2 blood, 3 aggravated. Wounded by the first point, he burns a blood for each of the
+# other two, and goes to torpor empty.
+C> move C:uncontrolled:1 ready
+C> transfer +2 C:ready:1
+A> unlock A:ready:1
+A> hunt A:ready:1
+B> pass
+C> block C:ready:1
+A> pass
+C> pass
+A> pass strikes
+C> pass strikes
+A> strike 3A
+C> strike none
+A> pass
+C> pass
+expect count C:torpor 2
+expect card C:torpor:2 blood 0
+expect combat 1 end-of-round close
+A> pass
+C> pass
+expect action none
+
+# Rulebook "Steal Blood", Chrysanthemum and the Underbridge Stray: the stolen blood comes before
+# mending and drains off above capacity. Vera (capacity 7, 6 blood) steals the hound's 2 life and
+# takes 1: 8 blood, 1 drained, 1 mended, 6 left. The hound has no life left and is burned.
+A> transfer +3 A:ready:1
+expect card A:ready:1 blood 6
+C> play "Gate Hound" ready
+C> life +2 C:ready:1
+A> unlock A:ready:1
+A> hunt A:ready:1
+B> pass
+C> block C:ready:1
+A> pass
+C> pass
+A> pass strikes
+C> pass strikes
+A> strike steal 2
+C> strike hand
+A> pass
+C> pass
+log public Round 1 · Damage: Vera Nightfall steals 2 life from Gate Hound; 1 drains off, over capacity
+expect card A:ready:1 blood 6
+expect count C:ready 0
+expect count C:ashHeap 1
+expect combat 1 end-of-round close
+A> pass
+C> pass
+expect action none
+
+# Rulebook "Additional Strikes", Wauneka and Flávio Gonçalves: a 4-damage strike dodged; Wauneka
+# gains 1 additional strike, Flávio 2. Both hand-strike (1 damage each); then Flávio strikes once
+# more, alone.
+B> move B:uncontrolled:1 ready
+B> transfer +4 B:ready:1
+A> unlock A:ready:1
+A> hunt A:ready:1
+B> block B:ready:1
+A> pass
+B> pass
+C> pass
+A> pass strikes
+B> pass strikes
+A> strike 4
+B> strike dodge
+A> strike extra
+A> pass
+B> strike extra
+A> pass
+B> pass
+log public Additional strikes: Vera Nightfall and Tomas Grey
+A> strike hand
+B> strike hand
+A> pass
+B> strike extra
+A> pass
+B> pass
+log public Round 1 · Damage: Vera Nightfall takes 1 damage and mends it (1 blood)
+log public Round 1 · Damage: Tomas Grey takes 1 damage and mends it (1 blood)
+log public Additional strikes: Tomas Grey
+reject A> strike hand
+B> strike hand
+A> pass
+B> pass
+expect card A:ready:1 blood 4
+expect card B:ready:1 blood 3
+expect combat 1 press close
+A> pass
+B> pass
+A> pass
+B> pass
+expect action none
+
+# Rulebook "Determine Range" and zero-vtes 4.3: at long range a hand strike is still legal, and does
+# nothing; a ranged strike lands.
+A> unlock A:ready:1
+B> unlock B:ready:1
+A> hunt A:ready:1
+B> block B:ready:1
+A> pass
+B> pass
+C> pass
+A> pass
+B> pass
+A> maneuver long via A:hand:1
+expect impulse A
+A> pass
+B> pass
+A> pass
+B> pass
+expect combat 1 strikes long
+A> strike hand
+B> strike 2R
+log public Round 1 · Damage: Vera Nightfall is about to take 2 damage
+A> pass
+B> pass
+expect card A:ready:1 blood 2
+expect card B:ready:1 blood 3
+expect combat 1 press long
+A> pass
+B> pass
+expect combat 1 end-of-round long
+A> pass
+B> pass
+expect action none
+
+# Rulebook "Steal Blood": the ally with no life counters left is burned, with no damage done to it.
+C> play C:hand:1 ready
+C> life +1 C:ready:1
+A> unlock A:ready:1
+A> hunt A:ready:1
+B> pass
+C> block C:ready:1
+A> pass
+C> pass
+A> pass strikes
+C> pass strikes
+A> strike steal 1
+C> strike none
+A> pass
+C> pass
+log public Round 1 · Damage: Vera Nightfall steals 1 life from Gate Hound
+log public Round 1 · Damage: Gate Hound has no life left and is burned
+expect card A:ready:1 blood 3
+expect count C:ashHeap 2

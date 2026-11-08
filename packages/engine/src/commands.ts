@@ -144,6 +144,12 @@ export type Command =
       source?: InstanceId;
       note?: string;
     }
+  /** In the damage step: prevent damage your combatant is about to take. */
+  | { type: 'Prevent'; points: number; source?: InstanceId }
+  /** In the damage step: an additional strike for your combatant, after this exchange. */
+  | { type: 'AdditionalStrike'; source?: InstanceId }
+  /** In the press step: press to continue the combat, or to end it. */
+  | { type: 'Press'; mode: 'continue' | 'end'; source?: InstanceId }
   /** Pass every combat step up to `until`, unless the other combatant does something first. */
   | { type: 'PassUntil'; until: PassTarget }
   | { type: 'EndCombat' }

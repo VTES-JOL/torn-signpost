@@ -174,6 +174,10 @@ describe('combat offers (docs/m6-plan.md M6.4a)', () => {
     expect(maneuver.label).toBe('Maneuver to long…');
     expect(maneuver.build([undefined])).toEqual({ type: 'Maneuver', to: 'long' });
     expect(maneuver.build(['x'])).toEqual({ type: 'Maneuver', to: 'long', source: 'x' });
+    // The acting side keeps the impulse, but can't maneuver twice in a row.
+    const moved = at(`${COMBAT}\nA> pass\nB> pass\nA> maneuver long`, 'A');
+    expect(moved.offers.some((o) => o.id === 'maneuver')).toBe(false);
+    expect(moved.offers.some((o) => o.id === 'pass')).toBe(true);
   });
 
   it('offers the strikes until one is chosen, then the end-of-round pass', () => {
@@ -212,6 +216,46 @@ describe('combat offers (docs/m6-plan.md M6.4a)', () => {
 
     const damage = at(`${strikes}\nA> strike hand\nB> strike none`, 'B');
     expect(byId(damage.offers, 'pass-end').build([])).toEqual({ type: 'PassUntil', until: 'end' });
+  });
+
+  it('offers prevention to whoever is about to take damage, additional strikes, and presses', () => {
+    const strikes = `${COMBAT}\nA> pass strikes\nB> pass strikes`;
+    const damage = `${strikes}\nA> strike 2\nB> strike none\nA> pass`;
+    const b = at(damage, 'B');
+    const prevent = byId(b.offers, 'prevent');
+    expect(prevent.steps[0]).toMatchObject({ kind: 'amount', default: 2 });
+    expect(prevent.build([1, undefined])).toEqual({ type: 'Prevent', points: 1 });
+    expect(prevent.build([2, 'c'])).toEqual({ type: 'Prevent', points: 2, source: 'c' });
+    expect(byId(b.offers, 'additional').build(['c'])).toEqual({
+      type: 'AdditionalStrike',
+      source: 'c',
+    });
+    // A takes no damage: nothing to prevent.
+    const a = at(`${strikes}\nA> strike 2\nB> strike none`, 'A');
+    expect(a.offers.some((o) => o.id === 'prevent')).toBe(false);
+    expect(byId(a.offers, 'additional').build([undefined])).toEqual({ type: 'AdditionalStrike' });
+
+    // B's blood-less vampire goes to torpor: the combat ends, with no presses.
+    const torpor = at(`${damage}\nB> pass\nA> pass`, 'A');
+    expect(torpor.view.action?.combat?.step).toBe('end-of-round');
+
+    const press = at(`${strikes}\nA> strike none\nB> strike none\nA> pass\nB> pass`, 'A');
+    expect(press.view.action?.combat?.step).toBe('press');
+    expect(byId(press.offers, 'press:continue').build([undefined])).toEqual({
+      type: 'Press',
+      mode: 'continue',
+    });
+    expect(byId(press.offers, 'press:end').build(['p'])).toEqual({
+      type: 'Press',
+      mode: 'end',
+      source: 'p',
+    });
+    // Pressed last: no press until the other side answers.
+    const pressed = at(
+      `${strikes}\nA> strike none\nB> strike none\nA> pass\nB> pass\nA> press continue`,
+      'A',
+    );
+    expect(pressed.offers.some((o) => o.id.startsWith('press:'))).toBe(false);
   });
 
   it('offers entering combat when resolving an action', () => {

@@ -21,6 +21,7 @@ import {
   ACTION_KINDS,
   type Actor,
   type CardInstance,
+  COMBAT_STEPS,
   type GameSettings,
   type GameState,
   PHASES,
@@ -201,6 +202,9 @@ function commandFor(state: GameState, [, kind, a, b, c, d]: Step): Command {
     { type: 'Strike', kind: STRIKE_KINDS[c % STRIKE_KINDS.length] ?? 'hand', amount: d % 4 },
     { type: 'PassUntil', until: c % 2 ? 'strikes' : 'end' },
     { type: 'UseCard', card: pick('ready', a) },
+    { type: 'Prevent', points: (d % 3) + 1 },
+    { type: 'AdditionalStrike' },
+    { type: 'Press', mode: c % 2 ? 'continue' : 'end' },
     { type: 'ResolveAction', outcome: 'combat', opponent: other },
   ];
   const pool = [...commands, ...flow];
@@ -227,7 +231,16 @@ function guidedStep(state: GameState, [, kind, a, , c, d]: Step): [Command, Acto
     const source = c % 2 ? { source: card } : d % 2 ? { source: mine[0] ?? 'none' } : {};
     if (fight.step === 'strikes' && !fight.strikes.some((x) => mine.includes(x.minion))) {
       const kind = STRIKE_KINDS[(c + d) % STRIKE_KINDS.length] ?? 'hand';
-      return [{ type: 'Strike', kind, amount: d % 4, first: c % 3 === 0, ...source }, actor];
+      const strike = { amount: d % 4, first: c % 3 === 0, aggravated: d % 3 === 0 };
+      return [{ type: 'Strike', kind, ...strike, ...source }, actor];
+    }
+    const me = mine.find((id) => id === fight.acting || id === fight.opposing);
+    if (fight.step === 'damage' && n >= 6) return [{ type: 'AdditionalStrike', ...source }, actor];
+    if (fight.step === 'damage' && me !== undefined && fight.pending?.[me] && n < 5) {
+      return [{ type: 'Prevent', points: (d % 3) + 1, ...source }, actor];
+    }
+    if (fight.step === 'press' && n < 3) {
+      return [{ type: 'Press', mode: c % 2 ? 'continue' : 'end', ...source }, actor];
     }
     if (fight.step === 'range' && n < 3) {
       return [
@@ -237,8 +250,13 @@ function guidedStep(state: GameState, [, kind, a, , c, d]: Step): [Command, Acto
     }
     if (n === 3) return [{ type: 'PlayCard', card }, actor];
     if (n === 4) return [{ type: 'UseCard', card: mine[0] ?? 'none', note: 'x' }, actor];
-    if (n === 5) return [{ type: 'PassUntil', until: c % 2 ? 'strikes' : 'end' }, actor];
-    if (n === 6 && c % 4 === 0) return [{ type: 'EndCombat' }, actor];
+    if (n === 9 && c % 4 === 0) return [{ type: 'EndCombat' }, actor];
+    // Mostly move the fight along, so random games reach the strikes and the damage.
+    const before = COMBAT_STEPS.indexOf(fight.step) < COMBAT_STEPS.indexOf('strikes');
+    if (before && n >= 7 && !fight.passUntil?.[fs]) {
+      return [{ type: 'PassUntil', until: 'strikes' }, actor];
+    }
+    if (!before && n === 5) return [{ type: 'PassUntil', until: 'end' }, actor];
     return [{ type: 'Pass' }, actor];
   }
   if (state.window) {
@@ -572,6 +590,9 @@ describe('hidden information', { timeout: 60_000 }, () => {
       'StrikeChosen',
       'PassingUntil',
       'CardUsed',
+      // Damage resolving, prevention, additional strikes and presses need random games to get a
+      // combat that far: too rare to count on, so scenarios 17–19 and combat.test.ts cover them.
+      'DamagePending',
       'AutoPassSet',
       'StopsSet',
       'Held',
@@ -776,13 +797,26 @@ describe('withdrawal (GAME-09)', { timeout: 60_000 }, () => {
       const c = after.action?.combat;
       if (after.window?.kind === 'combat') {
         expect(c, 'combat state').toBeDefined();
-        expect(after.window.order).toEqual(combatSeats(after));
+        // Both combatants' Methuselahs, unless a combatant has since left play by hand (and with
+        // it the record of who controls it).
+        const order = after.window.order;
+        expect(order.length).toBeLessThanOrEqual(2);
+        for (const seat of combatSeats(after)) expect(order).toContain(seat);
       }
       if (c) {
         expect(after.action?.stage).toBe('combat');
-        // At most one strike per combatant in a round.
+        // At most one strike per combatant in an exchange.
         const strikers = c.strikes.map((x) => x.minion);
         expect(new Set(strikers).size).toBe(strikers.length);
+        // Prevention never exceeds the damage pending.
+        for (const p of Object.values(c.pending ?? {})) {
+          if (p) expect(p.prevented).toBeLessThanOrEqual(p.normal + p.aggravated);
+        }
+      }
+      // Combat damage never takes a card's blood or life below 0.
+      for (const card of Object.values(after.cards)) {
+        expect(card.counters.blood ?? 0, 'blood').toBeGreaterThanOrEqual(0);
+        expect(card.counters.life ?? 0, 'life').toBeGreaterThanOrEqual(0);
       }
     });
   });

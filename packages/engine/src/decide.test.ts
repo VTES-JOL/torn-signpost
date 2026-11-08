@@ -513,6 +513,123 @@ describe('combat steps (docs/m6-plan.md M6.4a)', () => {
     expect(ended.action).toBeUndefined();
   });
 
+  /** The old combat, now in the strike step of round 1, with blood on both minions. */
+  function striking(blood: [number, number]): GameState {
+    const s = oldCombat();
+    const a = s.action;
+    if (!a) throw new Error('no action');
+    const [acting, opposing] = [a.minion, a.blocker ?? ''];
+    const cards = { ...s.cards };
+    for (const [id, n] of [
+      [acting, blood[0]],
+      [opposing, blood[1]],
+    ] as const) {
+      const c = cards[id];
+      if (c) cards[id] = { ...c, counters: { blood: n } };
+    }
+    return {
+      ...s,
+      cards,
+      action: {
+        ...a,
+        combat: {
+          cause: 'block',
+          acting,
+          opposing,
+          round: 1,
+          step: 'strikes',
+          range: 'close',
+          strikes: [],
+        },
+      },
+      window: { kind: 'combat', phase: 'minion', order: ['A', 'B'], cursor: 0, passes: 0 },
+    };
+  }
+
+  it('skips the damage when combat ends is struck, and ends after the end of the round', () => {
+    let s = striking([2, 2]);
+    s = apply(s, { type: 'Strike', kind: 'hand', amount: 3 }, as('A'));
+    s = apply(s, { type: 'Strike', kind: 'combat-ends' }, as('B'));
+    expect(s.action?.combat).toMatchObject({ step: 'end-of-round', ending: true });
+    expect(s.action?.combat?.pending).toBeUndefined();
+    s = apply(s, { type: 'Pass' }, as('A'));
+    s = apply(s, { type: 'Pass' }, as('B'));
+    expect(s.action).toBeUndefined();
+  });
+
+  it('moves stolen blood to the thief, up to its capacity, and burns the rest', () => {
+    let s = striking([0, 3]);
+    const thief = s.action?.minion ?? '';
+    const victim = s.action?.blocker ?? '';
+    const cap = catalog.get(s.cards[thief]?.cardId ?? '')?.capacity ?? 0;
+    const t = s.cards[thief];
+    if (t) s = { ...s, cards: { ...s.cards, [thief]: { ...t, counters: { blood: cap - 1 } } } };
+    s = apply(s, { type: 'Strike', kind: 'steal-blood', amount: 2 }, as('A'));
+    s = apply(s, { type: 'Strike', kind: 'none' }, as('B'));
+    expect(Object.values(s.action?.combat?.pending ?? {})).toEqual([
+      { by: thief, normal: 0, aggravated: 0, prevented: 0, stolen: 2 },
+    ]);
+    // Blood stolen can't be prevented.
+    expect(run(s, { type: 'Prevent', points: 1 }, as('A')).ok).toBe(false);
+    s = apply(s, { type: 'Pass' }, as('A'));
+    s = apply(s, { type: 'Pass' }, as('B'));
+    expect(s.cards[thief]?.counters.blood).toBe(cap);
+    expect(s.cards[victim]?.counters.blood).toBe(1);
+    expect(s.action?.combat?.step).toBe('press');
+  });
+
+  it('refuses combat moves out of their step, a second strike, and an unknown one', () => {
+    const s = striking([2, 2]);
+    const refused = (cmd: Parameters<typeof run>[1]) => run(s, cmd, as('A')).ok;
+    expect(refused({ type: 'Maneuver', to: 'long' })).toBe(false);
+    expect(refused({ type: 'Prevent', points: 1 })).toBe(false);
+    expect(refused({ type: 'AdditionalStrike' })).toBe(false);
+    expect(refused({ type: 'Press', mode: 'continue' })).toBe(false);
+    expect(refused({ type: 'Strike', kind: 'bogus' as 'hand' })).toBe(false);
+    const struck = apply(s, { type: 'Strike', kind: 'hand' }, as('A'));
+    expect(run(struck, { type: 'Strike', kind: 'hand' }, as('A')).ok).toBe(false);
+  });
+
+  it('steals before mending: the thief mends with the stolen blood (rulebook, "Steal Blood")', () => {
+    let s = striking([0, 3]);
+    const thief = s.action?.minion ?? '';
+    const victim = s.action?.blocker ?? '';
+    s = apply(s, { type: 'Strike', kind: 'steal-blood', amount: 2 }, as('A'));
+    s = apply(s, { type: 'Strike', kind: 'hand', amount: 1 }, as('B'));
+    s = apply(s, { type: 'Pass' }, as('A'));
+    s = apply(s, { type: 'Pass' }, as('B'));
+    // 0 + 2 stolen − 1 mended: still ready, with 1 blood.
+    expect(s.cards[thief]?.counters.blood).toBe(1);
+    expect(s.cards[thief]?.zone).toBe('A:ready');
+    expect(s.cards[victim]?.counters.blood).toBe(1);
+  });
+
+  it('gives an ally thief life, with no capacity, and steals nothing from an empty victim', () => {
+    let s = striking([0, 3]);
+    const thief = s.action?.minion ?? '';
+    const victim = s.action?.blocker ?? '';
+    const t = s.cards[thief];
+    if (t) {
+      const ally = { ...t, cardId: 't-hound', counters: { life: 1 } };
+      s = { ...s, cards: { ...s.cards, [thief]: ally } };
+    }
+    s = apply(s, { type: 'Strike', kind: 'steal-blood', amount: 2 }, as('A'));
+    s = apply(s, { type: 'Strike', kind: 'steal-blood', amount: 1 }, as('B'));
+    s = apply(s, { type: 'Pass' }, as('A'));
+    s = apply(s, { type: 'Pass' }, as('B'));
+    // Both thefts at once: the hound takes 2 blood as life, and loses its 1 life to the vampire.
+    expect(s.cards[thief]?.counters.life).toBe(2);
+    expect(s.cards[victim]?.counters.blood).toBe(2);
+    // An empty victim: nothing moves.
+    let e = striking([0, 0]);
+    e = apply(e, { type: 'Strike', kind: 'steal-blood', amount: 2 }, as('A'));
+    e = apply(e, { type: 'Strike', kind: 'none' }, as('B'));
+    e = apply(e, { type: 'Pass' }, as('A'));
+    e = apply(e, { type: 'Pass' }, as('B'));
+    expect(e.cards[e.action?.minion ?? '']?.counters.blood ?? 0).toBe(0);
+    expect(e.action?.combat?.step).toBe('press');
+  });
+
   it('accepts a combat move only from the combatant holding the impulse, in its step', () => {
     let s = oldCombat();
     const { action } = s;

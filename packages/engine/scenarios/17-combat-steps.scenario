@@ -1,6 +1,6 @@
 # Combat steps (docs/flow.md, "Combat"; docs/m6-plan.md M6.4a): each step of the round is a window
-# between the two combatants' Methuselahs, the acting minion's first; doing something hands the
-# impulse to the other; two passes in a row move on. Moves name the card they come from: a card in
+# between the two combatants' Methuselahs, the acting minion's first; doing something returns the
+# impulse to the acting side; two passes in a row move on. Moves name the card they come from: a card in
 # the hand is played with them, a card in play is only named. Card timing isn't checked.
 # Seating A B C: A's prey is B, its predator C. Iron Ward stands in for a weapon, Quick Feed for a
 # combat card.
@@ -19,6 +19,8 @@ start
 A> move A:uncontrolled:1 ready
 B> move B:uncontrolled:1 ready
 C> move C:uncontrolled:1 ready
+A> transfer +4 A:ready:1
+B> transfer +4 B:ready:1
 A> play "Iron Ward" on A:ready:1
 A> next
 A> next
@@ -44,11 +46,15 @@ log public Round 1 · Before range: A passed
 expect impulse B
 B> pass
 
-# Range: each maneuver hands the impulse to the other side.
+# Range: after a play the impulse returns to the acting side, who may play again (rulebook,
+# "Impulse"); no minion maneuvers twice in a row.
 expect combat 1 range close
 A> maneuver long via A:ready:2
 log public Round 1 · Range: Vera Nightfall maneuvers to long using Iron Ward
 expect combat 1 range long
+expect impulse A
+reject:not-now A> maneuver close
+A> pass
 expect impulse B
 reject:no-change B> maneuver long
 B> maneuver close via "Quick Feed"
@@ -63,9 +69,9 @@ B> pass
 expect combat 1 before-strikes close
 A> use A:ready:2 "+1 strength"
 log public Round 1 · Before strikes: Vera Nightfall uses Iron Ward: +1 strength
-expect impulse B
-B> pass
+expect impulse A
 A> pass
+B> pass
 
 # Strikes: the acting minion announces first; announcing is the striker's pass.
 expect combat 1 strikes close
@@ -77,14 +83,19 @@ expect impulse B
 expect waiting B:combat
 B> strike hand
 log public Round 1 · Strikes: Tomas Grey strikes: a hand strike for 1
+log public Round 1 · Damage: Tomas Grey is about to take 2 damage; Vera Nightfall is about to take 1 damage
 
-# Damage, press and end of round are plain windows for now; A passes to the end of the round.
+# Damage: both mend with blood when the step closes. A passes to the end of the round.
 expect combat 1 damage close
 expect impulse A
 A> pass round
 log public Round 1 · Damage: A passes until the end of the round
 expect impulse B
 B> pass
+log public Round 1 · Damage: Tomas Grey takes 2 damage and mends it (2 blood)
+log public Round 1 · Damage: Vera Nightfall takes 1 damage and mends it (1 blood)
+expect card B:ready:1 blood 2
+expect card A:ready:1 blood 3
 expect combat 1 press close
 expect impulse B
 B> pass
@@ -109,9 +120,9 @@ A> pass
 expect combat 1 range close
 expect impulse A
 A> maneuver long
-expect impulse B
-B> pass
+expect impulse A
 A> pass
+B> pass
 expect combat 1 before-strikes long
 A> pass strikes
 expect impulse B

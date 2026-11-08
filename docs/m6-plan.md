@@ -231,7 +231,7 @@ change. Result corrections by organisers come with tournaments (TOURN-05, M7).
 | S4 | Backfill and corrections? | A rebuild command recomputes everything from the event logs; organiser corrections with tournaments (M7) |
 | S5 | Show which deck someone played? | Only if that deck is public; otherwise just its main clan |
 
-### M6.4 Combat steps (GAME-07)
+### M6.4 Combat steps (GAME-07): done
 
 Combat runs like the phases: a window for each step of the round, with the two combatants
 passing in priority order. The engine keeps track of the mechanics (round, step, range, strikes,
@@ -246,8 +246,10 @@ either sends `EndCombat`. Everything in between is done by hand with the free-fo
 - **C1 Steps are windows.** Each round goes Before range → Range → Before strikes → Strikes →
   Damage → Press → End of round (the rulebook's combat sequence). Each is a `combat` window
   holding the acting minion's controller, then the opposing minion's (the acting minion has the
-  first opportunity at every step). Anything done in a step returns the impulse to the other
-  combatant and resets the passes; two passes in a row end the step and open the next.
+  first opportunity at every step). Anything done in a step returns the impulse to the acting side,
+  as the rulebook's "Impulse" has it, and resets the passes; two passes in a row end the step and
+  open the next. (Until the rulings check after M6.4b, a play handed the impulse to the other
+  combatant.)
 - **C2 Only the two combatants are in the windows.** Other players can still `hold` and use the
   free-form commands. Combat windows ignore auto-pass settings: a combatant passes by hand, or
   with C6.
@@ -316,7 +318,7 @@ card…** is also in the card menu of every card in play.
 - **M6.4a** (2–3 days), **done**: the steps and windows (C1, C2, C6), Maneuver, Strike (announced, not yet
   applied), UseCard, the round and step in the log (C3), `resolve combat`, the combat panel.
   Damage, Press and End of round are plain windows; the combatants adjust blood by hand.
-- **M6.4b** (2–3 days): damage pending and applied (C5), Prevent, first strike, dodge, combat
+- **M6.4b** (2–3 days), **done**: damage pending and applied (C5), Prevent, first strike, dodge, combat
   ends, steal blood, additional strikes, presses and later rounds, torpor and burning ending the
   combat.
 

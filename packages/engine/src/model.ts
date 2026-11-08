@@ -192,7 +192,7 @@ export const STRIKE_KINDS = [
 ] as const;
 export type StrikeKind = (typeof STRIKE_KINDS)[number];
 
-/** A strike as announced. The engine doesn't apply it yet (M6.4b). */
+/** A strike as announced; the engine works out its damage when the strikes are in (M6.4b). */
 export interface Strike {
   kind: StrikeKind;
   /** Damage for `hand` and `damage`, blood for `steal-blood`. */
@@ -226,6 +226,37 @@ export interface CombatState {
   strikes: { minion: InstanceId; strike: Strike }[];
   /** Standing passes (C6), by seat; dropped when anyone does something in the combat. */
   passUntil?: Partial<Record<SeatId, PassTarget>>;
+  /** In the damage step: what each minion is about to take, by the minion taking it. */
+  pending?: Partial<Record<InstanceId, PendingDamage>>;
+  /** First strikes are being resolved; the other strikes come next, if their striker can. */
+  later?: true;
+  /** Minions that claimed an additional strike, for the exchange after this one. */
+  additional?: InstanceId[];
+  /** An additional exchange: only these minions strike in it. */
+  exchange?: InstanceId[];
+  /** This round's presses, in order. */
+  presses?: {
+    minion: InstanceId;
+    mode: 'continue' | 'end';
+    source?: InstanceId;
+    sourceCardId?: CardId;
+  }[];
+  /** A press to continue stood: another round follows the end of this one. */
+  continues?: true;
+  /** The combat ends after this round's end (combat ends was struck, or a combatant left). */
+  ending?: true;
+}
+
+/** Damage and blood a strike is about to do to one minion, after the strikes are resolved. */
+export interface PendingDamage {
+  /** The minion striking. */
+  by: InstanceId;
+  normal: number;
+  aggravated: number;
+  /** Prevented so far (aggravated damage first). */
+  prevented: number;
+  /** Blood stolen (not damage, so it can't be prevented). */
+  stolen?: number;
 }
 
 export const JUDGE_CALL_REASONS = [

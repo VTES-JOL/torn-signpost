@@ -92,6 +92,32 @@ describe('decision prompts (UX-09)', () => {
     expect(promptFor(combat('range'), 'C', b, who, name)?.text).toBe(
       'Waiting on Bob (combat, Round 1 · Range)',
     );
+    // Damage about to land on Bob's minion; then the presses.
+    const hurt = combat('range');
+    const c = hurt.action?.combat;
+    if (!c) throw new Error('no combat');
+    const damage = {
+      ...hurt,
+      action: {
+        ...bleed,
+        stage: 'combat' as const,
+        combat: {
+          ...c,
+          step: 'damage' as const,
+          pending: { m2: { by: 'm1', normal: 2, aggravated: 0, prevented: 0 } },
+        },
+      },
+    };
+    expect(promptFor(damage, 'B', b, who, name)?.text).toBe(
+      'Combat, Round 1 · Damage: prevent damage, play a card or pass',
+    );
+    const press = {
+      ...damage,
+      action: { ...damage.action, combat: { ...c, step: 'press' as const } },
+    };
+    expect(promptFor(press, 'B', b, who, name)?.text).toBe(
+      'Combat, Round 1 · Press: press, play a card or pass',
+    );
   });
 
   it('says nothing before the game starts', () => {

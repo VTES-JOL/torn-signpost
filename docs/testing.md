@@ -32,8 +32,9 @@ deploys only when they pass.
    - a pending withdrawal never survives pool or blood lost, or combat; a withdrawn Methuselah
      never acts again;
    - judge calls stay consistent: unique, one open per player, deadline calls still overdue;
-   - a combat step is a window between the two combatants' Methuselahs only, and each combatant
-     strikes at most once a round (M6.4).
+   - a combat step is a window between the two combatants' Methuselahs only, each combatant
+     strikes at most once an exchange, prevention never exceeds the damage, and no card's blood or
+     life goes below 0 (M6.4).
 
    Property checks look at the state between events and after commands. Between the events of one
    command the state can be in between (an oust passes the turn in a later event), so rules that

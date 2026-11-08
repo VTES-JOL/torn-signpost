@@ -11,6 +11,7 @@ import {
   pauseMinutesLeft,
   timeLimit,
 } from './clock.ts';
+import { combatEndsStruck, damageTaken, isVampire, pendingFrom } from './combat.ts';
 import type { BloodHolder, Command } from './commands.ts';
 import type { EventBody, GameEvent } from './events.ts';
 import { evolve } from './evolve.ts';
@@ -34,6 +35,7 @@ import type {
   InstanceId,
   Instant,
   Override,
+  PendingDamage,
   StopRule,
   ZoneId,
 } from './model.ts';
@@ -124,7 +126,14 @@ export function decide(state: GameState, cmd: Command, ctx: DecideContext): Deci
         state,
         withWithdrawals(
           state,
-          withOusts(state, bodiesFor(state, cmd, ctx, by, ids), ctx.now, by, ids, dq),
+          withOusts(
+            state,
+            bodiesFor(state, cmd, ctx, by, ids),
+            ctx.now,
+            by,
+            { ids, catalog: ctx.catalog },
+            dq,
+          ),
           ctx.now,
           by,
         ),
@@ -324,13 +333,12 @@ function bodiesFor(
     a: NonNullable<GameState['action']>,
     outcome: 'success' | 'failure' | 'blocked',
   ) => finishedActionCard(state, ids, a, outcome);
-  /** The impulse back to the other side after a play: the acting Methuselah, or in combat the other combatant. */
-  const impulseBack = (s: SeatId): EventBody => {
-    const w = state.window;
-    if (w?.kind !== 'combat') return { type: 'ImpulseReset' };
-    const other = w.order.find((x) => x !== s);
-    return other === undefined ? { type: 'ImpulseReset' } : { type: 'ImpulseReset', to: other };
-  };
+  /**
+   * The impulse back to the acting side after a play (rulebook, "Impulse"): the acting Methuselah,
+   * in combat the acting minion's, who may play again; the passes so far are voided.
+   */
+  const impulseBack = (): EventBody => ({ type: 'ImpulseReset' });
+
   /** The combat in progress, with the step open, and the sender's combatant holding the impulse. */
   const combatTurn = () => {
     const s = holdingImpulse();
@@ -366,7 +374,7 @@ function bodiesFor(
     return { source: c, played: false, with: (move) => [move] };
   };
   const settle = (from: GameState, bodies: EventBody[]) =>
-    settleWindow(from, bodies, ctx.now, by, ids);
+    settleWindow(from, bodies, ctx.now, by, { ids, catalog: ctx.catalog });
 
   switch (cmd.type) {
     case 'StartGame':
@@ -700,7 +708,8 @@ function bodiesFor(
       const c = state.action?.combat;
       if (state.window?.kind === 'combat' && c?.step === 'strikes') {
         const minion = combatantOf(state, s);
-        if (minion !== undefined && !c.strikes.some((x) => x.minion === minion)) {
+        const sitsOut = !!c.exchange && minion !== undefined && !c.exchange.includes(minion);
+        if (minion !== undefined && !sitsOut && !c.strikes.some((x) => x.minion === minion)) {
           reject('not-now', 'Choose a strike first (or no strike)');
         }
       }
@@ -783,7 +792,7 @@ function bodiesFor(
       const bodies: EventBody[] = played(c, to, cmd.replace ?? true, controller);
       if (attachTo !== undefined)
         bodies.splice(1, 0, { type: 'CardAttached', card: c.id, to: attachTo });
-      if (state.window) bodies.push(impulseBack(s));
+      if (state.window) bodies.push(impulseBack());
       return settle(state, bodies);
     }
 
@@ -848,20 +857,27 @@ function bodiesFor(
       if (c.step !== 'range') reject('not-now', 'Maneuvers come in the range step');
       if (cmd.to !== 'close' && cmd.to !== 'long') reject('invalid', `No range ${cmd.to}`);
       if (c.range === cmd.to) reject('no-change', `The range is already ${cmd.to}`);
+      // A minion can't maneuver twice in a row (rulebook, "Determine Range").
+      if (c.lastManeuver === minion) {
+        reject('not-now', 'You maneuvered last: the other side answers first');
+      }
       const src = combatSource(cmd.source, s);
       const move: EventBody = withOptional({ type: 'Maneuvered', minion, to: cmd.to } as const, {
         source: src.source?.id,
         sourceCardId: src.source?.cardId,
         played: src.played ? (true as const) : undefined,
       });
-      return settle(state, [...src.with(move), impulseBack(s)]);
+      return settle(state, [...src.with(move), impulseBack()]);
     }
 
     case 'Strike': {
       const { s, c, minion } = combatTurn();
       if (c.step !== 'strikes') reject('not-now', 'Strikes are chosen in the strike step');
+      if (c.exchange && !c.exchange.includes(minion)) {
+        reject('forbidden', 'You have no additional strike');
+      }
       if (c.strikes.some((x) => x.minion === minion)) {
-        reject('no-change', 'You already chose a strike this round');
+        reject('no-change', 'You already chose a strike');
       }
       if (!STRIKE_KINDS.includes(cmd.kind)) reject('invalid', `Unknown strike ${cmd.kind}`);
       const counts = cmd.kind === 'hand' || cmd.kind === 'damage' || cmd.kind === 'steal-blood';
@@ -889,6 +905,66 @@ function bodiesFor(
       });
       // Announcing a strike is the striker's pass: the other combatant chooses next.
       return settle(state, [...src.with(chosen), { type: 'Passed', seat: s, auto: true }]);
+    }
+
+    case 'Prevent': {
+      const { s, c, minion } = combatTurn();
+      if (c.step !== 'damage') reject('not-now', 'Damage is prevented in the damage step');
+      const p = c.pending?.[minion];
+      if (!p || p.normal + p.aggravated - p.prevented <= 0) {
+        reject('no-change', 'There is no damage to prevent');
+      }
+      if (!Number.isInteger(cmd.points) || cmd.points < 1 || cmd.points > 99) {
+        reject('invalid', `Invalid amount: ${cmd.points}`);
+      }
+      const src = combatSource(cmd.source, s);
+      const prevented: EventBody = withOptional(
+        { type: 'DamagePrevented', minion, points: cmd.points } as const,
+        {
+          source: src.source?.id,
+          sourceCardId: src.source?.cardId,
+          played: src.played ? (true as const) : undefined,
+        },
+      );
+      return settle(state, [...src.with(prevented), impulseBack()]);
+    }
+
+    case 'AdditionalStrike': {
+      const { s, c, minion } = combatTurn();
+      if (c.step !== 'damage') reject('not-now', 'Additional strikes are taken in the damage step');
+      if (c.ending) reject('not-now', 'The combat is ending');
+      if (c.additional?.includes(minion))
+        reject('no-change', 'You already took an additional strike');
+      const src = combatSource(cmd.source, s);
+      const claimed: EventBody = withOptional(
+        { type: 'AdditionalStrikeClaimed', minion } as const,
+        {
+          source: src.source?.id,
+          sourceCardId: src.source?.cardId,
+          played: src.played ? (true as const) : undefined,
+        },
+      );
+      return settle(state, [...src.with(claimed), impulseBack()]);
+    }
+
+    case 'Press': {
+      const { s, c, minion } = combatTurn();
+      if (c.step !== 'press') reject('not-now', 'Presses come in the press step');
+      if (cmd.mode !== 'continue' && cmd.mode !== 'end') reject('invalid', `No press ${cmd.mode}`);
+      // A minion can't press twice in a row.
+      if (c.presses?.at(-1)?.minion === minion) {
+        reject('not-now', 'You pressed last: the other side answers first');
+      }
+      const src = combatSource(cmd.source, s);
+      const pressed: EventBody = withOptional(
+        { type: 'Pressed', minion, mode: cmd.mode } as const,
+        {
+          source: src.source?.id,
+          sourceCardId: src.source?.cardId,
+          played: src.played ? (true as const) : undefined,
+        },
+      );
+      return settle(state, [...src.with(pressed), impulseBack()]);
     }
 
     case 'PassUntil': {
@@ -927,7 +1003,7 @@ function bodiesFor(
           note: note || undefined,
         }),
       ];
-      if (state.window) bodies.push(impulseBack(s));
+      if (state.window) bodies.push(impulseBack());
       return settle(state, bodies);
     }
 
@@ -1198,19 +1274,25 @@ function applyBodies(from: GameState, bodies: EventBody[], now: string, by: Acto
 }
 
 /** Run the open window forward: automatic passes, then whatever closing it leads to. */
+/** What closing a window may need: fresh instance IDs, and the card data (for combat damage). */
+interface Settling {
+  ids: () => InstanceId;
+  catalog: CardCatalog;
+}
+
 function settleWindow(
   from: GameState,
   bodies: EventBody[],
   now: string,
   by: ActorRef,
-  ids: () => InstanceId,
+  sx: Settling,
 ): EventBody[] {
   const out = [...bodies];
   let s = applyBodies(from, bodies, now, by);
   for (let guard = 0; guard < 100 && s.window; guard++) {
     const w = s.window;
     let next: EventBody[];
-    if (w.passes >= w.order.length) next = closeWindow(s, ids);
+    if (w.passes >= w.order.length) next = closeWindow(s, sx, now, by);
     else {
       const holder = w.order[w.cursor];
       if (holder === undefined || !passesAutomatically(s, holder)) break;
@@ -1319,7 +1401,7 @@ function withOusts(
   bodies: EventBody[],
   now: string,
   by: ActorRef,
-  ids: () => InstanceId,
+  sx: Settling,
   /** A seat a judge disqualified: out like an oust, but nobody is rewarded. */
   disqualify?: SeatId,
 ): EventBody[] {
@@ -1370,7 +1452,7 @@ function withOusts(
     ];
     next.push(...endTurn, ...nextTurn(applyBodies(s, endTurn, now, by), now, by));
   }
-  return [...bodies, ...settleWindow(after, next, now, by, ids)];
+  return [...bodies, ...settleWindow(after, next, now, by, sx)];
 }
 
 /**
@@ -1421,18 +1503,12 @@ function oustedCards(state: GameState, ousting: ReadonlySet<SeatId>): EventBody[
 }
 
 /** The events that end a fully passed window. */
-function closeWindow(state: GameState, ids: () => InstanceId): EventBody[] {
+function closeWindow(state: GameState, sx: Settling, now: string, by: ActorRef): EventBody[] {
   const closed: EventBody = { type: 'WindowClosed' };
   if (state.window?.kind === 'phase') return [closed, ...advancePhase(state)];
   const a = state.action;
-  if (state.window?.kind === 'combat' && a?.combat) {
-    // Both passed: the next step, or after the end of the round, the end of the combat (M6.4a:
-    // there are no presses yet).
-    const c = a.combat;
-    const next = COMBAT_STEPS[COMBAT_STEPS.indexOf(c.step) + 1];
-    if (next) return [{ type: 'CombatStepped', step: next, round: c.round }];
-    return combatEnd(state, ids);
-  }
+  if (state.window?.kind === 'combat' && a?.combat)
+    return combatStepClosed(state, a.combat, sx, now, by);
   const attempt = a?.blockAttempt;
   if (!a || !attempt) return [closed, { type: 'ActionResolving' }];
   const blocker = state.cards[attempt.minion];
@@ -1477,6 +1553,188 @@ function combatOpening(
       window: { kind: 'combat', phase: state.turn?.phase ?? 'minion', order, cursor: 0, passes: 0 },
     },
   ];
+}
+
+/**
+ * Both combatants passed a step (docs/flow.md, "Combat"): what comes next. After the strikes, the
+ * damage they're about to do (or straight to the end of the round if combat ends was struck);
+ * after the damage, applied, any later strikes, additional strikes, or the presses; after the
+ * presses, the end of the round, and then another round or the end of the combat.
+ */
+function combatStepClosed(
+  state: GameState,
+  c: CombatState,
+  sx: Settling,
+  now: string,
+  by: ActorRef,
+): EventBody[] {
+  const to = (
+    step: CombatState['step'],
+    extra: Partial<Extract<EventBody, { type: 'CombatStepped' }>> = {},
+  ): EventBody => ({ type: 'CombatStepped', step, round: c.round, ...extra });
+  const pending = (p: ReturnType<typeof pendingFrom>): EventBody =>
+    withOptional({ type: 'DamagePending', pending: p.pending } as const, {
+      later: p.later ? (true as const) : undefined,
+    });
+  switch (c.step) {
+    case 'strikes':
+      if (combatEndsStruck(c)) return [to('end-of-round', { ending: true })];
+      return [to('damage'), pending(pendingFrom(c))];
+    case 'damage': {
+      const applied = damageApplied(state, c, sx.catalog);
+      const after = applyBodies(state, applied, now, by);
+      const fighting = [c.acting, c.opposing].every((m) => isReady(after, m));
+      if (!fighting) return [...applied, to('end-of-round', { ending: true })];
+      if (c.later) {
+        const rest = pendingFrom(c, 'normal');
+        if (Object.keys(rest.pending).length) return [...applied, to('damage'), pending(rest)];
+      }
+      const extra = [...new Set(c.additional ?? [])];
+      if (extra.length) return [...applied, to('strikes', { exchange: extra })];
+      return [...applied, to(c.ending ? 'end-of-round' : 'press')];
+    }
+    case 'press': {
+      const presses = c.presses ?? [];
+      const n = (mode: 'continue' | 'end') => presses.filter((p) => p.mode === mode).length;
+      return [to('end-of-round', n('continue') > n('end') ? { continues: true } : {})];
+    }
+    case 'end-of-round':
+      if (c.continues && !c.ending) {
+        return [{ type: 'CombatStepped', step: COMBAT_STEPS[0], round: c.round + 1 }];
+      }
+      return combatEnd(state, sx.ids);
+    default: {
+      const next = COMBAT_STEPS[COMBAT_STEPS.indexOf(c.step) + 1] ?? 'end-of-round';
+      return [to(next)];
+    }
+  }
+}
+
+/** A minion still fighting: in its controller's ready region. */
+function isReady(state: GameState, id: InstanceId): boolean {
+  const m = state.cards[id];
+  return !!m && m.zone === zoneId(m.controller, 'ready');
+}
+
+/**
+ * The damage step's damage, applied (C5): blood stolen, damage mended with blood or life lost,
+ * and wounded vampires to torpor; burned minions to the ash heap with the cards on them.
+ * Stolen blood moves first, before anyone mends, so the thief can mend with it; what's over
+ * its capacity drains off (rulebook, "Steal Blood"). An ally loses life to a theft, and burns
+ * at 0 like a damaged one.
+ */
+function damageApplied(state: GameState, c: CombatState, catalog: CardCatalog): EventBody[] {
+  const out: EventBody[] = [];
+  const pending = Object.entries(c.pending ?? {}).filter(
+    (e): e is [InstanceId, PendingDamage] => !!e[1] && isReady(state, e[0]),
+  );
+  // Cards as the thefts leave them, which the damage then reads.
+  const after: Record<InstanceId, CardInstance> = {};
+  const now = (id: InstanceId) => after[id] ?? (state.cards[id] as CardInstance);
+  const counted = (x: CardInstance) => (isVampire(x, catalog) ? 'blood' : 'life');
+  for (const [id, p] of pending) {
+    if (!p.stolen || !isReady(state, p.by)) continue;
+    const victim = now(id);
+    const thief = now(p.by);
+    const taken = counted(victim);
+    const gained = counted(thief);
+    const left = victim.counters[taken] ?? 0;
+    const amount = Math.min(p.stolen, left);
+    if (amount === 0) continue;
+    const cap = gained === 'blood' ? catalog.get(thief.cardId ?? '')?.capacity : undefined;
+    const has = thief.counters[gained] ?? 0;
+    const drained = cap === undefined ? 0 : Math.max(0, Math.min(amount, has + amount - cap));
+    out.push(
+      withOptional(
+        { type: 'BloodStolen', from: id, to: thief.id, amount, taken, gained } as const,
+        { drained: drained || undefined },
+      ),
+    );
+    after[id] = {
+      ...victim,
+      counters: { ...victim.counters, [taken]: left - amount },
+    };
+    after[thief.id] = {
+      ...thief,
+      counters: { ...thief.counters, [gained]: has + amount - drained },
+    };
+  }
+  for (const [id, p] of pending) {
+    const hit = now(id);
+    // An ally whose last life was stolen burns, hurt or not.
+    const drained = counted(hit) === 'life' && (hit.counters.life ?? 0) <= 0;
+    if (p.normal + p.aggravated === 0 && !drained) continue;
+    const t = damageTaken(hit, p, catalog);
+    out.push(
+      withOptional(
+        {
+          type: 'DamageResolved',
+          minion: id,
+          damage: t.damage,
+          aggravated: t.aggravated,
+          blood: t.blood,
+          outcome: t.outcome,
+        } as const,
+        { life: t.life },
+      ),
+    );
+    if (t.outcome === 'burned') {
+      // The cards on it go to their owners' ash heaps with it.
+      for (const x of Object.values(state.cards)) {
+        if (x.attachedTo !== id) continue;
+        out.push({
+          type: 'CardMoved',
+          card: x.id,
+          from: x.zone,
+          to: zoneId(x.owner, 'ashHeap'),
+          position: 'bottom',
+          faceDown: false,
+          combat: true,
+          ...(x.cardId ? { cardId: x.cardId } : {}),
+        });
+      }
+      out.push({
+        type: 'CardMoved',
+        card: id,
+        from: hit.zone,
+        to: zoneId(hit.owner, 'ashHeap'),
+        position: 'bottom',
+        faceDown: false,
+        combat: true,
+        ...(hit.cardId ? { cardId: hit.cardId } : {}),
+      });
+      continue;
+    }
+    if (t.blood > 0)
+      out.push({
+        type: 'CounterAdjusted',
+        card: id,
+        counter: 'blood',
+        delta: -t.blood,
+        combat: true,
+      });
+    if (t.life)
+      out.push({
+        type: 'CounterAdjusted',
+        card: id,
+        counter: 'life',
+        delta: -t.life,
+        combat: true,
+      });
+    if (t.outcome === 'torpor') {
+      out.push({
+        type: 'CardMoved',
+        card: id,
+        from: hit.zone,
+        to: zoneId(hit.controller, 'torpor'),
+        position: 'bottom',
+        faceDown: false,
+        combat: true,
+        ...(hit.cardId ? { cardId: hit.cardId } : {}),
+      });
+    }
+  }
+  return out;
 }
 
 /** The combat is over, and with it the action: blocked, or done for an action that entered it. */

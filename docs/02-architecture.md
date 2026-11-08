@@ -583,13 +583,15 @@ primitives, and corrections are new commands.
   An unblocked action can also enter combat (`ResolveAction { outcome: 'combat', opponent }`).
 - **Combat** (M6.4a, `docs/flow.md` "Combat"): each step of the round (before range, range, before
   strikes, strikes, damage, press, end of round) is a `combat` window between the two combatants'
-  Methuselahs, the acting minion's first. A move hands the impulse to the other combatant; two
-  passes move on. The engine keeps the round, step, range and announced strikes on
+  Methuselahs, the acting minion's first. A move returns the impulse to the acting side, as
+  everywhere (rulebook, "Impulse"); two passes move on. The engine keeps the round, step, range and announced strikes on
   `action.combat`; `Maneuver` and `Strike` name a source card (played from the hand, or in play);
-  card timing isn't checked, but every log line in a step names it. Damage, prevention and presses
-  are applied by hand until M6.4b; `EndCombat` ends a combat at once.
+  card timing isn't checked, but every log line in a step names it. When the strikes are in, the
+  engine works out the damage (`combat.ts`); `Prevent` reduces it, and when the damage step closes
+  it is applied: mending, torpor, burning, life lost. Additional strikes rerun the strikes and
+  damage; a press to continue starts another round. `EndCombat` ends a combat at once.
 - **Card plays**: `PlayCard` plays from the hand and draws a replacement. In a window it needs the
-  impulse and returns it to the acting Methuselah (in combat, to the other combatant), voiding the
+  impulse and returns it to the acting Methuselah (in combat, the acting minion's), voiding the
   passes. `UseCard` logs the use of a card in play, the same way.
 - **Turns** start by unlocking the new Methuselah's ready and torpor cards.
 - **Ousting** (GAME-08, GAME-21, DQ9): after every command the engine ousts any live seat at 0
@@ -691,7 +693,7 @@ primitives, and corrections are new commands.
   UTC runs, which apply the same checks. Opening a game marks its notifications read, and a turn
   or decision notification is marked read once the game stops waiting on that player. The timers Lambda sends through SES (the only Lambda allowed to), one recipient
   per message, with signed one-click unsubscribe links. Switched by `emailEnabled`.
-- Not yet: referendums, combat damage and presses (M6); structural window elision beyond auto-pass.
+- Not yet: referendums (M6); structural window elision beyond auto-pass.
 
 ## 7. macOS client (`apps/apple`)
 

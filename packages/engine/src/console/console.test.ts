@@ -197,6 +197,19 @@ describe('combat commands (M6.4a)', () => {
     });
   });
 
+  it('parses prevention, presses and additional strikes (M6.4b)', () => {
+    expect(ok('prevent 2')).toEqual({ type: 'Prevent', points: 2 });
+    expect(ok('prevent 1 via A:ready:1')).toEqual({ type: 'Prevent', points: 1, source: ilse });
+    expect(ok('press continue')).toEqual({ type: 'Press', mode: 'continue' });
+    expect(ok('press end via A:ready:1')).toEqual({ type: 'Press', mode: 'end', source: ilse });
+    expect(ok('strike extra')).toEqual({ type: 'AdditionalStrike' });
+    expect(ok('strike extra via A:ready:1')).toEqual({ type: 'AdditionalStrike', source: ilse });
+    for (const bad of ['prevent', 'prevent x', 'press', 'press harder', 'strike extra 2']) {
+      expect(parse(bad).ok, bad).toBe(false);
+    }
+    expect(completeConsole('press ', asA)).toEqual(['continue', 'end', 'via']);
+  });
+
   it('rejects malformed combat commands with their usage', () => {
     for (const bad of [
       'maneuver far',

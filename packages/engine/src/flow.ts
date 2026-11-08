@@ -160,8 +160,14 @@ export function passesAutomatically(state: GameState, seat: SeatId): boolean {
   // Combat steps: only a standing pass (C6), and never past a strike still to announce.
   if (w.kind === 'combat') {
     const c = state.action?.combat;
-    const until = c?.passUntil?.[seat];
-    if (!c || !until || c.step === 'strikes') return false;
+    if (!c) return false;
+    if (c.step === 'strikes') {
+      // In an additional exchange, a combatant without an additional strike sits it out.
+      const m = combatantOf(state, seat);
+      return !!c.exchange && m !== undefined && !c.exchange.includes(m);
+    }
+    const until = c.passUntil?.[seat];
+    if (!until) return false;
     return until === 'end' || COMBAT_STEPS.indexOf(c.step) < COMBAT_STEPS.indexOf(until);
   }
   if (w.order[0] === seat) return false;

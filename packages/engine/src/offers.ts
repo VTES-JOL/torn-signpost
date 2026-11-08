@@ -429,9 +429,12 @@ function combatOffers(
   const str = (values: StepValue[], i: number) =>
     typeof values[i] === 'string' ? (values[i] as string) : undefined;
   const at = COMBAT_STEPS.indexOf(c.step);
-  const struck = c.strikes.some((x) => x.minion === minion);
+  // In an additional exchange, a combatant without an additional strike has nothing to choose.
+  const sitsOut = !!c.exchange && !c.exchange.includes(minion);
+  const struck = sitsOut || c.strikes.some((x) => x.minion === minion);
   if (impulseHolder(view) === seat) {
-    if (c.step === 'range') {
+    // No minion maneuvers twice in a row.
+    if (c.step === 'range' && c.lastManeuver !== minion) {
       const to = c.range === 'close' ? 'long' : 'close';
       offers.push({
         id: 'maneuver',
@@ -519,6 +522,54 @@ function combatOffers(
         ),
         strike('none', 'No strike', 'none', [], () => ({})),
       );
+    }
+    const hit = c.pending?.[minion];
+    if (c.step === 'damage' && hit && hit.normal + hit.aggravated > hit.prevented) {
+      offers.push({
+        id: 'prevent',
+        label: 'Prevent damage…',
+        confirm: true,
+        steps: [
+          {
+            kind: 'amount',
+            label: 'Damage to prevent',
+            min: 1,
+            default: hit.normal + hit.aggravated - hit.prevented,
+          },
+          source('Card it comes from', true),
+        ],
+        build: (values) => {
+          const src = str(values, 1);
+          const points = typeof values[0] === 'number' ? values[0] : 1;
+          return src ? { type: 'Prevent', points, source: src } : { type: 'Prevent', points };
+        },
+      });
+    }
+    if (c.step === 'damage' && !c.ending && !c.additional?.includes(minion)) {
+      offers.push({
+        id: 'additional',
+        label: 'Additional strike…',
+        confirm: true,
+        steps: [source('Card it comes from', true)],
+        build: (values) => {
+          const src = str(values, 0);
+          return src ? { type: 'AdditionalStrike', source: src } : { type: 'AdditionalStrike' };
+        },
+      });
+    }
+    if (c.step === 'press' && c.presses?.at(-1)?.minion !== minion) {
+      for (const mode of ['continue', 'end'] as const) {
+        offers.push({
+          id: `press:${mode}`,
+          label: mode === 'continue' ? 'Press to continue…' : 'Press to end…',
+          confirm: true,
+          steps: [source('Card it comes from', true)],
+          build: (values) => {
+            const src = str(values, 0);
+            return src ? { type: 'Press', mode, source: src } : { type: 'Press', mode };
+          },
+        });
+      }
     }
     if (my.hand.length) offers.push(my.playCard('Play a card', my.hand));
     if (my.inPlay.length) {

@@ -95,12 +95,18 @@ export function promptFor(
   if (fight && seat !== undefined && waits.some((w) => w.seat === seat)) {
     const minion = combatantOf(view, seat);
     const struck = fight.strikes.some((x) => x.minion === minion);
+    const sitsOut = !!fight.exchange && minion !== undefined && !fight.exchange.includes(minion);
+    const hit = minion === undefined ? undefined : fight.pending?.[minion];
     const what =
-      fight.step === 'strikes' && !struck
+      fight.step === 'strikes' && !struck && !sitsOut
         ? 'choose a strike'
         : fight.step === 'range'
           ? `maneuver, play a card or pass (${fight.range} range)`
-          : 'play a card or pass';
+          : fight.step === 'damage' && hit && hit.normal + hit.aggravated > hit.prevented
+            ? 'prevent damage, play a card or pass'
+            : fight.step === 'press'
+              ? 'press, play a card or pass'
+              : 'play a card or pass';
     return { mine: true, text: `Combat, ${combatStepLabel(fight)}: ${what}` };
   }
   if (seat !== undefined && waits.some((w) => w.seat === seat)) {
@@ -402,12 +408,28 @@ function CombatPanel(props: {
     const strike = c.strikes.find((x) => x.minion === id)?.strike;
     const blood = card?.counters.blood ?? 0;
     const life = card?.counters.life;
+    const p = c.pending?.[id];
+    const left = !card
+      ? 'gone'
+      : card.zone.endsWith(':torpor')
+        ? 'in torpor'
+        : card.zone.endsWith(':ashHeap')
+          ? 'burned'
+          : undefined;
+    const pending = p
+      ? [
+          ...(p.normal ? [`${p.normal} damage`] : []),
+          ...(p.aggravated ? [`${p.aggravated} aggravated`] : []),
+          ...(p.stolen ? [`${p.stolen} blood stolen`] : []),
+        ].join(', ') + (p.prevented ? ` (${p.prevented} prevented)` : '')
+      : '';
     return (
       <li key={id}>
         <strong>{name(id)}</strong> <span className="muted small">({role})</span>{' '}
         <span className="small">
-          {blood} blood{life !== undefined ? ` · ${life} life` : ''}
+          {left ?? `${blood} blood${life !== undefined ? ` · ${life} life` : ''}`}
         </span>
+        {pending && <span className="badge pending">about to take {pending}</span>}
         {strike && (
           <span className="badge">
             {strike.kind === 'none'
@@ -438,6 +460,20 @@ function CombatPanel(props: {
         {fighter(c.acting, 'acting')}
         {fighter(c.opposing, c.cause === 'block' ? 'blocking' : 'opposing')}
       </ul>
+      {(c.presses?.length || c.continues || c.ending || c.exchange) && (
+        <p className="small muted">
+          {[
+            ...(c.exchange
+              ? [`Additional strikes: ${c.exchange.map((m) => name(m)).join(', ')}`]
+              : []),
+            ...(c.presses ?? []).map(
+              (x) => `${name(x.minion)} presses to ${x.mode === 'continue' ? 'continue' : 'end'}`,
+            ),
+            ...(c.continues ? ['Another round follows'] : []),
+            ...(c.ending ? ['The combat ends after this round'] : []),
+          ].join(' · ')}
+        </p>
+      )}
     </section>
   );
 }
