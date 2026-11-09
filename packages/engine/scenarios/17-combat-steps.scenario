@@ -71,6 +71,10 @@ A> use A:ready:2 "+1 strength"
 log public Round 1 · Before strikes: Vera Nightfall uses Iron Ward: +1 strength
 expect impulse A
 A> pass
+# A card played in a combat step is the combatant's play.
+B> play B:hand:1
+log public Round 1 · Before strikes: Tomas Grey plays Quick Feed
+A> pass
 B> pass
 
 # Strikes: the acting minion announces first; announcing is the striker's pass.

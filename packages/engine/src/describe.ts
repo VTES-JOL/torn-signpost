@@ -162,8 +162,15 @@ function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): 
       if (ev.source || ev.combat) return '';
       if (ev.played) {
         const into = parseZoneId(ev.to).name === 'ashHeap' ? '' : ` into ${zone(ev.to)}`;
+        const from = parseZoneId(ev.from).seat;
+        // In a combat step, the combatant plays it: "Beast plays Immortal Grapple" (M6.4).
+        const c = before.action?.combat;
+        if (c && before.window?.kind === 'combat' && parseZoneId(ev.from).name === 'hand') {
+          const fighter = [c.acting, c.opposing].find((m) => before.cards[m]?.controller === from);
+          if (fighter) return `${cardName(fighter)} plays ${name}${into}`;
+        }
         // Whoever's hand it left: an action card is finished off by whoever ends the action.
-        return `${seatName(parseZoneId(ev.from).seat)} played ${name}${into}`;
+        return `${seatName(from)} played ${name}${into}`;
       }
       const toName = parseZoneId(ev.to).name;
       const where =

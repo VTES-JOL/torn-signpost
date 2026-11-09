@@ -1,0 +1,97 @@
+# The rulebook's damage examples, played out: Chrysanthemum steals from an Underbridge Stray, and
+# aggravated damage on Nassir and Tamoszius (vekn.net/rulebook, "Steal Blood", "Damage Resolution").
+# Each block is a hunt by Chrysanthemum; Bob, her prey, blocks.
+# Cards are given by VEKN ID; names and images come from the content pack (LEGAL-08).
+seed 5
+seat A alice
+seat B bob
+seat C carol
+crypt A 201542 *12
+library A 101993 *40
+crypt B 201563 *6 201571 *6
+library B 102065 *40
+crypt C 201573 *12
+library C 101993 *40
+start
+
+# Fast-forward: Chrysanthemum (capacity 5) with 4 blood; Nassir with 1, Tamoszius with 2 (sped up
+# for the demo).
+A> transfer +5 A:uncontrolled:1
+A> move A:uncontrolled:1 ready
+A> transfer -1 A:ready:1
+B> transfer +1 B:uncontrolled:1
+B> move B:uncontrolled:1 ready
+B> transfer +2 B:uncontrolled:2
+B> move B:uncontrolled:2 ready
+B> play B:hand:1 ready
+B> life +2 B:ready:3
+C> transfer +5 C:uncontrolled:1
+C> move C:uncontrolled:1 ready
+A> next
+A> next
+expect turn 1 A minion
+
+# "Chrysanthemum enters combat with an Underbridge Stray ally. Chrysanthemum has a capacity of 5 and
+# has 4 blood. The ally has 2 life." She steals 2 blood as her strike; the ally strikes for 1.
+A> hunt A:ready:1
+B> block B:ready:3
+A> pass
+B> pass
+C> pass
+A> pass strikes
+B> pass strikes
+A> strike steal 2
+B> strike hand
+A> pass
+B> pass
+# The 2 life move to Chrysanthemum: 6 blood, 1 drains off over her capacity; the ally, with no life
+# left, is burned; she mends the 1 damage, leaving 4 blood.
+log public Round 1 · Damage: Chrysanthemum (G6) steals 2 life from Underbridge Stray; 1 drains off, over capacity
+log public Round 1 · Damage: Underbridge Stray has no life left and is burned
+log public Round 1 · Damage: Chrysanthemum (G6) takes 1 damage and mends it (1 blood)
+expect card A:ready:1 blood 4
+expect count B:ashHeap 1
+A> pass round
+B> pass round
+expect action none
+
+# "Nassir is ready and has 1 blood when he receives 1 point of aggravated damage. He cannot mend
+# this damage, so he is wounded and goes to torpor with 1 blood."
+A> unlock A:ready:1
+A> hunt A:ready:1
+B> block B:ready:1
+A> pass
+B> pass
+C> pass
+A> pass strikes
+B> pass strikes
+A> strike 1A
+B> strike none
+A> pass
+B> pass
+log public Round 1 · Damage: Nassir (G6) takes 1 aggravated and goes to torpor
+expect card B:torpor:1 blood 1
+A> pass
+B> pass
+expect action none
+
+# "Tamoszius is ready and has 2 blood when he receives 3 points of aggravated damage. He becomes
+# wounded by 1 point, and so he must burn 2 blood to prevent destruction from the other 2 points,
+# leaving him empty and in torpor."
+A> unlock A:ready:1
+A> hunt A:ready:1
+B> block B:ready:1
+A> pass
+B> pass
+C> pass
+A> pass strikes
+B> pass strikes
+A> strike 3A
+B> strike none
+A> pass
+B> pass
+log public Round 1 · Damage: Tamoszius (G6) takes 3 aggravated (2 blood) and goes to torpor
+expect card B:torpor:2 blood 0
+A> pass
+B> pass
+expect action none

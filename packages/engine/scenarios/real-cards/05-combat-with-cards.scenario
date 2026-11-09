@@ -1,0 +1,98 @@
+# Combat in steps with real cards: Theo Bell and his .44 Magnum against Beast.
+# Each step is a window: the acting minion first, a play returns the impulse to the acting side,
+# two passes move on. Moves name the card they come from, in the hand (played) or in play.
+# Cards are given by VEKN ID; names and images come from the content pack (LEGAL-08).
+seed 5
+seat A alice
+seat B bob
+seat C carol
+crypt A 201362 *12
+library A 100001 *40
+crypt B 200179 *12
+library B 101993 *20 100959 *20
+crypt C 201542 *12
+library C 102065 *40
+start
+
+# Fast-forward: Theo Bell and Beast are in play, Theo with a .44 Magnum (sped up for the demo).
+A> transfer +7 A:uncontrolled:1
+A> move A:uncontrolled:1 ready
+B> transfer +7 B:uncontrolled:1
+B> move B:uncontrolled:1 ready
+C> transfer +5 C:uncontrolled:1
+C> move C:uncontrolled:1 ready
+A> play A:hand:1 on A:ready:1
+expect card A:ready:2 attached A:ready:1
+A> next
+A> next
+expect turn 1 A minion
+
+# Theo bleeds Bob; Beast blocks.
+A> bleed A:ready:1
+B> block B:ready:1
+A> pass
+B> pass
+expect action bleed A combat
+expect combat 1 before-range close
+
+# Before range: Beast plays Torn Signpost for a strength of 2 this combat.
+A> pass
+B> play B:hand:3
+log public Round 1 · Before range: Beast, The Leatherface of Detroit (G2) plays Torn Signpost
+A> pass
+B> pass
+
+# Range: "Theo Bell maneuvers to long using .44 Magnum". Beast has no maneuver to answer.
+A> maneuver long via A:ready:2
+log public Round 1 · Range: Theo Bell (G2) maneuvers to long using .44 Magnum
+A> pass
+B> pass
+A> pass
+B> pass
+
+# Strikes: Theo uses the .44 Magnum for 2R damage; Beast's hand strike can't reach at long range.
+expect combat 1 strikes long
+A> strike 2R via A:ready:2
+log public Round 1 · Strikes: Theo Bell (G2) strikes with .44 Magnum: 2R damage
+B> strike hand 2
+log public Round 1 · Damage: Beast, The Leatherface of Detroit (G2) is about to take 2 damage
+A> pass
+B> pass
+log public Round 1 · Damage: Beast, The Leatherface of Detroit (G2) takes 2 damage and mends it (2 blood)
+expect card B:ready:1 blood 5
+
+# Press: neither presses, and the combat ends after the end of the round.
+expect combat 1 press long
+A> pass round
+B> pass round
+expect action none
+
+# Next, Theo hunts and Beast blocks again. Before strikes, "Beast plays Immortal Grapple": only
+# hand strikes this round, so the Magnum stays quiet. Both hand-strike for 1 and mend.
+A> unlock A:ready:1
+B> unlock B:ready:1
+A> hunt A:ready:1
+B> block B:ready:1
+A> pass
+B> pass
+C> pass
+A> pass
+B> pass
+A> pass
+B> pass
+expect combat 1 before-strikes close
+A> pass
+B> play B:hand:1
+log public Round 1 · Before strikes: Beast, The Leatherface of Detroit (G2) plays Immortal Grapple
+A> pass
+B> pass
+A> strike hand
+B> strike hand
+A> pass
+B> pass
+log public Round 1 · Damage: Theo Bell (G2) takes 1 damage and mends it (1 blood)
+expect card A:ready:1 blood 6
+expect card B:ready:1 blood 4
+A> pass round
+B> pass round
+expect action none

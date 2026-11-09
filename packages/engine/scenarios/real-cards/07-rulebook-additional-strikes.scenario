@@ -1,0 +1,81 @@
+# The rulebook's additional strikes example, played out: Wauneka is blocked by Flávio Gonçalves
+# (vekn.net/rulebook, "Additional Strikes"). Additional strikes come only after the first pair of
+# strikes, at the same range, and only those who gained one strike in them.
+# Cards are given by VEKN ID; names and images come from the content pack (LEGAL-08).
+seed 5
+seat A alice
+seat B bob
+seat C carol
+crypt A 201573 *12
+library A 102215 *20 100227 *20
+crypt B 201547 *12
+library B 100227 *40
+crypt C 201542 *12
+library C 101993 *40
+start
+
+# Fast-forward: Wauneka and Flávio are in play (sped up for the demo).
+A> transfer +5 A:uncontrolled:1
+A> move A:uncontrolled:1 ready
+B> transfer +7 B:uncontrolled:1
+B> move B:uncontrolled:1 ready
+C> transfer +5 C:uncontrolled:1
+C> move C:uncontrolled:1 ready
+A> next
+A> next
+expect turn 1 A minion
+
+# Wauneka bleeds Bob; Flávio blocks. Neither maneuvers, so the round is at close range.
+A> bleed A:ready:1
+B> block B:ready:1
+A> pass
+B> pass
+A> pass strikes
+B> pass strikes
+
+# "Wauneka announces he is using a Roundhouse card, which allows him to inflict 4 damage, as his
+# strike. Flávio Gonçalves uses his special ability to dodge as his strike, so no damage is dealt."
+A> strike hand 4 via A:hand:2
+log public Round 1 · Strikes: Wauneka (G6) plays Roundhouse to strike: a hand strike for 4
+B> strike dodge via B:ready:1
+log public Round 1 · Strikes: Flávio Gonçalves (G6) strikes with Flávio Gonçalves (G6): dodge
+log public Round 1 · Damage: No strike lands
+
+# "Wauneka plays a card giving him 1 additional strike. Flávio Gonçalves plays a card giving him 2
+# additional strikes": Blur, basic and superior. The acting minion decides first.
+A> strike extra via A:hand:1
+log public Round 1 · Damage: Wauneka (G6) plays Blur for an additional strike
+A> pass
+B> strike extra via B:hand:1
+log public Round 1 · Damage: Flávio Gonçalves (G6) plays Blur for an additional strike
+A> pass
+B> pass
+log public Additional strikes: Wauneka (G6) and Flávio Gonçalves (G6)
+
+# "Wauneka uses his hand strike for the second strike. Flávio Gonçalves uses his hand strike also.
+# Both take 1 damage." Flávio takes the second strike his Blur gave him.
+A> strike hand
+B> strike hand
+A> pass
+B> strike extra
+A> pass
+B> pass
+log public Round 1 · Damage: Wauneka (G6) takes 1 damage and mends it (1 blood)
+log public Round 1 · Damage: Flávio Gonçalves (G6) takes 1 damage and mends it (1 blood)
+
+# "Flávio Gonçalves then uses his hands one more time, and Wauneka cannot use a strike because he
+# had only 1 additional strike. Wauneka takes 1 more damage."
+log public Additional strikes: Flávio Gonçalves (G6)
+reject A> strike hand
+B> strike hand
+A> pass
+B> pass
+log public Round 1 · Damage: Wauneka (G6) takes 1 damage and mends it (1 blood)
+expect card A:ready:1 blood 3
+expect card B:ready:1 blood 6
+
+# Both still ready: the press step, then the end of the round.
+expect combat 1 press close
+A> pass round
+B> pass round
+expect action none

@@ -94,7 +94,8 @@ pnpm sandbox      # play the engine in the terminal as any seat, judge or admin
   `TS_API_URL=https://api.tornsignpost.org pnpm dev:web`.
 - The sandbox starts a three-player table with invented test cards. Type `.help` for commands,
   `.as B` to switch seats, `.save file.scenario` to keep the session as a golden scenario.
-  Options: `--scenario <file>`, `--catalog <cards.json>`, `--seed <n>`. Console syntax:
+  Options: `--scenario <file>`, `--catalog <cards.json>` or `--real` (the local content pack),
+  `--seed <n>`; `.find <name>` lists card IDs. Console syntax:
   [docs/console.md](docs/console.md).
 
 Deploying (maintainers): `pnpm deploy` builds everything and runs `cdk deploy --all` against the

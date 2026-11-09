@@ -111,7 +111,17 @@ export class Session {
   complete(line: string): [string[], string] {
     const last = /("[^"]*|\S*)$/.exec(line)?.[1] ?? '';
     if (line.startsWith('.')) {
-      const metas = ['.as', '.view', '.log', '.undo', '.save', '.script', '.help', '.quit'];
+      const metas = [
+        '.as',
+        '.view',
+        '.log',
+        '.find',
+        '.undo',
+        '.save',
+        '.script',
+        '.help',
+        '.quit',
+      ];
       return [metas.filter((m) => m.startsWith(line)), line];
     }
     return [completeConsole(line, this.context), last];
@@ -195,6 +205,27 @@ export class Session {
         this.run = runScenario(this.lines.join('\n'), this.catalog);
         return [`Undid: ${last}`];
       }
+      case '.find': {
+        // Card IDs to write deck lines with: real-card scenarios name cards by VEKN ID.
+        const fold = (s: string) =>
+          s
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase();
+        const q = fold(args.join(' '));
+        if (!q) return ['Usage: .find <part of a card name>'];
+        const hits = this.catalog.all().filter((c) => fold(c.name).includes(q));
+        if (hits.length === 0) return [`No card matches "${args.join(' ')}"`];
+        const more = hits.length > 20 ? [`… and ${hits.length - 20} more`] : [];
+        return [
+          ...hits.slice(0, 20).map((c) => {
+            const what =
+              c.kind === 'crypt' ? `capacity ${c.capacity ?? '?'}` : (c.types ?? []).join('/');
+            return `  ${c.id}  ${c.name} (${what})`;
+          }),
+          ...more,
+        ];
+      }
       case '.script':
         return this.script.trimEnd().split('\n');
       case '.help':
@@ -205,6 +236,7 @@ export class Session {
           '  .as <seat|judge|admin|public>  act and view as someone else',
           '  .view                          show the table as the current viewer sees it',
           '  .log [n]                       last n log lines for the current viewer',
+          '  .find <name>                   card IDs matching a name, for deck lines',
           '  .undo                          take back the last command (sandbox only)',
           '  .save <file>                   save the session as a .scenario script',
           '  .script                        print the session script',

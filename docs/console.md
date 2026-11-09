@@ -86,6 +86,27 @@ the web app's **Replay** page (behind the `replay` flag, on locally) plays them 
 step forward and back, watch from any seat, the judge, a spectator or everything, and play on from
 any step.
 
+### Writing a Replay scenario
+
+1. **Start from a real example** where you can: the rulebook's worked examples, or a ruling
+   (`CLAUDE.md`). Many of the rulebook's examples name real cards (Chrysanthemum, Underbridge Stray,
+   Wauneka, Flávio Gonçalves…).
+2. **Build it in the sandbox**, on the real cards: `pnpm sandbox --real`, or
+   `pnpm sandbox --real --scenario packages/engine/scenarios/real-cards/05-combat-with-cards.scenario`
+   to start from an existing one. `.find magnum` lists card IDs for the deck lines (`.44 Magnum` is
+   `100001`). Type commands as any seat (`.as B`), look at the table (`.view`: hands with
+   positions), take one back with `.undo`, and `.save my.scenario` writes the session.
+3. **Keep positions predictable**: a deck of one card (`library A 100001 *40`), or a few, makes
+   `A:hand:1` easy to know; the seed fixes the rest. Name cards by position or ID in commands,
+   never by name, so the file carries no card data (LEGAL-08).
+4. **Tidy it up**: the first comment line is the summary on the Replay page, the file name its title
+   (`05-combat-with-cards` → "Combat with cards"). Add `#` comments to say what each part shows
+   (the Replay page shows them beside the script), and `expect` and `log` lines to pin what should
+   happen.
+5. **Save it** as `packages/engine/scenarios/real-cards/NN-name.scenario`. The engine tests run it
+   (`pnpm --filter @torn-signpost/engine test`). A running `pnpm dev:web` picks a new file up when
+   restarted.
+
 ```text
 # comment
 seed 7                         # deterministic shuffles
