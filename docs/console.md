@@ -99,8 +99,8 @@ any step.
 3. **Keep positions predictable**: a deck of one card (`library A 100001 *40`), or a few, makes
    `A:hand:1` easy to know; the seed fixes the rest. Name cards by position or ID in commands,
    never by name, so the file carries no card data (LEGAL-08).
-4. **Tidy it up**: the first comment line is the summary on the Replay page, the file name its title
-   (`05-combat-with-cards` → "Combat with cards"). Add `#` comments to say what each part shows
+4. **Tidy it up**: the first sentence of the opening comment is the summary on the Replay page,
+   the file name its title (`05-combat-with-cards` → "Combat with cards"). Add `#` comments to say what each part shows
    (the Replay page shows them beside the script), and `expect` and `log` lines to pin what should
    happen.
 5. **Save it** as `packages/engine/scenarios/real-cards/NN-name.scenario`. The engine tests run it

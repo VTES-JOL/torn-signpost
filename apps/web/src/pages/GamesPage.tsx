@@ -51,6 +51,11 @@ export function GamesPage() {
     }
   };
 
+  // Games waiting on you first; and your games only once, under "Your games".
+  const mine = lists.mine && [...lists.mine].sort((a, b) => +!!b.waitingOnYou - +!!a.waitingOnYou);
+  const yours = new Set(lists.mine?.map((g) => g.id));
+  const others = (games: GameSummary[] | undefined) => games?.filter((g) => !yours.has(g.id));
+
   const list = (title: string, games: GameSummary[] | undefined, empty: string) => (
     <div>
       <h2>{title}</h2>
@@ -60,6 +65,7 @@ export function GamesPage() {
         {games?.map((g) => (
           <li key={g.id}>
             <Link to={`/games/${g.id}`}>{g.name}</Link>
+            {g.waitingOnYou && <span className="badge">Waiting on you</span>}
             {g.ended ? (
               <span className="muted">
                 {g.format} · ended {date(g.ended.at)} · {endingLine(g.ended)}
@@ -175,9 +181,9 @@ export function GamesPage() {
       ) : (
         <p className="muted">Sign in to create or join games. Anyone can watch public games.</p>
       )}
-      {user && list('Your games', lists.mine, 'You are not in any games.')}
-      {list('Open games', lists.open, 'No open games right now.')}
-      {list('Games in progress', lists.active, 'No public games in progress.')}
+      {user && list('Your games', mine, 'You are not in any games.')}
+      {list('Open games', others(lists.open), 'No other open games right now.')}
+      {list('Games in progress', others(lists.active), 'No other public games in progress.')}
       {list('Recent results', lists.finished, 'No public games have finished yet.')}
     </section>
   );

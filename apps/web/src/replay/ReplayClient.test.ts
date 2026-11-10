@@ -2,6 +2,7 @@ import { type CardInfo, createCatalog, runScenario } from '@torn-signpost/engine
 import testCards from '@torn-signpost/engine/test-catalog.json';
 import { describe, expect, it } from 'vitest';
 import { ReplayClient } from './ReplayClient.ts';
+import { leadingComment } from './scenarios.ts';
 
 const catalog = createCatalog((testCards as { cards: CardInfo[] }).cards);
 const SCRIPT = `seed 4
@@ -85,5 +86,18 @@ describe('ReplayClient', () => {
     await expect(c.send({ type: 'AdjustPool', seat: 'A', delta: 1 })).rejects.toMatchObject({
       code: 'forbidden',
     });
+  });
+});
+
+describe('leadingComment', () => {
+  it('takes the first sentence of the opening comment, across lines', () => {
+    const source =
+      '# The rulebook examples: Chrysanthemum steals from a Stray, and\n# Nassir goes to torpor (vekn.net/rulebook). More here.\n# Next line.\nseed 5\n';
+    expect(leadingComment(source)).toBe(
+      'The rulebook examples: Chrysanthemum steals from a Stray, and Nassir goes to torpor (vekn.net/rulebook).',
+    );
+    expect(leadingComment('# Theo Bell and his .44 Magnum against Beast\nseed 1')).toBe(
+      'Theo Bell and his .44 Magnum against Beast',
+    );
   });
 });

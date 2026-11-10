@@ -35,6 +35,9 @@ export interface DeckSummary {
   libraryCount: number;
   /** Whether the latest version is legal in its format (DECK-04). */
   legal: boolean;
+  /** The crypt's main clans and the library's main disciplines, for lists of decks. */
+  clans?: string[];
+  disciplines?: string[];
   createdAt: string;
   updatedAt: string;
 }

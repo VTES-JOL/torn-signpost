@@ -316,10 +316,118 @@ button.link:hover {
 /* Card search */
 
 .filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+
+.filter-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.filter-main input {
+  flex: 1 1 14rem;
+}
+
+.filters summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.filter-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
   gap: 0.5rem;
-  margin-bottom: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.results-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+/* Results as rows: a small image, the name and what the card is, copies in the deck, − +. */
+.result-rows {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.result-rows li {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr) auto auto;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.result-rows img {
+  width: 2rem;
+  height: auto;
+  aspect-ratio: 358 / 500;
+  border-radius: 3px;
+  background: var(--border);
+}
+
+.row-name {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  text-align: left;
+  border: none;
+  background: none;
+}
+
+.row-name > span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.in-deck {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.add-remove {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+
+.add-remove button {
+  min-height: 1.9rem;
+  width: 1.9rem;
+  padding: 0;
+  font-weight: 700;
+}
+
+.add-remove .add {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.card-preview {
+  position: fixed;
+  z-index: 50;
+  height: auto;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 50%);
+  pointer-events: none;
 }
 
 .capacity {
@@ -363,17 +471,19 @@ button.link:hover {
   background: var(--border);
 }
 
-.results .add {
+.results .add-remove {
   position: absolute;
   top: 0.4rem;
   right: 0.4rem;
-  min-height: 2rem;
-  width: 2rem;
-  padding: 0;
-  font-weight: 700;
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+}
+
+.results .in-deck {
+  position: absolute;
+  top: 0.45rem;
+  left: 0.45rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 70%);
 }
 
 .search.compact .results {
@@ -460,7 +570,137 @@ dialog::backdrop {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   gap: 1.5rem;
-  margin-top: 1rem;
+  margin-top: 0.75rem;
+  align-items: start;
+}
+
+/* The search keeps its place while the deck scrolls past, and scrolls on its own. */
+.search-panel {
+  position: sticky;
+  top: 0.5rem;
+  max-height: calc(100dvh - 1rem);
+  overflow: auto;
+  padding-right: 0.25rem;
+}
+
+.deck-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.deck-head .badge,
+.deck-head .issues {
+  margin: 0;
+}
+
+/* As cards, small groups sit side by side, so a type with one card doesn't take a row. */
+.deck-groups.cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.25rem;
+}
+
+.deck-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 0.5rem;
+}
+
+.deck-cards li {
+  width: 5.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  align-items: stretch;
+}
+
+.deck-card {
+  position: relative;
+  padding: 0;
+  min-height: 0;
+  border: none;
+  background: none;
+}
+
+.deck-card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 358 / 500;
+  border-radius: 5px;
+  background: var(--border);
+}
+
+.copies {
+  position: absolute;
+  right: 0.25rem;
+  bottom: 0.25rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 75%);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.deck-card-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.deck-card-controls button {
+  min-height: 1.6rem;
+  width: 1.6rem;
+  padding: 0;
+}
+
+.unsaved {
+  color: var(--accent);
+}
+
+/* A button that opens a short menu below it (Export). */
+.menu-button {
+  position: relative;
+}
+
+.menu-button summary {
+  list-style: none;
+}
+
+.menu-button summary::-webkit-details-marker {
+  display: none;
+}
+
+.menu-button summary::after {
+  content: " ▾";
+}
+
+.menu-items {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 9rem;
+  padding: 0.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 35%);
+}
+
+.menu-items button {
+  justify-content: flex-start;
+  border: none;
 }
 
 .editor-panels:not(:has(.search-panel)) {
@@ -485,14 +725,15 @@ dialog::backdrop {
   padding: 0;
 }
 
-.deck-section li {
+.deck-rows li {
   display: flex;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.5rem;
   align-items: center;
   padding: 0.15rem 0;
 }
 
-.deck-section li > button:not(.link) {
+.deck-rows li > button:not(.link) {
   min-height: 1.75rem;
   width: 1.75rem;
   padding: 0;
@@ -528,6 +769,12 @@ dialog::backdrop {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .search-panel {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
   .editor-panels.show-deck .search-panel,
   .editor-panels.show-search .deck-panel {
     display: none;
@@ -561,7 +808,7 @@ dialog::backdrop {
   padding-left: 0.75rem;
   display: flex;
   flex-direction: column;
-  max-height: calc(100dvh - 6rem);
+  max-height: calc(100dvh - 7rem);
   position: sticky;
   top: 0.5rem;
 }
@@ -591,14 +838,58 @@ dialog::backdrop {
   align-items: center;
 }
 
+/*
+ * The table fills the window below the header, so your seat and hand are on screen without
+ * scrolling the page: the seats scroll inside their viewport, the hand stays under them.
+ */
+.game-table {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 7rem);
+  min-height: 30rem;
+  overflow-y: auto;
+}
+
+.game-table > * {
+  flex: none;
+}
+
+.game-table > .table-area {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .table-viewport {
   overflow: auto;
-  max-height: calc(100dvh - 11rem);
-  min-height: 20rem;
+  flex: 1 1 auto;
+  min-height: 12rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 70%, #2a1418);
   touch-action: pan-x pan-y;
+}
+
+/* Too narrow for the log beside the table: the page scrolls, and the hand stays at the bottom. */
+@media (max-width: 960px) {
+  .game-table {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .table-viewport {
+    flex: none;
+    max-height: calc(100dvh - 11rem);
+    min-height: 20rem;
+  }
+
+  .hand {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+  }
 }
 
 .table {
@@ -716,6 +1007,55 @@ dialog::backdrop {
   flex: 1 1 14rem;
 }
 
+.opponents .zone-ready {
+  flex-basis: 9rem;
+}
+
+/* An empty torpor needs only room for its label (and to take a dropped minion). */
+.zone-torpor:not(:has(.card)) {
+  min-width: 4rem;
+}
+
+/* Wide enough for its label. */
+.zone-pile {
+  min-width: 6.6rem;
+}
+
+.pile {
+  position: relative;
+  display: block;
+  width: var(--card-w);
+}
+
+.pile img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 358 / 500;
+  border-radius: 5px;
+  box-shadow:
+    2px 2px 0 -1px var(--surface),
+    3px 3px 0 -1px var(--border),
+    0 1px 3px rgb(0 0 0 / 40%);
+}
+
+.zone-pile .pile {
+  margin-inline: auto;
+}
+
+.pile-count {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 1.8rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 75%);
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+}
+
 .zone-label {
   position: absolute;
   right: 0.3rem;
@@ -829,13 +1169,26 @@ dialog::backdrop {
   touch-action: none;
 }
 
+/* An opponent's piles: one short line under their cards. */
+.opponents .stacks {
+  flex-basis: 100%;
+  gap: 0.25rem;
+}
+
+.opponents .stack {
+  flex-direction: row;
+  gap: 0.3rem;
+  min-width: 0;
+  min-height: 1.5rem;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.7rem;
+}
+
 .hand {
   margin-top: 0.4rem;
   --card-w: 84px;
-  position: sticky;
-  bottom: 0;
+  flex: none;
   background: var(--surface);
-  z-index: 2;
 }
 
 [data-accepts] {
@@ -892,16 +1245,30 @@ body.dragging {
   margin: 0.2rem 0.4rem 0.35rem;
 }
 
+.card-menu-head {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.card-menu-head img {
+  width: 2.6rem;
+  aspect-ratio: 358 / 500;
+  margin: 0.15rem 0 0.25rem 0.25rem;
+  border-radius: 3px;
+}
+
 .card-menu button {
   justify-content: flex-start;
   border: none;
   min-height: 2rem;
 }
 
+/* At the top right, over the oldest log lines: not over the chat box or your hand. */
 .inspector {
   position: fixed;
   right: 1rem;
-  bottom: 1rem;
+  top: 6.5rem;
   z-index: 30;
   width: 15rem;
   padding: 0.5rem;
@@ -960,6 +1327,15 @@ body.dragging {
 
 .log-entries li.chat {
   color: var(--text);
+}
+
+/* Each turn starts with a divider, so the log reads turn by turn. */
+.log-entries li.turn-start {
+  margin-top: 0.4rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 600;
 }
 
 .log-entries li.mention {
@@ -1495,4 +1871,81 @@ body.dragging {
 
 .end-game {
   margin-block: 0.25rem;
+}
+
+/*
+ * The table's tools, judge calls and ending the game share one row, zoom at the end. A judge
+ * call or a proposal to end the game takes a row of its own, below, while it's open.
+ */
+.table-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  margin-bottom: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.table-controls > .turn-bar {
+  display: contents;
+}
+
+.table-controls > .judge-calls,
+.table-controls > .end-game {
+  margin: 0;
+  order: 1;
+}
+
+.table-controls .zoom-controls {
+  order: 2;
+}
+
+.table-controls > .judge-calls:has(.judge-call, form),
+.table-controls > .end-game:has([role="status"], .primary) {
+  flex-basis: 100%;
+  order: 3;
+}
+
+/* A row of joined toggle buttons: List | Grid, All | Crypt | Library. */
+.segmented {
+  display: inline-flex;
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.segmented > * {
+  border-radius: 0;
+  margin-left: -1px;
+}
+
+.segmented > :first-child {
+  border-radius: 6px 0 0 6px;
+  margin-left: 0;
+}
+
+.segmented > :last-child {
+  border-radius: 0 6px 6px 0;
+}
+
+.segmented > [aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  position: relative;
+}
+
+.results-head .segmented {
+  margin-left: auto;
+}
+
+.results-head .segmented > * {
+  min-height: 1.9rem;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.deck-head .segmented > * {
+  min-height: 1.9rem;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.85rem;
 }

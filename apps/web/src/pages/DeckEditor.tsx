@@ -15,11 +15,13 @@ import {
 } from '@torn-signpost/cards';
 import type { DeckDetails, SaveDeckRequest } from '@torn-signpost/protocol';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { ApiError, useApi } from '../api.ts';
 import { useAuth } from '../auth.tsx';
 import { CardDetail } from '../components/CardDetail.tsx';
+import { useCardPreview } from '../components/CardPreview.tsx';
 import { CardSearch } from '../components/CardSearch.tsx';
+import { cardMeta, useRemembered } from '../components/cardMeta.ts';
 import { useCards } from '../content.tsx';
 
 interface Draft {
@@ -49,7 +51,11 @@ export function DeckEditor() {
   const [open, setOpen] = useState<CardRecord>();
   const [panel, setPanel] = useState<'search' | 'deck'>('deck');
   const [message, setMessage] = useState<string>();
-  const [importing, setImporting] = useState(false);
+  const [params] = useSearchParams();
+  // "Import deck" on the decks page opens a new deck with the import dialog up.
+  const [importing, setImporting] = useState(!id && params.has('import'));
+  const [deckView, setDeckView] = useRemembered<'list' | 'cards'>('ts.deck.view', 'cards');
+  const exportMenu = useRef<HTMLDetailsElement>(null);
   // Guards against a second save (e.g. a double tap) creating a duplicate deck.
   // A ref as well as state: two clicks in the same tick both see the old state.
   const [saving, setSaving] = useState(false);
@@ -94,6 +100,59 @@ export function DeckEditor() {
     draft.visibility !== saved.visibility ||
     draft.notes !== (saved.notes ?? '') ||
     !sameCards(draft.cards, saved.cards);
+
+  const counts = useMemo(
+    () => new Map([...draft.cards.crypt, ...draft.cards.library].map((e) => [e.id, e.count])),
+    [draft.cards],
+  );
+  const empty = draft.cards.crypt.length + draft.cards.library.length === 0;
+  // Unsaved: a saved deck that changed, or a new deck with cards in it.
+  const unsaved = editable && (saved ? dirty : !empty);
+  const canSave = editable && !saving && dirty && !!draft.name.trim();
+
+  // Don't lose unsaved changes: ask before closing the tab, or following a link off the page.
+  useEffect(() => {
+    if (!unsaved) return;
+    const beforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
+    const onClick = (e: MouseEvent) => {
+      const a = (e.target as Element | null)?.closest?.('a[href]');
+      if (!a || a.getAttribute('target') === '_blank' || e.defaultPrevented) return;
+      if (!window.confirm('Leave this deck? Your unsaved changes will be lost.')) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    document.addEventListener('click', onClick, true);
+    return () => {
+      window.removeEventListener('beforeunload', beforeUnload);
+      document.removeEventListener('click', onClick, true);
+    };
+  }, [unsaved]);
+
+  // The Export menu closes when you click anywhere else.
+  useEffect(() => {
+    const close = (e: PointerEvent) => {
+      const menu = exportMenu.current;
+      if (menu?.open && !menu.contains(e.target as Node)) menu.open = false;
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, []);
+
+  // Ctrl/⌘+S saves.
+  const saveRef = useRef<() => void>(undefined);
+  saveRef.current = canSave ? () => void save() : undefined;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        saveRef.current?.();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const change = (count: number) => (card: CardRecord) => {
     if (!editable) return;
@@ -188,12 +247,14 @@ export function DeckEditor() {
           <button
             type="button"
             className="primary"
-            disabled={saving || !dirty || !draft.name.trim()}
+            disabled={!canSave}
             onClick={() => void save()}
+            title="Ctrl/⌘ + S"
           >
             Save
           </button>
         )}
+        {unsaved && <span className="muted small unsaved">Unsaved changes</span>}
         {user && saved && !owner && (
           <button type="button" onClick={() => void save(true)}>
             Copy to my decks
@@ -204,12 +265,23 @@ export function DeckEditor() {
             Import
           </button>
         )}
-        <button type="button" onClick={() => download('text')}>
-          Export text
-        </button>
-        <button type="button" onClick={() => download('json')}>
-          Export JSON
-        </button>
+        <details className="menu-button" ref={exportMenu}>
+          <summary className="button">Export</summary>
+          <div className="menu-items">
+            {(['text', 'json'] as const).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => {
+                  download(kind);
+                  if (exportMenu.current) exportMenu.current.open = false;
+                }}
+              >
+                {kind === 'text' ? 'Text (.txt)' : 'JSON (.json)'}
+              </button>
+            ))}
+          </div>
+        </details>
         {editable && saved && (
           <button type="button" className="danger" onClick={() => void remove()}>
             Delete
@@ -245,34 +317,45 @@ export function DeckEditor() {
       </div>
 
       <div className={`editor-panels show-${panel}`}>
-        {editable && (
-          <div className="panel search-panel">
-            <CardSearch
-              compact
-              onOpen={setOpen}
-              onPick={change(1)}
-              format={draft.format === 'v5' ? 'v5' : undefined}
-            />
-          </div>
-        )}
         <div className="panel deck-panel">
-          <Validation issues={issues} />
+          <div className="deck-head">
+            <Validation issues={issues} />
+            <fieldset className="segmented" aria-label="Show the deck as">
+              <button
+                type="button"
+                aria-pressed={deckView === 'cards'}
+                onClick={() => setDeckView('cards')}
+              >
+                Cards
+              </button>
+              <button
+                type="button"
+                aria-pressed={deckView === 'list'}
+                onClick={() => setDeckView('list')}
+              >
+                List
+              </button>
+            </fieldset>
+          </div>
           <DeckSection
             title="Crypt"
             entries={draft.cards.crypt}
             editable={editable}
+            view={deckView}
             onOpen={setOpen}
             onChange={(card, n) => change(n)(card)}
+            {...(stats ? { summary: cryptSummary(stats, draft.cards, index) } : {})}
           />
           <DeckSection
             title="Library"
             entries={draft.cards.library}
             editable={editable}
+            view={deckView}
             onOpen={setOpen}
             onChange={(card, n) => change(n)(card)}
             groupByType
           />
-          {stats && <Stats stats={stats} />}
+          {stats && !empty && <Stats stats={stats} />}
           <label className="notes">
             Notes
             <textarea
@@ -283,6 +366,18 @@ export function DeckEditor() {
             />
           </label>
         </div>
+        {editable && (
+          <div className="panel search-panel">
+            <CardSearch
+              compact
+              onOpen={setOpen}
+              onPick={change(1)}
+              onRemove={change(-1)}
+              counts={counts}
+              format={draft.format === 'v5' ? 'v5' : undefined}
+            />
+          </div>
+        )}
       </div>
 
       {importing && index && (
@@ -307,74 +402,162 @@ export function DeckEditor() {
   );
 }
 
+/** Library card types in the order deck lists use (TWDA), so a list reads as players expect. */
+const TYPE_ORDER = [
+  'Master',
+  'Conviction',
+  'Action',
+  'Action Modifier',
+  'Political Action',
+  'Ally',
+  'Equipment',
+  'Retainer',
+  'Power',
+  'Reaction',
+  'Combat',
+  'Event',
+];
+const typeRank = (types: string[]) =>
+  Math.min(
+    ...types.map((t) => (TYPE_ORDER.includes(t) ? TYPE_ORDER.indexOf(t) : TYPE_ORDER.length)),
+  );
+
+/** "capacity 3–8, average 7.1 · groups 2" for the crypt's heading. */
+function cryptSummary(
+  stats: ReturnType<typeof deckStats>,
+  deck: DeckCards,
+  index: { byId: ReadonlyMap<string, CardRecord> } | undefined,
+): string {
+  if (stats.crypt.count === 0) return '';
+  const groups = [...new Set(deck.crypt.flatMap((e) => index?.byId.get(e.id)?.group ?? []))].sort();
+  const c = stats.crypt.capacity;
+  return [
+    `capacity ${c.min === c.max ? c.min : `${c.min}–${c.max}`}, average ${c.average}`,
+    groups.length > 0 && `${groups.length === 1 ? 'group' : 'groups'} ${groups.join(', ')}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 function DeckSection(props: {
   title: string;
   entries: DeckCards['crypt'];
   editable: boolean;
+  view: 'list' | 'cards';
   groupByType?: boolean;
+  summary?: string;
   onOpen: (card: CardRecord) => void;
   onChange: (card: CardRecord, delta: number) => void;
 }) {
   const cards = useCards();
+  const { bind, preview } = useCardPreview();
   if (cards.state !== 'ready') return null;
   const rows = props.entries.flatMap((e) => {
     const card = cards.get(e.id);
     return card ? [{ card, count: e.count }] : [];
   });
+  // The crypt by capacity, highest first; library cards by name within their type.
+  rows.sort(
+    (a, b) =>
+      (b.card.capacity ?? 0) - (a.card.capacity ?? 0) || a.card.name.localeCompare(b.card.name),
+  );
   const groups = new Map<string, typeof rows>();
   for (const r of rows) {
     const key = props.groupByType ? r.card.types.join(' / ') : '';
     groups.set(key, [...(groups.get(key) ?? []), r]);
   }
+  const ordered = [...groups].sort(
+    ([a, x], [b, y]) =>
+      typeRank(x[0]?.card.types ?? []) - typeRank(y[0]?.card.types ?? []) || a.localeCompare(b),
+  );
+  const buttons = (card: CardRecord, count: number) => (
+    <>
+      {props.editable && (
+        <button
+          type="button"
+          aria-label={`Remove one ${card.name}`}
+          onClick={() => props.onChange(card, -1)}
+        >
+          −
+        </button>
+      )}
+      <span className="count">{count}</span>
+      {props.editable && (
+        <button
+          type="button"
+          aria-label={`Add one ${card.name}`}
+          onClick={() => props.onChange(card, 1)}
+        >
+          +
+        </button>
+      )}
+    </>
+  );
   return (
     <div className="deck-section">
       <h2>
         {props.title} ({deckSize(props.entries)})
+        {props.summary && <span className="muted small"> {props.summary}</span>}
       </h2>
-      {rows.length === 0 && <p className="muted">Empty</p>}
-      {[...groups]
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([type, list]) => (
-          <div key={type}>
+      {rows.length === 0 && (
+        <p className="muted">Empty{props.editable ? ': add cards from the search.' : ''}</p>
+      )}
+      <div className={`deck-groups ${props.view}`}>
+        {ordered.map(([type, list]) => (
+          <div key={type} className="deck-group">
             {type && (
               <h3>
                 {type} ({list.reduce((n, r) => n + r.count, 0)})
               </h3>
             )}
-            <ul>
-              {list.map(({ card, count }) => (
-                <li key={card.id}>
-                  {props.editable && (
+            {props.view === 'cards' ? (
+              <ul className="deck-cards">
+                {list.map(({ card, count }) => (
+                  <li key={card.id} {...bind(card)}>
                     <button
                       type="button"
-                      aria-label={`Remove one ${card.name}`}
-                      onClick={() => props.onChange(card, -1)}
+                      className="deck-card"
+                      onClick={() => props.onOpen(card)}
+                      title={card.name}
                     >
-                      −
+                      <img
+                        src={cards.image(card.id, 'thumb')}
+                        alt={card.name}
+                        loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.src = cards.back(card.kind, 'thumb');
+                        }}
+                      />
+                      <span className="copies">×{count}</span>
                     </button>
-                  )}
-                  <span className="count">{count}</span>
-                  {props.editable && (
+                    <span className="deck-card-controls">{buttons(card, count)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <ul className="deck-rows">
+                {list.map(({ card, count }) => (
+                  <li key={card.id}>
+                    {buttons(card, count)}
                     <button
                       type="button"
-                      aria-label={`Add one ${card.name}`}
-                      onClick={() => props.onChange(card, 1)}
+                      className="link"
+                      onClick={() => props.onOpen(card)}
+                      {...bind(card)}
                     >
-                      +
+                      {card.name}
                     </button>
-                  )}
-                  <button type="button" className="link" onClick={() => props.onOpen(card)}>
-                    {card.name}
-                  </button>
-                  {card.kind === 'crypt' && <span className="muted">{card.capacity}</span>}
-                  {card.disciplines && card.kind === 'crypt' && (
-                    <span className="muted">{card.disciplines.join(' ')}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
+                    <span className="muted small">
+                      {cardMeta(card, { type: !props.groupByType })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         ))}
+      </div>
+      {preview}
     </div>
   );
 }
@@ -397,7 +580,7 @@ function Stats({ stats }: { stats: ReturnType<typeof deckStats> }) {
       .map(([k, v]) => `${k} ${v}`)
       .join(' · ');
   return (
-    <details className="stats">
+    <details className="stats" open>
       <summary>Statistics</summary>
       <p>
         Crypt capacity {stats.crypt.capacity.min}–{stats.crypt.capacity.max}, average{' '}

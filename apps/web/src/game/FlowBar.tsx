@@ -156,9 +156,11 @@ export function FlowBar(props: {
   setChoosing: (c: Choosing | undefined) => void;
   send: (command: PlayerCommand) => void;
   judge?: boolean;
+  /** False for a replay, which has no clock. */
+  live?: boolean;
 }) {
   const { view, seat, client, catalog, offers, choosing, setChoosing, send } = props;
-  const clock = !!useConfig().flags.clock;
+  const clock = !!useConfig().flags.clock && props.live !== false;
   const now = useNow(60_000);
   const mine = isWaitingOn(view, seat);
   const name = (id: string | undefined) => {

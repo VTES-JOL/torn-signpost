@@ -10,6 +10,7 @@ type Entry = {
   text: string;
   who?: string;
   mention?: boolean;
+  turn?: boolean;
 };
 
 export function LogPanel(props: {
@@ -21,9 +22,15 @@ export function LogPanel(props: {
 }) {
   const [text, setText] = useState('');
   const [error, setError] = useState<string>();
-  const end = useRef<HTMLLIElement>(null);
+  const list = useRef<HTMLOListElement>(null);
   const entries: Entry[] = [
-    ...props.snapshot.log.map((l) => ({ key: `e${l.seq}`, seq: l.seq, order: 0, text: l.text })),
+    ...props.snapshot.log.map((l) => ({
+      key: `e${l.seq}`,
+      seq: l.seq,
+      order: 0,
+      text: l.text,
+      turn: !!l.turn,
+    })),
     ...props.snapshot.chat.map((m, i) => ({
       key: m.id,
       seq: m.seq,
@@ -35,18 +42,26 @@ export function LogPanel(props: {
   ].sort((a, b) => a.seq - b.seq || a.order - b.order);
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll when new entries arrive
   useEffect(() => {
-    end.current?.scrollIntoView({ block: 'nearest' });
+    // Scroll the log itself, not the page: on a narrow screen it sits below the table.
+    const el = list.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [entries.length]);
   return (
     <div className="log">
-      <ol className="log-entries" aria-label="Game log and chat">
+      <ol ref={list} className="log-entries" aria-label="Game log and chat">
         {entries.map((e) => (
-          <li key={e.key} className={[e.who ? 'chat' : '', e.mention ? 'mention' : ''].join(' ')}>
+          <li
+            key={e.key}
+            className={[
+              e.who ? 'chat' : '',
+              e.mention ? 'mention' : '',
+              e.turn ? 'turn-start' : '',
+            ].join(' ')}
+          >
             {e.who && <strong>{e.who}: </strong>}
             {e.text}
           </li>
         ))}
-        <li ref={end} aria-hidden />
       </ol>
       {props.canChat === 'none' ? null : props.canChat ? (
         <form

@@ -221,6 +221,8 @@ export interface GameSummary {
   seq: number;
   /** A finished game's result, for lists and the result page (docs/m6-plan.md M6.6). */
   ended?: GameEnding;
+  /** In your own list of games: the game is waiting on a decision of yours. */
+  waitingOnYou?: boolean;
 }
 
 /** How a finished game ended: what a list of games, or its result page, shows. */

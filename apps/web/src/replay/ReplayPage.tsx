@@ -180,6 +180,7 @@ function ScenarioPlayer({ scenario, catalog }: { scenario: ScenarioFile; catalog
               catalog={catalog}
               judge={snapshot.viewer.kind === 'judge'}
               onError={setError}
+              live={false}
             />
           ) : (
             <p className="notice">Setting up the table: step forward to start the game.</p>
@@ -234,7 +235,14 @@ function Script(props: {
   const currentRef = useRef<HTMLLIElement>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: follow the cursor
   useEffect(() => {
-    currentRef.current?.scrollIntoView({ block: 'nearest' });
+    // Scroll the script itself, not the page: on a narrow screen it sits below the table.
+    const el = currentRef.current;
+    const box = el?.parentElement;
+    if (!el || !box) return;
+    const r = el.getBoundingClientRect();
+    const b = box.getBoundingClientRect();
+    if (r.top < b.top) box.scrollTop += r.top - b.top;
+    else if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom;
   }, [cursor]);
   const lines = props.source.split('\n');
   return (

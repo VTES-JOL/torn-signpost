@@ -24,7 +24,7 @@ import {
 } from '@torn-signpost/engine';
 import type { PlayerCommand } from '@torn-signpost/protocol';
 import { ApiError } from '../api.ts';
-import type { GameSnapshot, LogLine, TableClient } from '../game/client.ts';
+import { type GameSnapshot, type LogLine, startsTurn, type TableClient } from '../game/client.ts';
 
 export interface ReplayStep extends TimelineStep {
   /** Played in the browser on top of the timeline, rather than part of it. */
@@ -162,7 +162,9 @@ export class ReplayClient implements TableClient {
             seatName,
           },
         );
-        return text ? { seq: ev.seq, at: ev.at, text } : undefined;
+        return text
+          ? { seq: ev.seq, at: ev.at, text, ...(startsTurn(ev) ? { turn: true } : {}) }
+          : undefined;
       });
       this.logs.set(key, lines);
     }

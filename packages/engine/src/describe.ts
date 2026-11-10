@@ -71,6 +71,13 @@ const ZONE_LABELS: Record<ZoneName, string> = {
   research: 'research area',
 };
 
+const SHORT_ZONE_LABELS: Record<ZoneName, string> = {
+  ...ZONE_LABELS,
+  uncontrolled: 'uncontrolled',
+  ready: 'ready',
+  research: 'research',
+};
+
 export interface DescribeOptions {
   catalog: CardCatalog;
   /** Display name for a seat; defaults to the seat ID. */
@@ -137,6 +144,13 @@ function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): 
     const owner = ev.by.kind === 'seat' && ev.by.seat === seat ? 'their' : `${seatName(seat)}'s`;
     return name === 'removed' ? ZONE_LABELS[name] : `${owner} ${ZONE_LABELS[name]}`;
   };
+  // Short, for moves: "from uncontrolled to ready" in the mover's own zones, else "Bob's torpor".
+  const place = (z: ZoneId) => {
+    const { seat, name } = parseZoneId(z);
+    if (name === 'removed') return ZONE_LABELS[name];
+    const short = SHORT_ZONE_LABELS[name];
+    return ev.by.kind === 'seat' && ev.by.seat === seat ? short : `${seatName(seat)}'s ${short}`;
+  };
   const holder = (h: BloodHolder) =>
     'pool' in h ? `${seatName(h.pool)}'s pool` : cardName(h.card);
   const signed = (n: number) => (n > 0 ? `+${n}` : `${n}`);
@@ -161,7 +175,13 @@ function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): 
       // Played as the source of a combat move, or moved by combat damage: their own lines tell it.
       if (ev.source || ev.combat) return '';
       if (ev.played) {
-        const into = parseZoneId(ev.to).name === 'ashHeap' ? '' : ` into ${zone(ev.to)}`;
+        const to = parseZoneId(ev.to);
+        const into =
+          to.name === 'ashHeap'
+            ? ''
+            : to.name === 'ready' && ev.by.kind === 'seat' && ev.by.seat === to.seat
+              ? ' into play'
+              : ` into ${place(ev.to)}`;
         const from = parseZoneId(ev.from).seat;
         // In a combat step, the combatant plays it: "Beast plays Immortal Grapple" (M6.4).
         const c = before.action?.combat;
@@ -175,7 +195,7 @@ function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): 
       const toName = parseZoneId(ev.to).name;
       const where =
         ev.position === 'top' && (toName === 'crypt' || toName === 'library') ? 'top of ' : '';
-      return `${who} moved ${name} from ${zone(ev.from)} to ${where}${zone(ev.to)}`;
+      return `${who} moved ${name} from ${place(ev.from)} to ${where}${place(ev.to)}`;
     }
     case 'CardsDrawn': {
       const n = ev.cards.length;

@@ -146,6 +146,24 @@ describe.skipIf(!available)('game service (DynamoDB Local)', () => {
       expect((await games.list(bob, 'mine')).map((x) => x.id)).toContain(g.id);
     });
 
+    it('marks your own games that are waiting on you', async () => {
+      const { games } = service(store, recordingGateway().gateway);
+      const { id } = await startedGame(games);
+      const turn = (await games.details(alice, id)).view?.turn?.seat;
+      const occupant = (await games.details(alice, id)).view?.seats.find(
+        (s) => s.id === turn,
+      )?.occupant;
+      for (const who of [alice, bob, carol]) {
+        const mine = (await games.list(who, 'mine')).find((x) => x.id === id);
+        const sub = who.kind === 'user' ? who.sub : '';
+        expect(mine?.waitingOnYou ?? false).toBe(sub === occupant);
+      }
+      // Lists of everyone's games don't say whom they wait on.
+      expect((await games.list(alice, 'active')).find((x) => x.id === id)?.waitingOnYou).toBe(
+        undefined,
+      );
+    });
+
     it('validates seats and decks', async () => {
       const { games } = service(store, recordingGateway().gateway);
       await expect(

@@ -23,7 +23,7 @@ A> move A:uncontrolled:1 ready
 expect card A:ready:1 blood 7
 expect card A:ready:1 controller A
 expect pool A 23
-log B A moved Vera Nightfall from their uncontrolled region to their ready region
+log B A moved Vera Nightfall from uncontrolled to ready
 
 A> attach "Iron Ward" A:ready:1
 expect count A:hand 6

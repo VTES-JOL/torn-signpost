@@ -23,10 +23,18 @@ export const SCENARIOS: ScenarioFile[] = Object.entries(files)
   }))
   .sort((a, b) => a.name.localeCompare(b.name));
 
-/** The first comment line: what the scenario shows. */
-function leadingComment(source: string): string {
-  const first = source.split('\n').find((l) => l.trim().startsWith('#'));
-  return first ? first.replace(/^\s*#\s*/, '') : '';
+/** The first sentence of the leading comment, which may run over several lines. */
+export function leadingComment(source: string): string {
+  const lines = source.split('\n');
+  const start = lines.findIndex((l) => l.trim().startsWith('#'));
+  if (start < 0) return '';
+  const block: string[] = [];
+  for (const l of lines.slice(start)) {
+    if (!l.trim().startsWith('#')) break;
+    block.push(l.replace(/^\s*#\s*/, ''));
+  }
+  const text = block.join(' ');
+  return text.match(/^.*?[.!?](?=\s|$)/)?.[0] ?? text;
 }
 
 /** "01-first-turn" → "First turn". */

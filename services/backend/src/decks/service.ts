@@ -1,5 +1,5 @@
 /** Deck builder storage (DECK-03/04/07). Public decks are readable by anyone, including guests. */
-import { deckSize, sameCards, validateDeck } from '@torn-signpost/cards';
+import { deckSize, deckStats, sameCards, validateDeck } from '@torn-signpost/cards';
 import type {
   DeckCards,
   DeckDetails,
@@ -112,10 +112,18 @@ export class DeckService {
     for (const { id } of [...cards.crypt, ...cards.library]) {
       if (!index.byId.has(id)) throw new ApiError(422, 'unknown_card', `Unknown card ${id}`);
     }
+    const stats = deckStats(cards, index);
+    const top = (rec: Record<string, number>, n: number) =>
+      Object.entries(rec)
+        .sort(([a, x], [b, y]) => y - x || a.localeCompare(b))
+        .slice(0, n)
+        .map(([k]) => k);
     return {
       cryptCount: deckSize(cards.crypt),
       libraryCount: deckSize(cards.library),
       legal: validateDeck(cards, index, format).every((i) => i.level !== 'error'),
+      clans: top(stats.crypt.clans, 2),
+      disciplines: top(stats.library.disciplines, 3),
     };
   }
 

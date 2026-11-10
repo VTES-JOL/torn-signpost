@@ -32,9 +32,14 @@ export function DecksPage() {
       <div className="toolbar">
         <h1>Decks</h1>
         {user && (
-          <Link className="button" to="/decks/new">
-            New deck
-          </Link>
+          <>
+            <Link className="button" to="/decks/new?import=1">
+              Import deck
+            </Link>
+            <Link className="button primary" to="/decks/new">
+              New deck
+            </Link>
+          </>
         )}
       </div>
       <div className="tabs" role="tablist">
@@ -75,8 +80,15 @@ export function DecksPage() {
           <li key={d.id}>
             <Link to={`/decks/${d.id}`}>{d.name}</Link>
             <span className="muted">
-              {d.format} · {d.cryptCount} crypt · {d.libraryCount} library
-              {tab === 'public' && ` · by ${d.ownerName}`}
+              {[
+                d.clans?.join(' / '),
+                d.disciplines?.length && d.disciplines.join(' '),
+                d.format,
+                `${d.cryptCount} crypt · ${d.libraryCount} library`,
+                tab === 'public' ? `by ${d.ownerName}` : `edited ${edited(d.updatedAt)}`,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </span>
             <span className={d.legal ? 'badge ok' : 'badge'}>
               {d.legal ? 'Legal' : 'Not legal'}
@@ -86,4 +98,12 @@ export function DecksPage() {
       </ul>
     </section>
   );
+}
+
+function edited(at: string): string {
+  return new Date(at).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 }

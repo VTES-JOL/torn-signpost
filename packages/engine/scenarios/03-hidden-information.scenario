@@ -17,7 +17,7 @@ expect card A:ready:1 faceDown true
 expect sees A A:ready 1
 expect sees B A:ready 0
 expect sees public A:ready 0
-log B A moved a face-down card from their hand to their ready region
+log B A moved a face-down card from hand to ready
 
 A> flip A:ready:1
 expect sees B A:ready 1

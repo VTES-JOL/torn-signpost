@@ -31,6 +31,8 @@ export interface LogLine {
   seq: number;
   at: string;
   text: string;
+  /** The first line of a turn, shown as a divider in the log. */
+  turn?: boolean;
 }
 
 export interface GameSnapshot {
@@ -205,7 +207,8 @@ export class GameClient implements TableClient {
       const seatName = (seat: string) => this.nameIn(next, seat);
       const text = describeEvent(ev, view, { catalog: this.opts.catalog, seatName });
       // Bookkeeping events (automatic passes, for one) have nothing to show.
-      if (text) added.push({ seq: ev.seq, at: ev.at, text });
+      if (text)
+        added.push({ seq: ev.seq, at: ev.at, text, ...(startsTurn(ev) ? { turn: true } : {}) });
       viewer = this.viewerFor(next);
       view = project(next, viewer);
     }
@@ -283,4 +286,9 @@ export class GameClient implements TableClient {
     this.snapshot = next;
     for (const l of this.listeners) l();
   }
+}
+
+/** A new turn: its unlock phase begins. */
+export function startsTurn(ev: GameEvent): boolean {
+  return ev.type === 'PhaseAdvanced' && ev.turn.phase === 'unlock';
 }

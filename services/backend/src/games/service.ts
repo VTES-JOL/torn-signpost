@@ -22,6 +22,7 @@ import {
   type Timer,
   type Viewer,
   viewerFor,
+  waitingOn,
 } from '@torn-signpost/engine';
 import type {
   ChatMessage,
@@ -135,7 +136,19 @@ export class GameService {
       filter === 'mine'
         ? await this.deps.store.listUserGames(requireUser(identity).sub)
         : await this.deps.store.listGames(filter, filter === 'finished' ? RECENT_RESULTS : 50);
-    return metas.map(summary);
+    if (filter !== 'mine') return metas.map(summary);
+    // Your own games say whether they're waiting on you, so the lobby can put those first.
+    const user = requireUser(identity).sub;
+    return Promise.all(
+      metas.map(async (meta) => {
+        const game = summary(meta);
+        if (meta.status !== 'active') return game;
+        const state = await this.load(meta.id, meta.seq);
+        const seat = liveSeatOf(state, user);
+        if (seat && waitingOn(state).some((w) => w.seat === seat.id)) game.waitingOnYou = true;
+        return game;
+      }),
+    );
   }
 
   /**

@@ -43,6 +43,8 @@ interface TableContextValue {
   client: TableClient;
   seat: string | undefined;
   judge: boolean;
+  /** A live game: presence, the clock, judge calls and ending by agreement; not a replay. */
+  live: boolean;
   send(command: PlayerCommand): void;
   openMenu(card: CardInstance, anchor: DOMRect): void;
   inspect(card: CardInstance | undefined): void;
@@ -69,8 +71,11 @@ export function Table(props: {
   catalog: CardCatalog;
   judge: boolean;
   onError: (m: string) => void;
+  /** False for a replay: no presence, clock, judge calls or ending by agreement. */
+  live?: boolean;
 }) {
   const { client, snapshot, catalog, onError } = props;
+  const live = props.live ?? true;
   const view = snapshot.view;
   // Nobody acts on a finished table, judges included (docs/m6-plan.md M6.6).
   const judge = props.judge && view.status !== 'finished';
@@ -119,6 +124,7 @@ export function Table(props: {
     client,
     seat,
     judge,
+    live,
     send,
     openMenu: (card, anchor) => setMenu({ card, anchor }),
     inspect: setInspected,
@@ -196,25 +202,31 @@ export function Table(props: {
           setChoosing={setChoosing}
           send={send}
           judge={judge}
+          live={live}
         />
-        {judgeCalls && (
-          <JudgeCalls
-            view={view}
-            seat={seat}
-            judge={judge}
-            user={user?.sub}
-            seatName={client.seatName}
-            send={send}
-          />
-        )}
-        <EndGameControls
-          view={view}
-          seat={seat}
-          admin={!!user?.groups.includes('admin')}
-          seatName={client.seatName}
-          send={send}
-        />
-        <TurnBar zoom={zoom} setZoom={setZoom} />
+        {/* One row: the table tools, then judge calls and ending the game, then zoom. */}
+        <div className="table-controls">
+          <TurnBar zoom={zoom} setZoom={setZoom} />
+          {live && judgeCalls && (
+            <JudgeCalls
+              view={view}
+              seat={seat}
+              judge={judge}
+              user={user?.sub}
+              seatName={client.seatName}
+              send={send}
+            />
+          )}
+          {live && (
+            <EndGameControls
+              view={view}
+              seat={seat}
+              admin={!!user?.groups.includes('admin')}
+              seatName={client.seatName}
+              send={send}
+            />
+          )}
+        </div>
         {outOfGame && view.status === 'active' && (
           <p className="notice small" role="status">
             {view.seats.find((x) => x.id === snapshot.seat)?.withdrawn
@@ -228,7 +240,7 @@ export function Table(props: {
             Choose a minion to attach to, or press Escape.
           </p>
         )}
-        <div className={candidates ? 'choosing' : undefined}>
+        <div className={['table-area', candidates ? 'choosing' : ''].join(' ')}>
           <ZoomViewport zoom={zoom} setZoom={setZoom}>
             <Seats view={view} />
           </ZoomViewport>
@@ -302,9 +314,9 @@ function SeatArea({
   /** Grid cell among the opponents. */
   place?: { gridRow: number; gridColumn: number };
 }) {
-  const { snapshot, client, send, judge, showZone } = useTable();
+  const { snapshot, client, send, judge, live, showZone } = useTable();
   const { begin } = useDrag();
-  const presence = !!useConfig().flags.presence;
+  const presence = !!useConfig().flags.presence && live;
   const view = snapshot.view;
   const s = view.seats.find((x) => x.id === seat);
   if (!s) return null;
@@ -362,7 +374,8 @@ function SeatArea({
       <div className="seat-zones">
         <Zone seat={seat} name="ready" label="Ready" />
         <Zone seat={seat} name="torpor" label="Torpor" />
-        <Zone seat={seat} name="uncontrolled" label="Uncontrolled" />
+        {/* An opponent's face-down cards say nothing but how many: one pile, not a row of backs. */}
+        <Zone seat={seat} name="uncontrolled" label="Uncontrolled" pile={!own} />
         <div className="stacks">
           <Stack seat={seat} name="crypt" label="Crypt" count={count('crypt')} draggable={canAct} />
           <Stack
@@ -396,10 +409,44 @@ function SeatArea({
   );
 }
 
-function Zone({ seat, name, label }: { seat: string; name: ZoneName; label: string }) {
+function Zone({
+  seat,
+  name,
+  label,
+  pile,
+}: {
+  seat: string;
+  name: ZoneName;
+  label: string;
+  /** Show the zone as one pile with a count while none of its cards are known to the viewer. */
+  pile?: boolean;
+}) {
   const { snapshot } = useTable();
+  const cards = useCards();
   const view = snapshot.view;
   const ids = view.zones[zoneId(seat, name)] ?? [];
+  if (
+    pile &&
+    ids.length > 0 &&
+    cards.state === 'ready' &&
+    ids.every((id) => !view.cards[id]?.cardId)
+  ) {
+    return (
+      <div className={`zone zone-${name} zone-pile`} data-drop={`zone:${seat}:${name}`}>
+        <span className="zone-label">{label}</span>
+        <span
+          className="pile"
+          title={`${ids.length} face-down ${ids.length === 1 ? 'card' : 'cards'}`}
+        >
+          <img src={cards.back('crypt', 'thumb')} alt="" draggable={false} />
+          <span className="pile-count">
+            {ids.length}
+            <span className="sr-only"> face-down {ids.length === 1 ? 'card' : 'cards'}</span>
+          </span>
+        </span>
+      </div>
+    );
+  }
   // Attached cards are drawn under their host.
   const roots = ids.filter(
     (id) => !view.cards[id]?.attachedTo || !ids.includes(view.cards[id]?.attachedTo ?? ''),
@@ -619,14 +666,15 @@ function CardMenu(props: {
   const cardId = props.card.cardId;
   const name = cardLabel(cardId, cardId && cards.state === 'ready' ? cards.get(cardId) : undefined);
   useEffect(() => {
-    ref.current?.querySelector('button')?.focus();
+    // Focus without scrolling: the menu is fixed, the page shouldn't move under it.
+    ref.current?.querySelector('button')?.focus({ preventScroll: true });
     const close = (e: PointerEvent) => {
       if (!ref.current?.contains(e.target as Node)) props.onClose();
     };
     window.addEventListener('pointerdown', close);
     return () => window.removeEventListener('pointerdown', close);
   }, [props]);
-  const top = Math.min(props.anchor.bottom + 4, window.innerHeight - 320);
+  const top = Math.min(props.anchor.bottom + 4, window.innerHeight - 380);
   const left = Math.min(props.anchor.left, window.innerWidth - 230);
   return (
     <div
@@ -635,7 +683,13 @@ function CardMenu(props: {
       role="menu"
       style={{ top: Math.max(8, top), left: Math.max(8, left) }}
     >
-      <p className="muted small">{name}</p>
+      {/* Which card this is: a small image as well as the name, before you play it. */}
+      <div className="card-menu-head">
+        {cards.state === 'ready' && cardId && cards.get(cardId) && (
+          <img src={cards.image(cardId, 'thumb')} alt="" />
+        )}
+        <p className="muted small">{name}</p>
+      </div>
       {items.length === 0 && <p className="muted small">Nothing you can do with this card.</p>}
       {items.map((item) => (
         <button
@@ -673,21 +727,20 @@ function Inspector({ card }: { card: CardInstance | undefined }) {
   const counters = Object.entries(card.counters)
     .map(([k, n]) => `${n} ${k}`)
     .join(', ');
+  const state = [
+    card.locked && 'locked',
+    card.faceDown && 'face down',
+    card.contested && 'contested',
+    counters,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   return (
     <aside className="inspector" aria-live="polite">
       <img src={cards.image(record.id, 'full')} alt={record.name} />
       <div>
         <strong>{record.name}</strong>
-        <p className="small muted">
-          {[
-            card.locked && 'locked',
-            card.faceDown && 'face down',
-            card.contested && 'contested',
-            counters,
-          ]
-            .filter(Boolean)
-            .join(' · ')}
-        </p>
+        {state && <p className="small muted">{state}</p>}
       </div>
     </aside>
   );
@@ -716,9 +769,9 @@ function ZoneDialog({ zone, onClose }: { zone: ZoneId; onClose: () => void }) {
 }
 
 function TurnBar({ zoom, setZoom }: { zoom: number; setZoom: (z: number) => void }) {
-  const { snapshot, seat, judge, send } = useTable();
+  const { snapshot, seat, judge, live, send } = useTable();
   const view = snapshot.view;
-  const presence = !!useConfig().flags.presence;
+  const presence = !!useConfig().flags.presence && live;
   return (
     <div className="turn-bar toolbar">
       {judge && !seat && (
@@ -873,11 +926,17 @@ function PresenceStatus() {
       <span className={`badge ${tempo(view) === 'live' ? 'ok' : ''}`}>
         {tempo(view) === 'live' ? 'Live' : 'Async'}
       </span>
+      {/* Each seat's dot says who; here, just how many, with their names on hover. */}
       {names.length > 0 && (
-        <span className="muted">
-          {names.length === 1
-            ? `${names[0]} is away`
-            : `${names.slice(0, -1).join(', ')} and ${names.at(-1)} are away`}
+        <span
+          className="muted"
+          title={
+            names.length === 1
+              ? `${names[0]} is away`
+              : `${names.slice(0, -1).join(', ')} and ${names.at(-1)} are away`
+          }
+        >
+          {names.length === 1 ? `${names[0]} is away` : `${names.length} away`}
         </span>
       )}
       {n > 0 && <span className="muted">{n === 1 ? '1 watching' : `${n} watching`}</span>}

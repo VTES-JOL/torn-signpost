@@ -269,8 +269,33 @@ function LobbyRoom({ client, snapshot }: { client: GameClient; snapshot: GameSna
           )}
         </div>
       )}
-      <p className="muted small">Share this page's address to invite players.</p>
+      <InviteLink />
       {error && <p className="notice">{error}</p>}
     </section>
+  );
+}
+
+/** Copies the lobby's address, to send to the players you want to invite. */
+function InviteLink() {
+  const [copied, setCopied] = useState(false);
+  return (
+    <p className="toolbar">
+      <button
+        type="button"
+        onClick={() =>
+          navigator.clipboard.writeText(window.location.href).then(
+            () => setCopied(true),
+            () => setCopied(false),
+          )
+        }
+      >
+        Copy invite link
+      </button>
+      <span className="muted small" role="status">
+        {copied
+          ? 'Copied: send it to the players you want to invite.'
+          : 'Or share this page’s address.'}
+      </span>
+    </p>
   );
 }

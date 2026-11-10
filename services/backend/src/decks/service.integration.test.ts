@@ -49,6 +49,9 @@ describe.skipIf(!available)('decks (DynamoDB Local)', () => {
       libraryCount: 60,
       legal: true,
       notes: 'Bleed for 3',
+      // For lists of decks: the crypt's main clans (the test library needs no disciplines).
+      clans: ['Toreador'],
+      disciplines: [],
     });
     const renamed = await decks.update(alice, d.id, save({ name: 'Renamed' }));
     expect(renamed.version).toBe(1);
