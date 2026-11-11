@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { describeEvent } from './describe.ts';
+import { evolve, newGame } from './evolve.ts';
+import { project, projectEvent } from './projection.ts';
 import { runScenario } from './scenario.ts';
 import { scenarioFiles, testCatalog } from './testing/fixtures.ts';
 
@@ -6,6 +9,25 @@ describe('golden scenarios', () => {
   it.each(scenarioFiles())('$name', ({ source }) => {
     const run = runScenario(source, testCatalog);
     expect(run.failure).toBeUndefined();
+  });
+
+  it.each(scenarioFiles())('$name reads well in every viewer’s log', ({ source }) => {
+    const run = runScenario(source, testCatalog);
+    const viewers = [
+      { kind: 'server' } as const,
+      { kind: 'spectator' } as const,
+      ...run.state.seats.map((s) => ({ kind: 'player', seat: s.id }) as const),
+    ];
+    for (const viewer of viewers) {
+      let before = newGame(run.state.id);
+      for (const ev of run.events) {
+        const after = evolve(before, ev);
+        const seen = projectEvent(before, after, ev, viewer);
+        const line = describeEvent(seen, project(before, viewer), { catalog: testCatalog });
+        expect(line, `${ev.type} for ${viewer.kind}`).not.toMatch(/undefined|\[object|NaN/);
+        before = after;
+      }
+    }
   });
 
   it('reports the failing line', () => {
