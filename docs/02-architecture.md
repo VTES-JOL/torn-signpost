@@ -250,7 +250,10 @@ The offers and the checks behind them, phase by phase, are listed in [flow.md](f
     far counted. Used by the block loop, where the attempting Methuselah's pass is its decline.
   - **Oust mid-window** (`remove(seat)`): the seat leaves the rotation, keeping the impulse and the
     passes so far.
-  - The two primitives **interleave** during referendums: votes are polled while card plays stay ordered.
+  - **Referendums** (M6.5) use both: an ordered window for the cards played before votes (the
+    caller's prey first, the caller last), then the polling window from the caller. In polling, a
+    card played is a commitment like a vote: the impulse stays with the seat that played it and
+    the passes start over (zero-vtes rules-qa 5.3).
   - **Each of the active Methuselah's phases ends with a rotation** over the other seats (out-of-turn
     plays), then the phase advances.
   - **Block loop**: one ordered window. A pass with no block attempt pending is a final decline,
@@ -679,7 +682,7 @@ primitives, and corrections are new commands.
   name (`ReplacePlayer`) or dismisses it.
 - Notifications (NOTIF-01, TEMPO-01): after every command the game service compares the game
   before and after (`notifications/triggers.ts`) and notifies: your turn, a new decision waiting
-  on you (block, play or pass, resolve, combat, a phase), a deadline reminder, being ousted or
+  on you (block, play or pass, resolve, combat, a vote, a phase), a deadline reminder, being ousted or
   disqualified, a game starting, a ruling on your call, and judge calls (to judges); chat
   `@name` mentions too. Nobody is told about their own doing, players at the table aren't told
   about their turn or decisions, and a wait that ends within the same command never notifies.
@@ -693,7 +696,7 @@ primitives, and corrections are new commands.
   UTC runs, which apply the same checks. Opening a game marks its notifications read, and a turn
   or decision notification is marked read once the game stops waiting on that player. The timers Lambda sends through SES (the only Lambda allowed to), one recipient
   per message, with signed one-click unsubscribe links. Switched by `emailEnabled`.
-- Not yet: referendums (M6); structural window elision beyond auto-pass.
+- Not yet: structural window elision beyond auto-pass.
 
 ## 7. macOS client (`apps/apple`)
 

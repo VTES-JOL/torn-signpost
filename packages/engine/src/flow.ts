@@ -36,9 +36,10 @@ export function tempo(state: GameState): Tempo {
  * - `block`: an eligible blocker holding the impulse in a block window, to block or not;
  * - `resolve`: the acting Methuselah, to resolve an unblocked action;
  * - `combat`: in a combat step, the combatant holding the impulse; in a combat from before
- *   combat steps (M6.4), the two Methuselahs in it, to end it.
+ *   combat steps (M6.4), the two Methuselahs in it, to end it;
+ * - `vote`: the seat holding the impulse in a referendum's polling step, to cast votes or pass.
  */
-export type WaitKind = 'phase' | 'impulse' | 'block' | 'resolve' | 'combat';
+export type WaitKind = 'phase' | 'impulse' | 'block' | 'resolve' | 'combat' | 'vote';
 
 export interface Wait {
   seat: SeatId;
@@ -92,6 +93,7 @@ function currentWaits(state: GameState): Omit<Wait, 'since'>[] {
     const holder = impulseHolder(state);
     if (!live(holder)) return [];
     if (state.window.kind === 'combat') return [{ seat: holder, kind: 'combat' }];
+    if (state.window.kind === 'polling') return [{ seat: holder, kind: 'vote' }];
     const blocking =
       state.window.kind === 'blocks' &&
       a !== undefined &&
@@ -170,6 +172,8 @@ export function passesAutomatically(state: GameState, seat: SeatId): boolean {
     if (!until) return false;
     return until === 'end' || COMBAT_STEPS.indexOf(c.step) < COMBAT_STEPS.indexOf(until);
   }
+  // Polling: everyone passes by hand, unless they abstain from the rest of it (M6.5, R4).
+  if (w.kind === 'polling') return !!state.action?.referendum?.abstaining?.includes(seat);
   if (w.order[0] === seat) return false;
   const a = state.action;
   if (w.kind === 'blocks' && a) {

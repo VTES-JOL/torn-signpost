@@ -4,7 +4,7 @@
  * the server. Choosing an offer walks its steps (highlighting only the candidates); `build` turns
  * the choices into a command.
  */
-import type { CardCatalog } from './catalog.ts';
+import { type CardCatalog, titleVotes } from './catalog.ts';
 import type { ClientCommand } from './commands.ts';
 import { combatantOf, impulseHolder, isHolding, seatRefs } from './flow.ts';
 import {
@@ -114,12 +114,22 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
   if (window?.kind === 'combat' && action?.combat) {
     return combatOffers(view, seat, { hand, inPlay, playCard });
   }
+  if (window?.kind === 'polling' && action?.referendum) {
+    return pollingOffers(view, seat, catalog, { hand, inPlay, ready, playCard });
+  }
+  // Before votes: anyone may abstain from the polling to come (M6.5, R4).
+  const abstain: Offer[] =
+    window?.kind === 'referendum' &&
+    window.order.includes(seat) &&
+    !action?.referendum?.abstaining?.includes(seat)
+      ? [ABSTAIN]
+      : [];
 
   if (window) {
     if (impulseHolder(view) !== seat) {
       // Ask the table to wait, so the engine doesn't pass for you when the impulse arrives.
       const canHold = window.order.includes(seat) && window.order[0] !== seat;
-      if (!canHold || isHolding(view, seat)) return [];
+      if (!canHold || isHolding(view, seat)) return abstain;
       return [
         {
           id: 'hold',
@@ -128,6 +138,7 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
           steps: [],
           build: () => ({ type: 'Hold' }),
         },
+        ...abstain,
       ];
     }
     const canBlock =
@@ -196,7 +207,7 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
       steps: [],
       build: () => ({ type: 'Pass' }),
     });
-    return offers;
+    return [...offers, ...abstain];
   }
 
   if (action) {
@@ -209,9 +220,12 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
         steps.push({ kind: 'amount', label: 'Blood gained', min: 0, default: 1 });
       if (action.kind === 'bleed')
         steps.push({ kind: 'toggle', label: 'Take the Edge', default: !me.hasEdge });
+      // A political action's terms are chosen as it succeeds (M6.5, R1).
+      const political = action.kind === 'political';
+      if (political) steps.push({ kind: 'text', label: 'Terms of the referendum', optional: true });
       offers.push({
         id: 'success',
-        label: 'Successful',
+        label: political ? 'Successful: call the referendum' : 'Successful',
         primary: true,
         confirm: true,
         steps,
@@ -220,6 +234,11 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
             type: 'ResolveAction',
             outcome: 'success',
           };
+          if (political) {
+            const terms = typeof values[0] === 'string' ? values[0].trim() : '';
+            if (terms) cmd.terms = terms;
+            return cmd;
+          }
           if (typeof values[0] === 'number') cmd.amount = values[0];
           if (values[1] === true) cmd.edge = true;
           return cmd;
@@ -393,6 +412,182 @@ function hasType(cardId: CardId | undefined, types: string[], catalog: CardCatal
   const info = catalog.get(cardId);
   if (!info?.types) return true;
   return info.types.some((t) => types.includes(t));
+}
+
+const ABSTAIN: Offer = {
+  id: 'abstain',
+  label: 'Abstain',
+  confirm: true,
+  explain: 'You’ll pass the rest of this referendum, casting no more votes.',
+  steps: [],
+  build: () => ({ type: 'Abstain' }),
+};
+
+const SIDES = [
+  { value: 'for', label: 'For' },
+  { value: 'against', label: 'Against' },
+] as const;
+const sideStep: OfferStep = { kind: 'choice', label: 'Vote', options: SIDES, default: 'for' };
+const sideOf = (v: StepValue) => (v === 'against' ? 'against' : 'for');
+
+/**
+ * Offers in a referendum's polling step (docs/m6-plan.md M6.5): the seat holding the impulse
+ * casts from each of its sources, plays or uses cards, or passes; anyone may abstain.
+ */
+function pollingOffers(
+  view: GameState,
+  seat: SeatId,
+  catalog: CardCatalog,
+  my: {
+    hand: readonly InstanceId[];
+    inPlay: readonly InstanceId[];
+    ready: readonly InstanceId[];
+    playCard: (label: string, candidates: readonly InstanceId[], primary?: boolean) => Offer;
+  },
+): Offer[] {
+  const a = view.action;
+  const r = a?.referendum;
+  if (!a || !r || r.abstaining?.includes(seat)) return [];
+  if (impulseHolder(view) !== seat) return [ABSTAIN];
+  const offers: Offer[] = [];
+  // The calling card stays in the caller's hand until the action ends: it's not theirs to play.
+  const hand = my.hand.filter((id) => id !== a.card);
+  const name = (id: InstanceId) => {
+    const cardId = view.cards[id]?.cardId;
+    return (cardId && catalog.get(cardId)?.name) || 'a card';
+  };
+  const cast = new Set(r.votes.map((v) => v.minion));
+  const minions = my.ready.filter((id) => {
+    const info = catalog.get(view.cards[id]?.cardId ?? '');
+    return !info || info.kind === 'crypt' || !!info.types?.includes('Ally');
+  });
+  // Each titled vampire not yet cast, with its title's votes.
+  for (const m of minions) {
+    const n = titleVotes(catalog.get(view.cards[m]?.cardId ?? '')?.title);
+    if (!n || cast.has(m)) continue;
+    offers.push({
+      id: `vote:${m}`,
+      label: `Vote with ${name(m)} (${n})…`,
+      primary: offers.length === 0,
+      confirm: true,
+      steps: [sideStep],
+      build: (values) => ({
+        type: 'CastVotes',
+        source: 'minion',
+        minion: m,
+        side: sideOf(values[0]),
+      }),
+    });
+  }
+  if (minions.length) {
+    offers.push({
+      id: 'vote:minion',
+      label: 'Votes from a minion (card effect)…',
+      confirm: true,
+      steps: [
+        { kind: 'card', label: 'Minion voting', candidates: minions },
+        { kind: 'amount', label: 'Votes', min: 1, default: 1 },
+        sideStep,
+      ],
+      build: (values) => ({
+        type: 'CastVotes',
+        source: 'minion',
+        minion: values[0] as InstanceId,
+        votes: values[1] as number,
+        side: sideOf(values[2]),
+      }),
+    });
+  }
+  if (view.seats.find((s) => s.id === seat)?.hasEdge) {
+    offers.push({
+      id: 'vote:edge',
+      label: 'Burn the Edge for a vote…',
+      confirm: true,
+      steps: [sideStep],
+      build: (values) => ({ type: 'CastVotes', source: 'edge', side: sideOf(values[0]) }),
+    });
+  }
+  const mine = r.votes.filter((v) => v.seat === seat);
+  const calling = a.seat === seat && a.card !== undefined;
+  if (calling && !mine.some((v) => v.source === 'card')) {
+    offers.push({
+      id: 'vote:card',
+      label: 'The calling card’s vote…',
+      confirm: true,
+      steps: [sideStep],
+      build: (values) => ({ type: 'CastVotes', source: 'card', side: sideOf(values[0]) }),
+    });
+  }
+  const political = hand.filter((id) =>
+    catalog.get(view.cards[id]?.cardId ?? '')?.types?.includes('Political Action'),
+  );
+  if (!calling && political.length && !mine.some((v) => v.source === 'burned')) {
+    offers.push({
+      id: 'vote:burn',
+      label: 'Burn a political action card for a vote…',
+      confirm: true,
+      steps: [{ kind: 'card', label: 'Card to burn', candidates: political }, sideStep],
+      build: (values) => ({
+        type: 'CastVotes',
+        source: 'burned',
+        card: values[0] as InstanceId,
+        side: sideOf(values[1]),
+      }),
+    });
+  }
+  offers.push({
+    id: 'vote:other',
+    label: 'Other votes…',
+    confirm: true,
+    steps: [
+      { kind: 'amount', label: 'Votes', min: 1, default: 1 },
+      sideStep,
+      {
+        kind: 'card',
+        label: 'Card they come from',
+        candidates: [...hand, ...my.inPlay],
+        optional: true,
+      },
+      { kind: 'text', label: 'Note', optional: true },
+    ],
+    build: (values) => {
+      const note = typeof values[3] === 'string' ? values[3].trim() : '';
+      return {
+        type: 'CastVotes',
+        source: 'other',
+        votes: values[0] as number,
+        side: sideOf(values[1]),
+        ...(typeof values[2] === 'string' ? { card: values[2] } : {}),
+        ...(note ? { note } : {}),
+      };
+    },
+  });
+  if (hand.length) offers.push(my.playCard('Play a card', hand));
+  if (my.inPlay.length) {
+    offers.push({
+      id: 'use',
+      label: 'Use a card…',
+      confirm: true,
+      steps: [
+        { kind: 'card', label: 'Card to use', candidates: my.inPlay },
+        { kind: 'text', label: 'What it does', optional: true },
+      ],
+      build: (values) => {
+        const note = typeof values[1] === 'string' ? values[1].trim() : '';
+        return { type: 'UseCard', card: values[0] as InstanceId, ...(note ? { note } : {}) };
+      },
+    });
+  }
+  offers.push({
+    id: 'pass',
+    label: 'Pass',
+    primary: !offers.some((o) => o.primary),
+    confirm: false,
+    steps: [],
+    build: () => ({ type: 'Pass' }),
+  });
+  offers.push(ABSTAIN);
+  return offers;
 }
 
 const DAMAGE_TYPES = [

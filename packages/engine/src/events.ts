@@ -9,6 +9,7 @@ import type {
   ActionState,
   ActorRef,
   CardId,
+  Cast,
   CombatState,
   CombatStep,
   Counter,
@@ -182,6 +183,23 @@ export type EventBody =
   | { type: 'BlockWithdrawn'; seat: SeatId }
   | { type: 'ActionBlocked'; blocker: InstanceId }
   | { type: 'ActionResolving' }
+  /** A successful political action calls its referendum, with the terms its caller chose (M6.5). */
+  | { type: 'ReferendumCalled'; terms?: string }
+  /** Votes cast in the polling step; a minion already cast adds them to its cast. */
+  | { type: 'VotesCast'; cast: Cast }
+  /** The seat passes the rest of the polling. */
+  | { type: 'Abstained'; seat: SeatId }
+  /**
+   * The tally (more votes for than against passes; a tie fails). `reason`: no referendum was held
+   * because the acting vampire was no longer ready (zero-vtes rules-qa 5.9).
+   */
+  | {
+      type: 'ReferendumResolved';
+      passed: boolean;
+      for: number;
+      against: number;
+      reason?: 'not-ready';
+    }
   /** Combat begins, at the first step of round 1, at close range. */
   | { type: 'CombatStarted'; combat: CombatState }
   /**

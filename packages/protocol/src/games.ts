@@ -12,6 +12,8 @@ import {
   PLAYER_CALL_REASONS,
   STOP_ACTORS,
   STRIKE_KINDS,
+  VOTE_SIDES,
+  VOTE_SOURCES,
   ZONE_NAMES,
 } from '@torn-signpost/engine';
 import { z } from 'zod';
@@ -117,7 +119,18 @@ export const PlayerCommand = z.discriminatedUnion('type', [
     amount: opt(z.number().int().min(0).max(30)),
     edge: opt(z.boolean()),
     opponent: opt(Id),
+    terms: opt(z.string().max(200)),
   }),
+  z.strictObject({
+    type: z.literal('CastVotes'),
+    source: z.enum(VOTE_SOURCES),
+    side: z.enum(VOTE_SIDES),
+    minion: opt(Id),
+    card: opt(Id),
+    votes: opt(z.number().int().min(1).max(30)),
+    note: opt(z.string().max(200)),
+  }),
+  z.strictObject({ type: z.literal('Abstain') }),
   z.strictObject({ type: z.literal('EndCombat') }),
   z.strictObject({ type: z.literal('Maneuver'), to: z.enum(['close', 'long']), source: opt(Id) }),
   z.strictObject({

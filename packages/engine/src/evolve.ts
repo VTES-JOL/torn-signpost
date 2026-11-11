@@ -294,6 +294,36 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
     case 'ActionResolving':
       d.action = { ...actionOf(d), stage: 'resolution' };
       break;
+    case 'ReferendumCalled':
+      d.action = {
+        ...actionOf(d),
+        stage: 'referendum',
+        referendum: ev.terms === undefined ? { votes: [] } : { terms: ev.terms, votes: [] },
+      };
+      break;
+    case 'VotesCast': {
+      const a = actionOf(d);
+      const r = referendumOf(d);
+      const cast = { ...ev.cast };
+      const i = cast.minion === undefined ? -1 : r.votes.findIndex((v) => v.minion === cast.minion);
+      const votes = r.votes.map((v) => ({ ...v }));
+      const prior = votes[i];
+      // Votes a minion gains after casting join its cast, on the same side (rules-qa 5.1).
+      if (prior) {
+        prior.votes += cast.votes;
+        if (cast.claimed) prior.claimed = true;
+      } else votes.push(cast);
+      d.action = { ...a, referendum: { ...r, votes } };
+      break;
+    }
+    case 'Abstained': {
+      const r = referendumOf(d);
+      const abstaining = [...(r.abstaining ?? []), ev.seat];
+      d.action = { ...actionOf(d), referendum: { ...r, abstaining } };
+      break;
+    }
+    case 'ReferendumResolved':
+      break;
     case 'CombatStarted':
       d.action = { ...actionOf(d), stage: 'combat', combat: copyCombat(ev.combat) };
       break;
@@ -625,6 +655,12 @@ function withCardId(card: CardInstance, cardId: CardId | undefined): CardInstanc
 function windowOf(d: GameState): ImpulseWindow {
   if (!d.window) throw new Error('No impulse window open');
   return d.window;
+}
+
+function referendumOf(d: GameState) {
+  const r = d.action?.referendum;
+  if (!r) throw new Error('No referendum in progress');
+  return r;
 }
 
 function combatOf(d: GameState): CombatState {

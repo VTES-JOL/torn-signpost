@@ -19,6 +19,8 @@ import type {
   StopRule,
   StrikeKind,
   UserId,
+  VoteSide,
+  VoteSource,
   ZoneId,
 } from './model.ts';
 import type { SeatId, TurnDirection } from './seating.ts';
@@ -119,7 +121,8 @@ export type Command =
     }
   /**
    * The acting Methuselah resolves an unblocked action; bleeds and hunts apply their amount. An
-   * action that enters combat starts it against `opponent`, a minion in play (M6.4).
+   * action that enters combat starts it against `opponent`, a minion in play (M6.4). A successful
+   * political action calls its referendum, on the `terms` its caller chooses now (M6.5).
    */
   | {
       type: 'ResolveAction';
@@ -128,7 +131,25 @@ export type Command =
       /** Take the Edge after a successful bleed. */
       edge?: boolean;
       opponent?: InstanceId;
+      terms?: string;
     }
+  /**
+   * Cast votes in a referendum's polling step (docs/m6-plan.md M6.5, R5): a minion you control
+   * (`minion`; its title's votes unless `votes` says otherwise), the Edge, the calling card's vote,
+   * a political action card from your hand (`card`, burned), or `votes` from another source
+   * (`card`: a card in your hand, played, or in play, named).
+   */
+  | {
+      type: 'CastVotes';
+      source: VoteSource;
+      side: VoteSide;
+      minion?: InstanceId;
+      card?: InstanceId;
+      votes?: number;
+      note?: string;
+    }
+  /** Pass the rest of the referendum's polling step, casting nothing more. */
+  | { type: 'Abstain' }
   /**
    * Combat (docs/flow.md, "Combat"). Each names the card it comes from, if any: a card in the
    * hand is played with it; a card in play (a weapon, the minion itself) is only named.

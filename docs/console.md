@@ -41,7 +41,13 @@ player. The parser lives in `packages/engine/src/console` and is shared by every
 | `pass` | Pass the impulse. With no block attempt pending, an eligible blocker's pass declines to block |
 | `play <card> [ready] [on <host>] [noreplace]` | Play a card from your hand: to the ash heap, into your ready region, or attached to a minion. It is replaced from your library unless `noreplace`. In a window it needs the impulse and returns it to the acting player |
 | `resolve success\|failure [n] [edge]` | Resolve your unblocked action. A successful bleed takes `n` (default 1) pool from the target and, with `edge`, gives you the Edge; a successful hunt adds `n` blood, up to capacity |
+| `resolve success ["terms"]` | Your unblocked political action succeeds and calls its referendum, on the terms you choose (logged, not read by the engine). With the acting vampire no longer ready, no referendum is held |
 | `resolve combat <minion>` | Your unblocked action enters combat: your acting minion fights that minion |
+| `vote for\|against <vampire> [n]` | In a referendum's polling, on your impulse: a ready minion of yours casts its title's votes, or `n` claimed by a card effect. Cast again, it adds `n` on the same side |
+| `vote for\|against edge` · `vote for\|against card` | Burn the Edge for 1 vote · the calling political action card's 1 vote (the caller's) |
+| `vote for\|against <political card in hand>` | Burn a political action card from your hand for 1 vote (one each; not the caller when a card called it) |
+| `vote for\|against other <n> [via <card>] ["note"]` · `vote for\|against <card> <n>` | Votes from any other source; a card in your hand is played for them, one in play is named |
+| `abstain` | Pass the rest of this referendum's polling |
 | `maneuver long\|close [via <card>]` | In the range step of a combat: change the range. `via` names the card it comes from: in your hand (played with it) or in play |
 | `strike hand [n]` · `strike <n>[R][A]` · `strike dodge` · `strike ends` · `strike steal <n>` · `strike other "text"` · `strike none`, then `[first] [via <card>]` | In the strike step: choose your strike. `2R` is 2 ranged damage, `2A` aggravated, `2RA` both; `ends` is a combat-ends strike; `first` marks a first strike. The acting minion chooses first |
 | `prevent <n> [via <card>]` | In the damage step: prevent damage your minion is about to take |
@@ -158,6 +164,7 @@ expect impulse B               # who holds the impulse, or none
 expect action bleed A blocks   # kind, acting seat, stage (blocks, combat, resolution), or none
 expect combat 1 range long     # round, step and range of the combat, or none
 expect window phase master     # open window kind and phase, or none
+expect votes 3 2               # votes cast for and against in the referendum, or none
 expect autopass B none         # phases a seat auto-passes, comma-separated, or none
 expect holds C                 # seats holding the open window, comma-separated, or none
 expect card A:ready:1 blood 7  # zone, controller, owner, locked, faceDown, contested,

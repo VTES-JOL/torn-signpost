@@ -25,6 +25,7 @@ const WAIT_TEXT: Record<Exclude<WaitKind, 'phase'>, string> = {
   block: 'An action is coming your way: block it or let it through',
   resolve: 'Resolve your action: did it succeed?',
   combat: 'Combat is waiting on you',
+  vote: 'A referendum is waiting for your votes',
 };
 
 const REASON_TEXT: Record<(typeof JUDGE_CALL_REASONS)[number], string> = {

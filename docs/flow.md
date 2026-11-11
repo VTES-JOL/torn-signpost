@@ -25,9 +25,11 @@ requirements; "Play a card" lists the whole hand. The free-form tabletop command
 Two pieces of state drive the flow:
 
 - **`action`**: the minion action in progress, if any. It goes through the stages
-  `blocks` → `combat` or `resolution`, then ends.
+  `blocks` → `combat` or `resolution`, then ends; a successful political action goes on to
+  `referendum` first.
 - **`window`**: an open impulse window, if any. Its `kind` is `phase` (the end-of-phase round),
-  `blocks` (the block window of an action) or `combat` (a step of a combat round). It holds the seat `order`, the `cursor` (who holds
+  `blocks` (the block window of an action), `combat` (a step of a combat round), `referendum`
+  (the cards played before votes) or `polling` (the votes). It holds the seat `order`, the `cursor` (who holds
   the impulse), the number of consecutive `passes`, and the seats that asked it to wait
   (`holds`).
 
@@ -42,6 +44,7 @@ notifications, read only this.
 | Any other open window | The impulse holder | `impulse` |
 | An action at `resolution` | The acting Methuselah | `resolve` |
 | A combat step is open | The impulse holder | `combat` |
+| A referendum's polling is open | The impulse holder | `vote` |
 | An action at `combat` with no step open (games from before combat steps) | The acting Methuselah and the blocker's controller | `combat` |
 | Otherwise | The acting Methuselah | `phase` |
 
@@ -97,6 +100,24 @@ Only the two combatants' Methuselahs get offers ([Combat](#combat)).
 An action at `resolution` also offers its Methuselah **Enter combat…**: the minion to fight, from
 another Methuselah's ready region (`ResolveAction { outcome: 'combat', opponent }`).
 
+### 0b. A referendum's polling is open
+
+The seat holding the impulse gets these ([Referendums](#referendums)); every other seat gets
+**Abstain**.
+
+| Offer | Shown when | Command |
+|---|---|---|
+| **Vote with *vampire* (*n*)…** | For each of the seat's ready titled vampires not yet cast. Step: for or against | `CastVotes { source: 'minion', minion, side }` |
+| **Votes from a minion (card effect)…** | The seat has a ready minion. Steps: the minion, the votes, the side | `CastVotes { source: 'minion', minion, votes, side }` |
+| **Burn the Edge for a vote…** | The seat has the Edge | `CastVotes { source: 'edge', side }` |
+| **The calling card's vote…** | The caller, with a calling card not yet cast | `CastVotes { source: 'card', side }` |
+| **Burn a political action card for a vote…** | Not the caller with a calling card, a political action card in hand, none burned yet | `CastVotes { source: 'burned', card, side }` |
+| **Other votes…** | Always. Steps: the votes, the side, the card they come from (optional), a note | `CastVotes { source: 'other', votes, side, card?, note? }` |
+| **Play a card**, **Use a card…**, **Pass**, **Abstain** | As in a combat step; Pass is highlighted unless a titled vampire is | `PlayCard`, `UseCard`, `Pass`, `Abstain` |
+
+In the `referendum` window before it, the usual window offers apply (case 1), with **Abstain**
+added for every seat in it.
+
 ### 1. A window is open
 
 The seat holding the impulse gets the offers below. Every other seat in the window except the
@@ -124,6 +145,8 @@ acting Methuselah gets **Hold** (`Hold`), unless it is already holding.
 - Bleed: the bleed amount (default 1), and whether to take the Edge (on by default unless the
   seat already has it).
 - Hunt: the blood gained (default 1).
+- Political action: the terms of the referendum (optional text); the offer reads **Successful:
+  call the referendum**.
 
 ### 3. No action, no window
 
@@ -223,12 +246,15 @@ Effect: moves the card to the ash heap (or `to`, or the host's zone when attachi
 replacement unless `replace` is false. If a window is open, the impulse returns to the acting
 player and all passes are voided.
 
-### `ResolveAction { outcome, amount?, edge? }`
+### `ResolveAction { outcome, amount?, edge?, terms? }`
 
 Checks: the sender owns the action (or is a judge), the action is at `resolution`, and the amount
 is a whole number of 0 or more (default 1).
 
 Effect:
+- Successful political action: calls the referendum on `terms` ([Referendums](#referendums));
+  the action ends when it's over. If the acting vampire is no longer ready, no referendum is held
+  and the action ends successful (zero-vtes rules-qa 5.9).
 - Successful bleed: the target loses that much pool (no more than they have). With `edge`, the
   acting seat takes the Edge if it doesn't already have it, unless the amount is 0: only a bleed
   of 1 or more is successful (zero-vtes rules-qa 24.4).
@@ -465,6 +491,41 @@ card.
 Combats from before combat steps (an action at `combat` with no `combat` state) still wait on
 both players until one of them ends it with `EndCombat`.
 
+## Referendums
+
+A successful political action calls a referendum (docs/m6-plan.md M6.5): the terms, the polling
+step, the tally. The engine keeps the steps and the count; what a passed referendum does is
+applied by the players with the usual commands.
+
+1. **Terms.** Chosen as the action succeeds: `ResolveAction { outcome: 'success', terms }`. The
+   engine doesn't read them; they're in the log and on the referendum panel.
+2. **Before votes** (`referendum` window): for the cards played "before votes and ballots are
+   cast". The impulse starts with the caller's prey and goes round the table, the caller last
+   (zero-vtes rules-qa 64.12). It's an ordinary window: auto-pass (the minion phase's setting),
+   holds and stops apply, and a play returns the impulse to the caller. Votes can't be cast yet.
+3. **Polling** (`polling` window): from the caller round the table. Everyone passes by hand,
+   whatever their auto-pass setting; `Hold` isn't needed and is refused. Whatever the seat
+   holding the impulse does (casting votes, playing or using a card) keeps the impulse with it
+   and sets the passes back to zero (`ImpulseReset { to }`), so everyone gets another chance to
+   answer before the tally (rules-qa 5.3). The window closes after a full round of passes.
+   `Abstain` passes every turn of this polling for the seat, from then on.
+4. **The tally.** More votes for than against passes it; a tie fails (`ReferendumResolved`).
+   Passed or not, the action ends successful and the political action card goes to the ash heap
+   (rules-qa 5.8).
+
+**`CastVotes { source, side, minion?, card?, votes?, note? }`**, on your impulse in polling:
+
+| Source | Checks and effect |
+|---|---|
+| `minion` | One of your ready minions, locked or not. Votes default to its title's (`titleVotes`: primogen and bishop 1; prince, baron, archbishop, magaji and kholo 2; justicar and cardinal 3; Inner Circle and regent 4; "*n* votes" *n*; a priscus none, its ballots go to the prisci block). Another number is accepted and logged as claimed. A minion is cast once, all one way (rules-qa 1.1); casting it again only adds votes on the same side (5.1) |
+| `edge` | You have the Edge; it's burned for 1 vote |
+| `card` | The caller's 1 vote from the calling political action card (5.4) |
+| `burned` | A political action card from your hand, burned (and replaced) for 1 vote. One each per referendum; never the caller when a card called it (46.2) |
+| `other` | `votes` from any other source; `card` names where they come from: a card in your hand is played, one of your face-up cards in play is only named |
+
+Casts are public and never change. `ReferendumState` keeps them in order, with the seats
+abstaining.
+
 ## How windows close
 
 After each command the engine runs the open window forward: it records automatic passes for the
@@ -478,7 +539,8 @@ A seat **never** passes automatically when it is:
 - holding the window (`Hold`);
 - covered by one of its stops (`SetStops`).
 
-Otherwise it does if the window's phase is in its auto-pass setting.
+In polling, a seat passes automatically only if it abstains. Otherwise it does if the window's
+phase is in its auto-pass setting.
 
 When a window closes:
 
@@ -488,6 +550,8 @@ When a window closes:
 | `blocks` | No block attempt pending | The action moves to `resolution` |
 | `blocks` | Block attempt pending | The action is blocked and moves to `combat`; the blocking minion is locked, and the first combat step opens |
 | `combat` | – | The next combat step, or after End of round, the end of the combat and the action |
+| `referendum` | – | The polling opens, from the caller |
+| `polling` | – | The tally; the action ends successful |
 
 ### Later: player-defined stops
 
@@ -508,6 +572,7 @@ DeclareAction ──► blocks window
                    │ every seat passes, no attempt ──► resolution ──► ResolveAction ──► ended (success | failure)
                    │ every seat passes, attempt ─────► combat steps ─► End of round, or EndCombat ─► ended (blocked)
                    resolution ──► ResolveAction combat ──► combat steps ──► … ──────────────────► ended (success)
+                   resolution ──► ResolveAction success (political) ──► before votes ──► polling ──► ended (success)
                    │ Block ──► impulse back to acting player, passes reset
                    │ WithdrawBlock ──► seat declined
 CancelAction (any stage) ───────────────────────────────────────────────────────────► ended (cancelled)

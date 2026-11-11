@@ -29,6 +29,16 @@
       "types": ["Reaction"],
       "grants": ["block-any"]
     },
-    { "id": "t-hound", "name": "Gate Hound", "kind": "library", "types": ["Ally"] }
+    { "id": "t-hound", "name": "Gate Hound", "kind": "library", "types": ["Ally"] },
+    { "id": "t-marek", "name": "Marek Hale", "kind": "crypt", "capacity": 6, "title": "Prince" },
+    { "id": "t-odile", "name": "Odile Fen", "kind": "crypt", "capacity": 5, "title": "Primogen" },
+    {
+      "id": "t-bastien",
+      "name": "Bastien Roe",
+      "kind": "crypt",
+      "capacity": 8,
+      "title": "Archbishop"
+    },
+    { "id": "t-motion", "name": "Open Motion", "kind": "library", "types": ["Political Action"] }
   ]
 }

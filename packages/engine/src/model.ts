@@ -162,10 +162,49 @@ export interface ActionState {
   /** Set when the action breaks the default targeting rule (a bleed on someone else's prey…). */
   override?: Override;
   blockAttempt?: { seat: SeatId; minion: InstanceId; override?: Override };
-  stage: 'blocks' | 'combat' | 'resolution';
+  stage: 'blocks' | 'combat' | 'resolution' | 'referendum';
   blocker?: InstanceId;
   /** The fight at stage `combat` (docs/m6-plan.md M6.4). Missing in games from before it. */
   combat?: CombatState;
+  /** The referendum a successful political action called, at stage `referendum` (M6.5). */
+  referendum?: ReferendumState;
+}
+
+export const VOTE_SIDES = ['for', 'against'] as const;
+export type VoteSide = (typeof VOTE_SIDES)[number];
+
+/**
+ * Where votes come from (zero-vtes rules-qa 1.1): a vampire (or other minion) with all its votes,
+ * or one of the Methuselah's own sources, each independent: the Edge, the calling political action
+ * card, a political action card burned from the hand, or anything else a card grants.
+ */
+export const VOTE_SOURCES = ['minion', 'edge', 'card', 'burned', 'other'] as const;
+export type VoteSource = (typeof VOTE_SOURCES)[number];
+
+/** Votes cast in a referendum. Public, and never changed once cast (rulebook, "Politics"). */
+export interface Cast {
+  seat: SeatId;
+  source: VoteSource;
+  side: VoteSide;
+  votes: number;
+  /** The minion casting (`minion`). */
+  minion?: InstanceId;
+  /** The card the votes come from: the burned card, or the card granting `other` votes. */
+  card?: InstanceId;
+  cardId?: CardId;
+  /** The votes differ from what the engine knows (a minion's title): a card effect claimed. */
+  claimed?: true;
+  note?: string;
+}
+
+/** A referendum in progress (docs/m6-plan.md M6.5). */
+export interface ReferendumState {
+  /** What the caller chose as it was called; the engine doesn't read them. */
+  terms?: string;
+  /** In the order cast; a minion's later votes are added to its first cast (rules-qa 5.1). */
+  votes: Cast[];
+  /** Seats that pass the rest of the polling (R4). */
+  abstaining?: SeatId[];
 }
 
 /** The steps of a combat round, in order (VTES rulebook, combat; docs/flow.md "Combat"). */
@@ -353,8 +392,11 @@ export interface Override {
  * every seat has passed in a row.
  */
 export interface ImpulseWindow {
-  /** `combat`: a step of a combat round, between the two combatants' Methuselahs (M6.4). */
-  kind: 'phase' | 'blocks' | 'combat';
+  /**
+   * `combat`: a step of a combat round, between the two combatants' Methuselahs (M6.4).
+   * `referendum`: the cards played before votes are cast; `polling`: the votes (M6.5).
+   */
+  kind: 'phase' | 'blocks' | 'combat' | 'referendum' | 'polling';
   /** The phase this window belongs to (an end-of-phase round, or an action in the minion phase). */
   phase: Phase;
   order: SeatId[];

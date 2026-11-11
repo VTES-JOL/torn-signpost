@@ -1,4 +1,4 @@
-import type { CardCatalog, Grant } from './catalog.ts';
+import { type CardCatalog, type Grant, titleVotes } from './catalog.ts';
 import {
   clockElapsed,
   deadlines,
@@ -28,6 +28,7 @@ import type {
   Actor,
   ActorRef,
   CardInstance,
+  Cast,
   CombatState,
   GameEndReason,
   GameSettings,
@@ -48,6 +49,7 @@ import {
   STOP_TRIGGERS,
   STRIKE_KINDS,
   type Strike,
+  VOTE_SIDES,
 } from './model.ts';
 import { canSee } from './projection.ts';
 import { newInstanceId, type Rng, shuffled } from './rng.ts';
@@ -335,9 +337,13 @@ function bodiesFor(
   ) => finishedActionCard(state, ids, a, outcome);
   /**
    * The impulse back to the acting side after a play (rulebook, "Impulse"): the acting Methuselah,
-   * in combat the acting minion's, who may play again; the passes so far are voided.
+   * in combat the acting minion's, who may play again; the passes so far are voided. In a
+   * referendum's polling the impulse stays with whoever did something (architecture §4.4, R3).
    */
-  const impulseBack = (): EventBody => ({ type: 'ImpulseReset' });
+  const impulseBack = (): EventBody =>
+    state.window?.kind === 'polling'
+      ? withOptional({ type: 'ImpulseReset' } as const, { to: impulseHolder(state) })
+      : { type: 'ImpulseReset' };
 
   /** The combat in progress, with the step open, and the sender's combatant holding the impulse. */
   const combatTurn = () => {
@@ -614,6 +620,7 @@ function bodiesFor(
       const s = mySeat ?? reject('not-seated', 'Only players hold windows');
       const w = state.window ?? reject('not-now', 'There is nothing to hold');
       if (!w.order.includes(s)) reject('forbidden', 'You are not part of this window');
+      if (w.kind === 'polling') reject('no-change', 'Polling always waits for everyone');
       if (w.order[0] === s) reject('no-change', 'The window always waits for you');
       if (impulseHolder(state) === s) reject('no-change', 'You already have the impulse');
       if (isHolding(state, s)) reject('no-change', 'You are already holding');
@@ -821,6 +828,28 @@ function bodiesFor(
         }
         return settle(state, combatOpening(state, 'action', acting.id, opponent.id));
       }
+      if (cmd.outcome === 'success' && a.kind === 'political') {
+        const terms = cmd.terms?.trim();
+        if (terms && terms.length > MAX_NOTE) reject('invalid', 'The terms are too long');
+        const m = state.cards[a.minion];
+        // A vampire no longer ready calls no referendum; the action still succeeds (rules-qa 5.9).
+        if (!m || m.zone !== zoneId(m.controller, 'ready')) {
+          return [
+            { type: 'ReferendumResolved', passed: false, for: 0, against: 0, reason: 'not-ready' },
+            ...finishActionCard(a, 'success'),
+            { type: 'ActionEnded', outcome: 'success' },
+          ];
+        }
+        // The cards played before votes: the caller's left first, the caller last (rules-qa 64.12).
+        const order = windowOrder(seatRefs(state), a.seat, { directedAt: a.seat });
+        return settle(state, [
+          withOptional({ type: 'ReferendumCalled' } as const, { terms: terms || undefined }),
+          {
+            type: 'WindowOpened',
+            window: { kind: 'referendum', phase: 'minion', order, cursor: 1, passes: 0 },
+          },
+        ]);
+      }
       const amount = cmd.amount ?? 1;
       if (!Number.isInteger(amount) || amount < 0) reject('invalid', `Invalid amount: ${amount}`);
       const bodies: EventBody[] = [];
@@ -1011,6 +1040,164 @@ function bodiesFor(
       ];
       if (state.window) bodies.push(impulseBack());
       return settle(state, bodies);
+    }
+
+    case 'CastVotes': {
+      const s = holdingImpulse();
+      const a = state.action;
+      const r = a?.referendum;
+      if (state.window?.kind !== 'polling' || !a || !r) {
+        reject(
+          'not-now',
+          state.window?.kind === 'referendum'
+            ? 'Votes come after the cards played before votes: pass first'
+            : 'There is no referendum to vote in',
+        );
+      }
+      if (!VOTE_SIDES.includes(cmd.side)) reject('invalid', `Vote for or against, not ${cmd.side}`);
+      if (r.abstaining?.includes(s)) reject('forbidden', 'You abstained from this referendum');
+      const votes = cmd.votes;
+      if (votes !== undefined && (!Number.isInteger(votes) || votes < 1 || votes > 30)) {
+        reject('invalid', `Invalid number of votes: ${votes}`);
+      }
+      const note = cmd.note?.trim();
+      if (note && note.length > MAX_NOTE) reject('invalid', 'The note is too long');
+      const mine = r.votes.filter((v) => v.seat === s);
+      const base = { seat: s, side: cmd.side };
+      const cast = (c: Cast): EventBody => ({ type: 'VotesCast', cast: c });
+      const bodies: EventBody[] = [];
+      switch (cmd.source) {
+        case 'minion': {
+          const m = readyMinion(cmd.minion ?? reject('invalid', 'Which minion votes?'), s);
+          const prior = r.votes.find((v) => v.minion === m.id);
+          if (prior) {
+            // A cast stands; votes gained later join it on the same side (rules-qa 5.1).
+            if (prior.side !== cmd.side) {
+              reject('forbidden', `That minion voted ${prior.side}: a cast can't be changed`);
+            }
+            if (votes === undefined) reject('invalid', 'Say how many more votes it casts');
+          }
+          const printed = titleVotes(m.cardId ? ctx.catalog.get(m.cardId)?.title : undefined);
+          const n = votes ?? printed;
+          if (n < 1) {
+            reject(
+              'invalid',
+              'That minion has no votes from a title: say how many a card gives it',
+            );
+          }
+          bodies.push(
+            cast(
+              withOptional(
+                { ...base, source: 'minion' as const, votes: n, minion: m.id },
+                {
+                  cardId: m.cardId,
+                  claimed: prior || n !== printed ? (true as const) : undefined,
+                  note: note || undefined,
+                },
+              ),
+            ),
+          );
+          break;
+        }
+        case 'edge':
+          if (!seat(s).hasEdge) reject('invalid', 'You do not have the Edge');
+          if (votes !== undefined && votes !== 1) reject('invalid', 'The Edge is worth 1 vote');
+          // Burned for the vote (rulebook, "The Edge").
+          bodies.push(cast({ ...base, source: 'edge', votes: 1 }), { type: 'EdgeSet' });
+          break;
+        case 'card':
+          if (s !== a.seat || a.card === undefined) {
+            reject('invalid', "Only the caller has the calling card's vote");
+          }
+          if (votes !== undefined && votes !== 1) reject('invalid', 'The card is worth 1 vote');
+          if (mine.some((v) => v.source === 'card')) {
+            reject('no-change', "You already cast the calling card's vote");
+          }
+          bodies.push(
+            cast(
+              withOptional(
+                { ...base, source: 'card' as const, votes: 1, card: a.card },
+                { cardId: a.cardId },
+              ),
+            ),
+          );
+          break;
+        case 'burned': {
+          const c = card(cmd.card ?? reject('invalid', 'Which political action card?'));
+          if (c.zone !== zoneId(s, 'hand')) {
+            reject('invalid', 'Burn a political action card from your hand');
+          }
+          if (a.card === c.id) reject('invalid', 'That card is calling the referendum');
+          const types = (c.cardId && ctx.catalog.get(c.cardId)?.types) || [];
+          if (!types.includes('Political Action')) {
+            reject('invalid', 'Only a political action card can be burned for a vote');
+          }
+          // One political action card vote each; the caller's is the calling card (rules-qa 46.2).
+          if (s === a.seat && a.card !== undefined) {
+            reject('forbidden', 'The calling card is already your political action card vote');
+          }
+          if (mine.some((v) => v.source === 'burned')) {
+            reject('forbidden', 'You already burned a political action card for a vote');
+          }
+          if (votes !== undefined && votes !== 1) reject('invalid', 'The card is worth 1 vote');
+          const [play, ...rest] = played(c, zoneId(s, 'ashHeap'), true);
+          // Its own line says it's burned for the vote.
+          const shown = {
+            ...(play as Extract<EventBody, { type: 'CardMoved' }>),
+            source: true as const,
+          };
+          bodies.push(
+            shown,
+            cast(
+              withOptional(
+                { ...base, source: 'burned' as const, votes: 1, card: c.id },
+                { cardId: c.cardId },
+              ),
+            ),
+            ...rest,
+          );
+          break;
+        }
+        case 'other': {
+          const n = votes ?? reject('invalid', 'How many votes?');
+          const src = combatSource(cmd.card, s);
+          bodies.push(
+            ...src.with(
+              cast(
+                withOptional(
+                  { ...base, source: 'other' as const, votes: n },
+                  {
+                    card: src.source?.id,
+                    cardId: src.source?.cardId,
+                    note: note || undefined,
+                  },
+                ),
+              ),
+            ),
+          );
+          break;
+        }
+        default:
+          reject(
+            'invalid',
+            `Unknown source of votes: ${String((cmd as { source: unknown }).source)}`,
+          );
+      }
+      // A commitment: everyone gets another chance to answer it before the tally (rules-qa 5.3).
+      bodies.push(impulseBack());
+      return settle(state, bodies);
+    }
+
+    case 'Abstain': {
+      const s = mySeat ?? reject('not-seated', 'Only players vote');
+      const w = state.window;
+      const r = state.action?.referendum;
+      if (!r || (w?.kind !== 'referendum' && w?.kind !== 'polling')) {
+        reject('not-now', 'There is no referendum to abstain from');
+      }
+      if (!w.order.includes(s)) reject('forbidden', 'You are not part of this referendum');
+      if (r.abstaining?.includes(s)) reject('no-change', 'You already abstain');
+      return settle(state, [{ type: 'Abstained', seat: s }]);
     }
 
     case 'CancelAction': {
@@ -1515,6 +1702,30 @@ function closeWindow(state: GameState, sx: Settling, now: string, by: ActorRef):
   const a = state.action;
   if (state.window?.kind === 'combat' && a?.combat)
     return combatStepClosed(state, a.combat, sx, now, by);
+  if (state.window?.kind === 'referendum' && a) {
+    // The polling proper, from the caller round the table (rules-qa 64.12).
+    const order = windowOrder(seatRefs(state), a.seat, { directedAt: a.seat });
+    return [
+      closed,
+      {
+        type: 'WindowOpened',
+        window: { kind: 'polling', phase: state.window.phase, order, cursor: 0, passes: 0 },
+      },
+    ];
+  }
+  if (state.window?.kind === 'polling' && a?.referendum) {
+    const count = (side: Cast['side']) =>
+      a.referendum?.votes.filter((v) => v.side === side).reduce((n, v) => n + v.votes, 0) ?? 0;
+    const pro = count('for');
+    const con = count('against');
+    // A tie fails (rulebook, "The Referendum"); passed or not, the action succeeded (rules-qa 5.8).
+    return [
+      closed,
+      { type: 'ReferendumResolved', passed: pro > con, for: pro, against: con },
+      ...finishedActionCard(state, sx.ids, a, 'success'),
+      { type: 'ActionEnded', outcome: 'success' },
+    ];
+  }
   const attempt = a?.blockAttempt;
   if (!a || !attempt) return [closed, { type: 'ActionResolving' }];
   const blocker = state.cards[attempt.minion];

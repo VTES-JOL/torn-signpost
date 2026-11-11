@@ -8,6 +8,7 @@ import {
   type ActionKind,
   autoPassPhases,
   type CardCatalog,
+  type Cast,
   COMBAT_STEP_LABELS,
   COMBAT_STEPS,
   type CombatState,
@@ -21,9 +22,12 @@ import {
   type OfferStep,
   type Override,
   PHASES,
+  type ReferendumState,
   type StepValue,
   stopRules,
   strikeText,
+  VOTE_SIDES,
+  type VoteSide,
   type Wait,
   type WaitKind,
   waitingOn,
@@ -73,6 +77,7 @@ const WAIT_LABELS: Record<Exclude<WaitKind, 'phase'>, string> = {
   block: 'block decision',
   resolve: 'resolving the action',
   combat: 'combat',
+  vote: 'votes',
 };
 
 /**
@@ -123,10 +128,14 @@ export function promptFor(
         return {
           mine: true,
           text:
-            view.window?.kind === 'blocks'
-              ? `Play a card or pass (${action})`
-              : `Play a card or pass (end of ${who(turn.seat)}'s ${turn.phase} phase)`,
+            view.window?.kind === 'referendum'
+              ? `Play a card before votes are cast, or pass (${action})`
+              : view.window?.kind === 'blocks'
+                ? `Play a card or pass (${action})`
+                : `Play a card or pass (end of ${who(turn.seat)}'s ${turn.phase} phase)`,
         };
+      case 'vote':
+        return { mine: true, text: `Cast votes, play a card or pass (${action})` };
       case 'block':
         return { mine: true, text: `Block ${action}?` };
       case 'resolve':
@@ -164,7 +173,11 @@ export function FlowBar(props: {
   const now = useNow(60_000);
   const mine = isWaitingOn(view, seat);
   const name = (id: string | undefined) => {
-    const cardId = id ? view.cards[id]?.cardId : undefined;
+    // The action card stays in its player's hand, hidden there, but the action names it publicly.
+    const a = view.action;
+    const cardId = id
+      ? (view.cards[id]?.cardId ?? (id === a?.card ? a.cardId : undefined))
+      : undefined;
     if (!cardId) return 'a hidden card';
     return catalog.get(cardId)?.name ?? `an unknown card (${cardId})`;
   };
@@ -233,6 +246,14 @@ export function FlowBar(props: {
       <p className="flow-status muted small">{statusLine(view, client, name)}</p>
       {view.status === 'active' && view.action?.combat && (
         <CombatPanel view={view} combat={view.action.combat} name={name} />
+      )}
+      {view.status === 'active' && view.action?.referendum && (
+        <ReferendumPanel
+          view={view}
+          referendum={view.action.referendum}
+          name={name}
+          seatName={client.seatName}
+        />
       )}
       {choosing ? (
         <div className="flow-choose toolbar">
@@ -480,6 +501,77 @@ function CombatPanel(props: {
   );
 }
 
+/** The referendum (M6.5): its terms, the count so far, and every cast, in order. */
+function ReferendumPanel(props: {
+  view: GameState;
+  referendum: ReferendumState;
+  name: (id: string | undefined) => string;
+  seatName: (seat: string) => string;
+}) {
+  const { view, referendum: r, name, seatName } = props;
+  const total = (side: VoteSide) =>
+    r.votes.filter((v) => v.side === side).reduce((n, v) => n + v.votes, 0);
+  const polling = view.window?.kind === 'polling';
+  const source = (c: Cast) => {
+    switch (c.source) {
+      case 'minion':
+        return name(c.minion);
+      case 'edge':
+        return `the Edge (${seatName(c.seat)})`;
+      case 'card':
+        return `${name(c.card)} (${seatName(c.seat)})`;
+      case 'burned':
+        return `${name(c.card)}, burned (${seatName(c.seat)})`;
+      case 'other':
+        return `${c.card ? name(c.card) : 'Other votes'}${c.note ? `: ${c.note}` : ''} (${seatName(c.seat)})`;
+    }
+  };
+  return (
+    <section className="referendum-panel" aria-label="Referendum">
+      <p className="small">
+        <strong>Referendum</strong>
+        {r.terms && <> · “{r.terms}”</>}
+      </p>
+      <ol className="combat-steps">
+        {(['Before votes', 'Polling'] as const).map((step, i) => {
+          const current = polling === (i === 1);
+          return (
+            <li
+              key={step}
+              aria-current={current ? 'step' : undefined}
+              className={current ? 'current' : undefined}
+            >
+              {step}
+            </li>
+          );
+        })}
+      </ol>
+      <div className="tally">
+        {VOTE_SIDES.map((side) => (
+          <section key={side} className={side} aria-label={side === 'for' ? 'For' : 'Against'}>
+            <strong className="side-total">
+              {side === 'for' ? 'For' : 'Against'} {total(side)}
+            </strong>
+            <ul className="casts small">
+              {r.votes
+                .filter((c) => c.side === side)
+                .map((c) => (
+                  <li key={`${c.seat}:${c.source}:${c.minion ?? c.card ?? r.votes.indexOf(c)}`}>
+                    {source(c)} <span className="badge">{c.votes}</span>
+                    {c.claimed && <span className="muted"> claimed</span>}
+                  </li>
+                ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+      {r.abstaining?.length ? (
+        <p className="small muted">Abstaining: {r.abstaining.map(seatName).join(', ')}</p>
+      ) : null}
+    </section>
+  );
+}
+
 const STOP_CHOICES = [
   ['never', 'Only when I can block'],
   ['neighbours', 'For my prey’s and predator’s actions'],
@@ -597,6 +689,10 @@ function statusLine(
     }
     if (a.stage === 'combat') return `${what} · blocked by ${name(a.blocker)}: combat`;
     if (a.stage === 'resolution') return `${what} · not blocked: ${who(a.seat)} resolves it`;
+    if (a.referendum) {
+      const step = view.window?.kind === 'polling' ? 'polling' : 'before votes';
+      return `${what} · referendum, ${step}${holding}`;
+    }
     const attempt = a.blockAttempt
       ? ` · ${name(a.blockAttempt.minion)} tries to block${overrideNote(a.blockAttempt.override, name)}`
       : '';

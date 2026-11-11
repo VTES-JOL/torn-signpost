@@ -21,6 +21,8 @@ export interface CardInfo {
   capacity?: number;
   /** Library card types as printed, e.g. `Master`, `Action`, `Reaction`. Used to filter offers. */
   types?: readonly string[];
+  /** A crypt card's printed title (`Prince`, `2 votes`…), for its votes in referendums. */
+  title?: string;
   /** Flow rules the card lifts. Filled from `CARD_GRANTS` by `createCatalog` when missing. */
   grants?: readonly Grant[];
 }
@@ -49,3 +51,28 @@ export function normalizeName(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '');
 }
+
+/**
+ * The votes a ready vampire's title is worth (rulebook, "Titled Vampires" and "Other Vampire
+ * Sects"); a priscus's ballots go to the prisci block instead. Unknown titles are worth none.
+ */
+export function titleVotes(title: string | undefined): number {
+  if (!title) return 0;
+  const n = /^(\d+) votes?$/i.exec(title.trim());
+  if (n) return Number(n[1]);
+  return TITLE_VOTES[title.trim().toLowerCase()] ?? 0;
+}
+
+const TITLE_VOTES: Record<string, number> = {
+  primogen: 1,
+  bishop: 1,
+  prince: 2,
+  baron: 2,
+  archbishop: 2,
+  magaji: 2,
+  kholo: 2,
+  justicar: 3,
+  cardinal: 3,
+  'inner circle': 4,
+  regent: 4,
+};

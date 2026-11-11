@@ -1581,6 +1581,39 @@ body.dragging {
   margin-left: 0.35rem;
 }
 
+/* Referendums (M6.5): the terms, the count, every cast */
+
+.referendum-panel {
+  border-top: 1px solid var(--border);
+  padding-top: 0.3rem;
+  margin-bottom: 0.3rem;
+}
+
+.referendum-panel p {
+  margin: 0 0 0.25rem;
+}
+
+.tally {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.tally .against .side-total {
+  color: var(--muted);
+}
+
+.casts {
+  list-style: none;
+  padding: 0;
+  margin: 0.1rem 0 0;
+}
+
+.casts .badge {
+  margin-left: 0.25rem;
+}
+
 .autopass {
   position: relative;
   margin-left: auto;

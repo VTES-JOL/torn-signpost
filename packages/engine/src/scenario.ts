@@ -405,6 +405,13 @@ function check(
       const c = state.action?.combat;
       return same('combat', c ? `${c.round} ${c.step} ${c.range}` : 'none', rest.join(' '));
     }
+    case 'votes': {
+      // `expect votes <for> <against>` in a referendum, or none.
+      const r = state.action?.referendum;
+      const n = (side: string) =>
+        r?.votes.filter((v) => v.side === side).reduce((t, v) => t + v.votes, 0) ?? 0;
+      return same('votes', r ? `${n('for')} ${n('against')}` : 'none', rest.join(' '));
+    }
     case 'window': {
       const w = state.window;
       return same('window', w ? `${w.kind} ${w.phase}` : 'none', rest.join(' '));

@@ -31,6 +31,7 @@ const WAIT_NAMES: Record<WaitKind, string> = {
   block: 'a block',
   resolve: 'resolving an action',
   combat: 'combat',
+  vote: 'a vote',
 };
 
 const CALL_REASONS: Record<JudgeCallReason, string> = {
@@ -302,6 +303,7 @@ function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): 
     case 'WindowClosed':
       return '';
     case 'WindowOpened':
+      if (ev.window.kind === 'polling') return 'Polling: votes may be cast';
       return ev.window.kind === 'phase' && before.turn
         ? `End of ${seatName(before.turn.seat)}'s ${ev.window.phase} phase: waiting for the other players`
         : '';
@@ -338,6 +340,49 @@ function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): 
       return `${cardName(ev.blocker)} blocks: combat`;
     case 'ActionResolving':
       return 'The action was not blocked';
+    case 'ReferendumCalled': {
+      const a = before.action;
+      const caller = a ? cardName(a.minion) : who;
+      return `${caller} calls a referendum${ev.terms ? `: “${ev.terms}”` : ''}`;
+    }
+    case 'VotesCast': {
+      const c = ev.cast;
+      const side = c.side === 'for' ? 'in favour' : 'against';
+      const n = `${c.votes} vote${c.votes === 1 ? '' : 's'} ${side}`;
+      const src = c.card === undefined ? undefined : cardName(c.card, c.cardId);
+      const note = c.note ? `: ${c.note}` : '';
+      switch (c.source) {
+        case 'minion': {
+          const m = cardName(c.minion ?? '', c.cardId);
+          const prior = before.action?.referendum?.votes.some((v) => v.minion === c.minion);
+          if (prior) return `${m} adds ${n}${note}`;
+          return `${m} casts ${n}${c.claimed ? ' (claimed)' : ''}${note}`;
+        }
+        case 'edge':
+          return `${seatName(c.seat)} burns the Edge for ${n}`;
+        case 'card':
+          return `${seatName(c.seat)} casts ${src}'s ${n}`;
+        case 'burned':
+          return `${seatName(c.seat)} burns ${src} for ${n}`;
+        case 'other': {
+          // A card played from the hand for the votes is in the ash heap already; one in play is named.
+          const playedNow =
+            src !== undefined && before.cards[c.card ?? '']?.zone.endsWith(':ashHeap');
+          if (playedNow) return `${seatName(c.seat)} plays ${src} for ${n}${note}`;
+          return `${seatName(c.seat)} casts ${n}${src ? ` with ${src}` : ''}${note}`;
+        }
+      }
+      return '';
+    }
+    case 'Abstained':
+      return `${seatName(ev.seat)} abstains from the rest of the referendum`;
+    case 'ReferendumResolved': {
+      if (ev.reason === 'not-ready') {
+        const a = before.action;
+        return `No referendum: ${a ? cardName(a.minion) : 'the acting vampire'} is no longer ready`;
+      }
+      return `The referendum ${ev.passed ? 'passes' : 'fails'} (${ev.for} for, ${ev.against} against)`;
+    }
     // A block's combat was announced with the block.
     case 'CombatStarted':
       return ev.combat.cause === 'block'

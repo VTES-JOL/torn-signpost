@@ -18,7 +18,7 @@ below are its), then the VEKN rulebook and Tournament Rules, then the JOL rules 
 | Time limit | `TimeLimitReached` and a judge call (M5b.3) | Ending the game there, and timeout scoring |
 | Withdrawal | `Seat.withdrawn` in the model | The rulebook procedure: announcing, the conditions, the half point |
 | Combat | A blocked action goes to `stage: 'combat'`; players play it out with the primitives until `EndCombat` | Range, strikes, damage, prevention, presses, rounds, torpor as steps (GAME-07) |
-| Referendums | Nothing: a political action is resolved by hand | Terms, the polling window, votes and ballots, the tally, blood hunts |
+| Referendums | Nothing: a political action is resolved by hand | Terms, the polling window, votes and ballots, the tally, blood hunts (M6.5) |
 | Stats | Nothing | Results per game, player stats, leaderboards (STATS-01..03) |
 | Spectators | Public games watchable by anyone, guests included; the spectator count (GAME-16) | A finished game's result for everyone watching |
 
@@ -343,15 +343,116 @@ card…** is also in the card menu of every card in play.
 
 ### M6.5 Referendums
 
-- **Engine**: after a successful political action, terms (by the acting Methuselah), then the
-  polling window (architecture §4.3: commitments, no priority holder, closed by a full rotation of
-  passes), with the ordered "before votes and ballots" window first (zero-vtes 64.12); votes
-  declared per source (Q5), the calling card's vote (5.4), the Edge; the tally and the
-  after-resolution window (5.8). A political action whose vampire is no longer ready has no
-  referendum (5.9). Blood hunts use the same machinery.
-- **Web**: the referendum panel: the terms, everyone's declared votes, casting and passing.
-- **Tests**: scenarios for passing, failing, tied, the Edge, a title, a card played during
-  polling reopening responses (5.3), a blood hunt.
+The engine runs the referendum's steps and keeps the count; what a passed referendum does is
+applied by the players with the usual commands, as for every card effect (decision 4).
+
+**Today:** a political action resolves like any other: `resolve success`, and the players count
+the votes at the table and apply the effects by hand.
+
+**Rules** (rulebook, "Politics"; zero-vtes rulings as numbered):
+
+- A successful political action calls a referendum: the terms are chosen (only now, not when the
+  action is announced), then the polling step, then the tally. More votes for than against passes
+  it; a tie fails (rulebook).
+- A political action whose acting vampire is no longer ready when it succeeds has no referendum
+  (5.9); it still ends successful.
+- The polling step opens with the cards usable "before votes and ballots are cast": the other
+  Methuselahs first, from the caller's left, the caller last (64.12). Then votes are cast.
+- Votes come from sources (1.1). A vampire is one source: all its votes at once, all on one side,
+  and only while it is ready (rulebook). Votes it gains after casting join its cast on the same
+  side (5.1, 19.3). The Methuselah's own votes are separate sources, each either way: the Edge
+  (burned for 1 vote), a political action card (1 vote, burned; one per Methuselah per
+  referendum), and other cards that grant votes.
+- The calling political action card is the caller's 1 vote, either way, and their one political
+  action card vote: they can't burn another (5.4, 46.2).
+- Titles give votes while the vampire is ready: primogen and bishop 1, prince, baron, archbishop
+  and magaji 2, justicar and cardinal 3, Inner Circle and regent 4; "n votes (titled)" n
+  (rulebook, "Titled Vampires" and "Other Vampire Sects"). Prisci share a block of 3 votes by a
+  sub-referendum of ballots (52.9).
+- A cast can't be changed. Every commitment, a card played included, gives every other
+  Methuselah another chance to respond before the tally (5.3).
+- After the referendum, the action ends successful, passed or not, and the political action card
+  is burned (5.8).
+
+**Decisions:**
+
+- **R1 Terms when it succeeds.** `resolve success` on a political action takes the terms as text
+  (`resolve success "gain 3 pool"`) and calls the referendum, instead of ending the action. The
+  engine doesn't read the terms; they're in the log and on the panel.
+- **R2 Two windows.** First an ordered `referendum` window for the cards played before votes:
+  from the caller's prey round the table, the caller last, with the usual auto-pass, holds and
+  stops (the minion phase's setting). Then the `polling` window, from the caller round the table.
+- **R3 Polling is a rotation of commitments.** The seat holding the polling impulse casts any
+  number of sources, plays or uses cards, then passes. Anything it does sets the pass count back
+  to zero but keeps the impulse with it (no return to the caller: architecture §4.4), so the
+  window closes only after a full round of passes with nothing done.
+- **R4 Everyone passes polling by hand**, whatever their auto-pass setting: votes matter, and
+  the engine can't tell who holds a political action card. To keep async games moving, a
+  Methuselah can `abstain`: pass every polling turn for the rest of this referendum, casting
+  nothing more. Holding the Edge, or a vampire not yet cast, is shown on the panel so nobody
+  forgets them.
+- **R5 Declared votes, checked where the engine can.** `CastVotes` names a source and a side:
+  - a ready vampire you control: its title's votes by default; another number may be claimed
+    (title cards, vote bonuses) and the log shows it as claimed, as overrides are;
+  - `edge`: you hold the Edge; it is burned for 1 vote;
+  - `card`: the calling card's vote, the caller's only;
+  - a political action card in your hand: burned (and replaced) for 1 vote; one per Methuselah,
+    never the caller with a calling card;
+  - `other n [via <card>] ["note"]`: votes from any other source; a card from the hand is played.
+  A vampire already cast can only add votes on the same side.
+- **R6 The tally closes it.** When polling closes, the engine counts, logs "The referendum passes
+  (5 for, 2 against)" and ends the action successful; the political action card goes to the ash
+  heap. The caller then applies what passed by hand.
+- **R7 Escape hatches.** `CancelAction` still ends everything; `endreferendum pass|fail` settles
+  the referendum at once, for cards that do (Yoruba Shrine 35.4, Fakir al Sidi 59.18, Día de los
+  Muertos 52.3). Either is open to the caller and to judges.
+
+**State:** `ActionState.referendum { terms?, votes: Cast[], pacUsed: SeatId[], abstaining? }` with
+`Cast { seat, source: 'vampire'|'edge'|'card'|'burned'|'other', minion?, card?, cardId?, side,
+votes, claimed? }`; `ImpulseWindow.kind` gains `referendum` and `polling`; `ActionEnded` stays
+`success`, after a `ReferendumResolved { passed, for, against }`.
+
+**Commands** (engine, then console):
+
+| Engine | Console | Checks and effect |
+|---|---|---|
+| `ResolveAction { outcome: 'success', terms? }` | `resolve success ["terms"]` | On a political action: calls the referendum (R1), or ends it with none if the vampire isn't ready (5.9) |
+| `CastVotes { source, side, minion?, card?, votes?, note? }` | `vote for\|against <vampire> [n]` · `vote for edge` · `vote for card` · `vote for <card in hand>` · `vote against other 2 via "Ventrue Headquarters"` | R5, in the polling window, on your impulse |
+| `Abstain` | `abstain` | R4 |
+| `EndReferendum { passed }` | `endreferendum pass\|fail ["why"]` | R7 |
+| `PlayCard`, `UseCard`, `Pass`, `Hold` | as now | In both windows; in polling, R3 |
+
+**Who the game waits on:** the impulse holder, kind `impulse` in the before-votes window and
+`vote` in polling.
+
+**Web:** a referendum panel in place of the flow bar, like combat's: the terms, the running count
+for and against, each cast (who, which source, how many, which side), and the uncast sources of
+the player (ready titled vampires, the Edge, the calling card). The offers: Vote for…, Vote
+against… (choosing the source, with the title's votes filled in), Play a card, Use a card…, Pass,
+Abstain.
+
+**Split:**
+
+- **M6.5a** (2 days), **done**: R1–R6 for political actions: the windows, casting from vampires, the
+  Edge, the calling card, a burned political action card and other sources; abstaining; the tally;
+  the panel.
+- **M6.5b** (1–2 days): R7; blood hunts (a referendum that isn't an action, with no before-votes
+  window and no action modifiers or reactions; called by hand until diablerie comes); the prisci
+  block's ballots; making a vampire abstain (Kateline Nadasdy 76.6, Demonstration 77.14).
+
+**Tests:**
+
+- Engine: the before-votes order (caller last) and the polling order; a commitment resetting the
+  passes and keeping the impulse; abstaining; one cast per vampire, adding on the same side only;
+  the Edge burned; the calling card's vote the caller's only, and no second card vote for them; a
+  political action card burned and replaced; not ready → no referendum; ties failing; an ousted
+  seat leaving the polling.
+- Scenarios, from the rulebook and rulings: a prince and a primogen pass a referendum against an
+  archbishop (title votes); a tie fails; the Edge and a burned card decide it; the caller can't
+  burn a second card (46.2); a vote cast after a card played in polling (5.3); a vampire sent to
+  torpor before it succeeds (5.9).
+- Properties: a referendum always ends; votes cast never change side; the game never waits on
+  nobody.
 
 ### M6.6 Spectators and the finished game (GAME-16): done
 

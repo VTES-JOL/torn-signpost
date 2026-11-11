@@ -110,8 +110,15 @@ export const CONSOLE_COMMANDS: Record<string, Syntax> = {
   },
   resolve: {
     args: ['outcome', 'count', 'options'],
-    usage: 'resolve success|failure [n] [edge]  |  resolve combat <minion>',
+    usage:
+      'resolve success|failure [n] [edge]  |  resolve success ["terms"]  (political)  |  resolve combat <minion>',
   },
+  vote: {
+    args: ['options'],
+    usage:
+      'vote for|against <vampire> [n] | edge | card | <political card in hand> | other <n> [via <card>] ["note"]',
+  },
+  abstain: { args: [], usage: 'abstain  (pass the rest of this referendum)' },
   endcombat: { args: [], usage: 'endcombat' },
   cancel: { args: [], usage: 'cancel  (cancel your action)' },
   autopass: {
@@ -542,12 +549,22 @@ function parse(tokens: string[], ctx: ConsoleContext): Command {
         type: 'ResolveAction',
         outcome: outcome === 'success' ? 'success' : 'failure',
       };
+      const terms: string[] = [];
       for (const opt of args.slice(1)) {
         if (opt.toLowerCase() === 'edge') cmd.edge = true;
-        else cmd.amount = integer(opt);
+        else if (/^[+-]?\d+$/.test(opt)) cmd.amount = integer(opt);
+        // Anything else is the terms of a political action's referendum (M6.5).
+        else if (outcome === 'success') terms.push(opt);
+        else usage();
       }
+      if (terms.length) cmd.terms = terms.join(' ');
       return cmd;
     }
+    case 'vote':
+      return voteCommand(args, ctx, usage);
+    case 'abstain':
+      extra(0);
+      return { type: 'Abstain' };
     case 'endcombat':
       extra(0);
       return { type: 'EndCombat' };
@@ -567,6 +584,58 @@ function parse(tokens: string[], ctx: ConsoleContext): Command {
     default:
       return fail(`Unknown command "${name}"`);
   }
+}
+
+/**
+ * `vote for|against <source> [n] [via <card>] ["note"]` (docs/console.md): the source is `edge`,
+ * `card` (the calling card's vote), `other`, or a card: a minion in a ready region votes; a
+ * political action card in the hand is burned; any other card grants `n` votes.
+ */
+function voteCommand(args: string[], ctx: ConsoleContext, usage: () => never): Command {
+  const side = (args[0] ?? '').toLowerCase();
+  if (side !== 'for' && side !== 'against') usage();
+  const what = args[1] ?? usage();
+  const cmd: Extract<Command, { type: 'CastVotes' }> = {
+    type: 'CastVotes',
+    side: side === 'for' ? 'for' : 'against',
+    source: 'other',
+  };
+  const notes: string[] = [];
+  for (let i = 2; i < args.length; i++) {
+    const t = args[i] ?? '';
+    if (/^\d+$/.test(t) && cmd.votes === undefined && !notes.length) cmd.votes = integer(t);
+    else if (t.toLowerCase() === 'via' && cmd.card === undefined && !notes.length) {
+      cmd.card = resolveCard(args[++i] ?? usage(), ctx).id;
+    } else notes.push(t);
+  }
+  const w = what.toLowerCase();
+  if (w === 'edge' || w === 'card') {
+    if (cmd.card !== undefined || notes.length) usage();
+    cmd.source = w;
+  } else if (w === 'other') {
+    if (cmd.votes === undefined) fail('How many votes? vote for other <n> [via <card>]');
+  } else {
+    if (cmd.card !== undefined) usage();
+    const c = resolveCard(what, ctx);
+    const info = c.cardId === undefined ? undefined : ctx.catalog.get(c.cardId);
+    const { name } = parseZoneId(c.zone);
+    const minion =
+      name === 'ready' &&
+      c.attachedTo === undefined &&
+      (info?.kind === 'crypt' || !!info?.types?.includes('Ally'));
+    if (minion) cmd.source = 'minion';
+    if (minion) cmd.minion = c.id;
+    else if (name === 'hand' && info?.types?.includes('Political Action')) {
+      if (cmd.votes !== undefined) usage();
+      cmd.source = 'burned';
+      cmd.card = c.id;
+    } else {
+      if (cmd.votes === undefined) fail(`How many votes does ${info?.name ?? 'it'} give?`);
+      cmd.card = c.id;
+    }
+  }
+  if (notes.length) cmd.note = notes.join(' ');
+  return cmd;
 }
 
 function integer(token: string): number {

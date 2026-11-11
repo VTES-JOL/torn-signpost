@@ -206,6 +206,14 @@ function commandFor(state: GameState, [, kind, a, b, c, d]: Step): Command {
     { type: 'AdditionalStrike' },
     { type: 'Press', mode: c % 2 ? 'continue' : 'end' },
     { type: 'ResolveAction', outcome: 'combat', opponent: other },
+    {
+      type: 'CastVotes',
+      source: 'minion',
+      minion: pick('ready', a),
+      side: c % 2 ? 'for' : 'against',
+    },
+    { type: 'CastVotes', source: 'edge', side: 'for' },
+    { type: 'Abstain' },
   ];
   const pool = [...commands, ...flow];
   return pool[kind % pool.length] as Command;
@@ -259,6 +267,23 @@ function guidedStep(state: GameState, [, kind, a, , c, d]: Step): [Command, Acto
     if (!before && n === 5) return [{ type: 'PassUntil', until: 'end' }, actor];
     return [{ type: 'Pass' }, actor];
   }
+  if (state.window?.kind === 'polling') {
+    // Mostly one commitment each, so random polls reach the tally.
+    const cast = act?.referendum?.votes.some((v) => v.seat === fs);
+    if (n >= 7 || (n > 0 && cast)) return [{ type: 'Pass' }, actor];
+    const side = c % 2 ? 'for' : 'against';
+    const votes = d % 3 ? { votes: d % 3 } : {};
+    if (n < 3) return [{ type: 'CastVotes', source: 'minion', minion, side, ...votes }, actor];
+    if (n === 3) return [{ type: 'CastVotes', source: 'edge', side }, actor];
+    if (n === 4) return [{ type: 'CastVotes', source: 'card', side }, actor];
+    if (n === 5) return [{ type: 'CastVotes', source: 'burned', card, side }, actor];
+    if (n === 6) {
+      const via = c % 3 ? {} : { card };
+      return [{ type: 'CastVotes', source: 'other', votes: (d % 2) + 1, side, ...via }, actor];
+    }
+    if (n === 7 && c % 3 === 0) return [{ type: 'Abstain' }, actor];
+    return [{ type: 'Pass' }, actor];
+  }
   if (state.window) {
     if (act?.blockAttempt?.seat === fs && n === 0) return [{ type: 'WithdrawBlock' }, actor];
     if (state.window.kind === 'blocks' && n < 3) {
@@ -287,7 +312,8 @@ function guidedStep(state: GameState, [, kind, a, , c, d]: Step): [Command, Acto
       return [{ type: 'ResolveAction', outcome: 'combat', opponent }, actor];
     }
     const outcome = c % 3 ? 'success' : 'failure';
-    return [{ type: 'ResolveAction', outcome, amount: d % 4, edge: c % 2 === 0 }, actor];
+    const terms = act.kind === 'political' && d % 2 ? { terms: 'terms' } : {};
+    return [{ type: 'ResolveAction', outcome, amount: d % 4, edge: c % 2 === 0, ...terms }, actor];
   }
   if (n < 2) {
     const phases = PHASES.filter((_, i) => (c >> i) & 1);
@@ -307,7 +333,8 @@ function guidedStep(state: GameState, [, kind, a, , c, d]: Step): [Command, Acto
       {
         type: 'DeclareAction',
         minion,
-        kind: ACTION_KINDS[c % ACTION_KINDS.length] ?? 'bleed',
+        // Political actions a third of the time, so random games reach referendums.
+        kind: c % 3 === 1 ? 'political' : (ACTION_KINDS[c % ACTION_KINDS.length] ?? 'bleed'),
         ...(d % 3 === 0 && target ? { target } : {}),
         ...(d % 2 === 0 ? { card } : {}),
         ...(c % 4 === 0 ? { override: a % 2 ? { source: minion } : {} } : {}),
@@ -433,6 +460,8 @@ function visibleIn(state: GameState, id: string, viewer: Viewer): boolean {
   if (state.action?.cardId === id) return true;
   // A combat move's source was public when it was named: in play, or played with it.
   if (state.action?.combat?.strikes.some((x) => x.strike.sourceCardId === id)) return true;
+  // So were the cards votes were cast with, played or named (M6.5).
+  if (state.action?.referendum?.votes.some((v) => v.cardId === id)) return true;
   let index = byCardId.get(state);
   if (!index) {
     index = new Map(Object.values(state.cards).flatMap((c) => (c.cardId ? [[c.cardId, c]] : [])));
@@ -590,6 +619,10 @@ describe('hidden information', { timeout: 60_000 }, () => {
       'StrikeChosen',
       'PassingUntil',
       'CardUsed',
+      'ReferendumCalled',
+      'VotesCast',
+      // A tally needs a full round of passes after the last vote: too rare to count on, so
+      // scenario 22 and referendum.test.ts cover it.
       // Damage resolving, prevention, additional strikes and presses need random games to get a
       // combat that far: too rare to count on, so scenarios 17–19 and combat.test.ts cover them.
       'DamagePending',

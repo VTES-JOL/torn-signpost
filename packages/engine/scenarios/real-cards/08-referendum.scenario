@@ -1,0 +1,72 @@
+# A referendum: a prince calls Kine Resources Contested, and the table votes on it.
+# The rulebook's steps ("Politics"): the terms are chosen once the action succeeds, cards may be
+# played before votes, then votes are cast until everyone has passed; a tie fails.
+# Cards are given by VEKN ID; names and images come from the content pack (LEGAL-08).
+seed 3
+seat A alice
+seat B bob
+seat C carol
+seat D dave
+crypt A 200235 *12
+library A 101056 *40
+crypt B 200110 *12
+library B 101056 *40
+crypt C 200378 *12
+library C 100598 *40
+crypt D 200190 *12
+library D 100598 *40
+start
+
+# Fast-forward: everyone has a vampire in play (sped up for the demo).
+A> transfer +5 A:uncontrolled:1
+A> move A:uncontrolled:1 ready
+B> transfer +6 B:uncontrolled:1
+B> move B:uncontrolled:1 ready
+C> transfer +5 C:uncontrolled:1
+C> move C:uncontrolled:1 ready
+D> transfer +7 D:uncontrolled:1
+D> move D:uncontrolled:1 ready
+A> next
+A> next
+expect turn 1 A minion
+
+# Calebros, a prince, calls Kine Resources Contested. A political action is undirected: Bob (the
+# prey), then Dave (the predator), may block. Neither does.
+A> political A:ready:1 with A:hand:1
+B> pass
+D> pass
+expect action political A resolution
+
+# Only now are the terms chosen: Bob and Carol are to burn 2 pool each.
+A> resolve success "Bob burns 2 pool, Carol burns 2 pool"
+expect window referendum minion
+# The other players pass automatically on the cards played before votes; Alice passes last.
+A> pass
+expect window polling minion
+
+# Alice casts Calebros's 2 votes (a prince) and the calling card's vote.
+A> vote for A:ready:1
+A> vote for card
+A> pass
+# Bob: his primogen's vote, and a political action card burned for one more.
+B> vote against B:ready:1
+B> vote against B:hand:1
+B> pass
+expect votes 3 2
+# Carol's vampire has no title: she has nothing to cast.
+C> pass
+# Dave's prince sides with Alice.
+D> vote for D:ready:1
+D> pass
+# Dave cast after the others passed, so everyone gets another chance before the tally.
+A> pass
+B> pass
+C> pass
+log public The referendum passes (5 for, 2 against)
+expect action none
+
+# Alice applies what passed.
+B> pool -2
+C> pool -2
+expect pool B 22
+expect pool C 23
