@@ -214,6 +214,9 @@ function commandFor(state: GameState, [, kind, a, b, c, d]: Step): Command {
     },
     { type: 'CastVotes', source: 'edge', side: 'for' },
     { type: 'Abstain' },
+    { type: 'CancelVotes', minion: pick('ready', a) },
+    { type: 'CallBloodHunt' },
+    { type: 'EndReferendum', passed: c % 2 === 0 },
   ];
   const pool = [...commands, ...flow];
   return pool[kind % pool.length] as Command;
@@ -282,6 +285,8 @@ function guidedStep(state: GameState, [, kind, a, , c, d]: Step): [Command, Acto
       return [{ type: 'CastVotes', source: 'other', votes: (d % 2) + 1, side, ...via }, actor];
     }
     if (n === 7 && c % 3 === 0) return [{ type: 'Abstain' }, actor];
+    if (n === 7 && c % 3 === 1) return [{ type: 'CancelVotes', minion }, actor];
+    if (n === 8 && c % 5 === 0) return [{ type: 'EndReferendum', passed: d % 2 === 0 }, actor];
     return [{ type: 'Pass' }, actor];
   }
   if (state.window) {
@@ -310,6 +315,9 @@ function guidedStep(state: GameState, [, kind, a, , c, d]: Step): [Command, Acto
       const theirs = target ? (state.zones[zoneId(target.id, 'ready')] ?? []) : [];
       const opponent = theirs[d % Math.max(theirs.length, 1)] ?? 'none';
       return [{ type: 'ResolveAction', outcome: 'combat', opponent }, actor];
+    }
+    if (n === 2 && act.kind === 'other' && !act.referendum) {
+      return [{ type: 'CallBloodHunt', ...(c % 2 ? { minion } : {}) }, actor];
     }
     const outcome = c % 3 ? 'success' : 'failure';
     const terms = act.kind === 'political' && d % 2 ? { terms: 'terms' } : {};

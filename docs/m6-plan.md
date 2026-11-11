@@ -436,7 +436,7 @@ Abstain.
 - **M6.5a** (2 days), **done**: R1–R6 for political actions: the windows, casting from vampires, the
   Edge, the calling card, a burned political action card and other sources; abstaining; the tally;
   the panel.
-- **M6.5b** (1–2 days): R7; blood hunts (a referendum that isn't an action, with no before-votes
+- **M6.5b** (1–2 days), **done**: R7; blood hunts (a referendum that isn't an action, with no before-votes
   window and no action modifiers or reactions; called by hand until diablerie comes); the prisci
   block's ballots; making a vampire abstain (Kateline Nadasdy 76.6, Demonstration 77.14).
 

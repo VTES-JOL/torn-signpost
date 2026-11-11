@@ -1,0 +1,96 @@
+# Prisci, abstaining, settled referendums and blood hunts, by the rulebook ("The Prisci Block",
+# "The Blood Hunt") and zero-vtes docs/rules-qa.md (5.2, 52.9, 59.18, 76.6, 77.14).
+# Sarah's Marek Hale is a prince (2 votes); Corin Vale is a priscus (1 ballot, no vote).
+seed 5
+seat S sarah
+seat X alexis
+seat P pieter
+crypt S "Marek Hale" *12
+library S "Open Motion" *40
+crypt X "Corin Vale" *12
+library X "Open Motion" *40
+crypt P "Corin Vale" *12
+library P "Iron Ward" *40
+start
+
+S> move S:uncontrolled:1 ready
+S> move S:uncontrolled:1 ready
+X> move X:uncontrolled:1 ready
+P> move P:uncontrolled:1 ready
+S> next
+S> next
+
+# The prisci block: each ready priscus casts a ballot in a sub-referendum, and the block's 3
+# votes go to the side with more ballots; a tied sub-referendum gives them to neither (52.9).
+S> political S:ready:1 with S:hand:1
+X> pass
+P> pass
+S> resolve success "Sarah gains 2 pool"
+S> pass
+S> vote for S:ready:1
+S> pass
+X> vote against X:ready:1
+log public Corin Vale casts 1 ballot against
+expect votes 2 3
+X> pass
+P> vote for P:ready:1
+expect votes 2 0
+P> pass
+S> pass
+X> pass
+log public The referendum passes (2 for, 0 against)
+
+# Making a vampire abstain (Kateline Nadasdy 76.6, Demonstration 77.14): its votes are cancelled,
+# cast or to come. Then a card settles the referendum at once (Fakir al Sidi 59.18: it fails).
+S> political S:ready:2 with S:hand:1
+X> pass
+P> pass
+S> resolve success
+S> pass
+S> vote for S:ready:2
+S> pass
+X> abstain S:ready:2
+log public Marek Hale abstains, its votes cancelled
+expect votes 0 0
+X> pass
+P> pass
+reject S> vote for S:ready:2
+S> endreferendum fail "Fakir al Sidi"
+log public S ends the referendum: it fails: Fakir al Sidi
+expect action none
+
+# The blood hunt: Alexis's priscus diablerizes one of Sarah's princes, sent to torpor first.
+# The referendum is not an action of its own: no cards played before votes, and no calling card;
+# anyone may burn a political action card for a vote (5.2). If it passes, the diablerist burns.
+S> next
+S> next
+S> next
+X> next
+X> next
+expect turn 2 X minion
+S> move S:ready:1 torpor
+X> action X:ready:1 S
+S> pass
+expect action other X resolution
+X> move S:torpor:1 S:ashHeap
+X> bloodhunt
+log public A blood hunt is called on Corin Vale: the referendum begins
+expect window polling minion
+X> vote against X:ready:1
+X> pass
+P> vote for P:ready:1
+P> pass
+reject S> vote for card
+S> vote for S:ready:1
+S> vote for S:hand:1
+expect votes 3 0
+S> pass
+X> pass
+P> pass
+log public The blood hunt is called: Corin Vale is burned (3 for, 0 against)
+expect count X:ashHeap 1
+expect count X:ready 0
+# Back to the action, which its Methuselah resolves.
+expect action other X resolution
+X> resolve success
+expect action none

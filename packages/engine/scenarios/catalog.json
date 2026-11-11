@@ -39,6 +39,7 @@
       "capacity": 8,
       "title": "Archbishop"
     },
+    { "id": "t-corin", "name": "Corin Vale", "kind": "crypt", "capacity": 7, "title": "Priscus" },
     { "id": "t-motion", "name": "Open Motion", "kind": "library", "types": ["Political Action"] }
   ]
 }

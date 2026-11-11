@@ -3,6 +3,7 @@
  * so the same files can be run by the TypeScript tests and, later, by the Swift client through
  * JavaScriptCore. Format: docs/console.md#scenarios.
  */
+
 import { type CardCatalog, normalizeName } from './catalog.ts';
 import { clockElapsed, deadlines, timers } from './clock.ts';
 import {
@@ -19,6 +20,7 @@ import { evolve, newGame } from './evolve.ts';
 import { autoPassPhases, impulseHolder, tempo, waitingOn } from './flow.ts';
 import type { Actor, CardId, Format, GameSettings, GameState, Viewer } from './model.ts';
 import { project, projectEvent } from './projection.ts';
+import { tally } from './referendum.ts';
 import { seededRng } from './rng.ts';
 import type { SeatId } from './seating.ts';
 import type { TimelineStep } from './timeline.ts';
@@ -408,9 +410,8 @@ function check(
     case 'votes': {
       // `expect votes <for> <against>` in a referendum, or none.
       const r = state.action?.referendum;
-      const n = (side: string) =>
-        r?.votes.filter((v) => v.side === side).reduce((t, v) => t + v.votes, 0) ?? 0;
-      return same('votes', r ? `${n('for')} ${n('against')}` : 'none', rest.join(' '));
+      const t = r && tally(r);
+      return same('votes', t ? `${t.for} ${t.against}` : 'none', rest.join(' '));
     }
     case 'window': {
       const w = state.window;

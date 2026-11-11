@@ -146,10 +146,24 @@ export type Command =
       minion?: InstanceId;
       card?: InstanceId;
       votes?: number;
+      /** A priscus's ballots, when not the 1 its title gives. */
+      ballots?: number;
       note?: string;
     }
   /** Pass the rest of the referendum's polling step, casting nothing more. */
   | { type: 'Abstain' }
+  /**
+   * Make a minion abstain (Kateline Nadasdy, Demonstration): its votes and ballots, cast or to
+   * come, don't count. `source`: the card it comes from, played from the hand or named in play.
+   */
+  | { type: 'CancelVotes'; minion: InstanceId; source?: InstanceId }
+  /**
+   * The acting Methuselah, or a judge, calls a blood hunt on a diablerist (by default the acting
+   * vampire) while the action resolves (M6.5b).
+   */
+  | { type: 'CallBloodHunt'; minion?: InstanceId }
+  /** Settle the referendum at once, for cards that do (Yoruba Shrine, Fakir al Sidi). */
+  | { type: 'EndReferendum'; passed: boolean; note?: string }
   /**
    * Combat (docs/flow.md, "Combat"). Each names the card it comes from, if any: a card in the
    * hand is played with it; a card in play (a weapon, the minion itself) is only named.

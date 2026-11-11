@@ -26,8 +26,8 @@ import {
   type StepValue,
   stopRules,
   strikeText,
+  tally,
   VOTE_SIDES,
-  type VoteSide,
   type Wait,
   type WaitKind,
   waitingOn,
@@ -509,9 +509,14 @@ function ReferendumPanel(props: {
   seatName: (seat: string) => string;
 }) {
   const { view, referendum: r, name, seatName } = props;
-  const total = (side: VoteSide) =>
-    r.votes.filter((v) => v.side === side).reduce((n, v) => n + v.votes, 0);
+  const t = tally(r);
+  const hunt = r.kind === 'blood-hunt';
   const polling = view.window?.kind === 'polling';
+  const count = (c: Cast) =>
+    [
+      ...(c.votes ? [`${c.votes}`] : []),
+      ...(c.ballots ? [`${c.ballots} ballot${c.ballots === 1 ? '' : 's'}`] : []),
+    ].join(' + ');
   const source = (c: Cast) => {
     switch (c.source) {
       case 'minion':
@@ -529,11 +534,13 @@ function ReferendumPanel(props: {
   return (
     <section className="referendum-panel" aria-label="Referendum">
       <p className="small">
-        <strong>Referendum</strong>
+        <strong>{hunt ? `Blood hunt on ${name(r.on)}` : 'Referendum'}</strong>
         {r.terms && <> · “{r.terms}”</>}
       </p>
       <ol className="combat-steps">
-        {(['Before votes', 'Polling'] as const).map((step, i) => {
+        {/* A blood hunt is not an action: it has no cards played before votes. */}
+        {(hunt ? (['Polling'] as const) : (['Before votes', 'Polling'] as const)).map((step) => {
+          const i = step === 'Polling' ? 1 : 0;
           const current = polling === (i === 1);
           return (
             <li
@@ -550,21 +557,35 @@ function ReferendumPanel(props: {
         {VOTE_SIDES.map((side) => (
           <section key={side} className={side} aria-label={side === 'for' ? 'For' : 'Against'}>
             <strong className="side-total">
-              {side === 'for' ? 'For' : 'Against'} {total(side)}
+              {side === 'for' ? 'For' : 'Against'} {t[side]}
             </strong>
             <ul className="casts small">
               {r.votes
                 .filter((c) => c.side === side)
                 .map((c) => (
                   <li key={`${c.seat}:${c.source}:${c.minion ?? c.card ?? r.votes.indexOf(c)}`}>
-                    {source(c)} <span className="badge">{c.votes}</span>
+                    {source(c)} <span className="badge">{count(c)}</span>
                     {c.claimed && <span className="muted"> claimed</span>}
                   </li>
                 ))}
+              {t.prisci?.side === side && (
+                <li>
+                  Prisci block <span className="badge">3</span>
+                </li>
+              )}
             </ul>
           </section>
         ))}
       </div>
+      {t.prisci && (
+        <p className="small muted">
+          Prisci ballots: {t.prisci.for} for, {t.prisci.against} against
+          {t.prisci.side ? '' : ': tied, the block abstains'}
+        </p>
+      )}
+      {r.cancelled?.length ? (
+        <p className="small muted">Votes cancelled: {r.cancelled.map((m) => name(m)).join(', ')}</p>
+      ) : null}
       {r.abstaining?.length ? (
         <p className="small muted">Abstaining: {r.abstaining.map(seatName).join(', ')}</p>
       ) : null}
@@ -691,7 +712,8 @@ function statusLine(
     if (a.stage === 'resolution') return `${what} · not blocked: ${who(a.seat)} resolves it`;
     if (a.referendum) {
       const step = view.window?.kind === 'polling' ? 'polling' : 'before votes';
-      return `${what} · referendum, ${step}${holding}`;
+      const which = a.referendum.kind === 'blood-hunt' ? 'blood hunt' : 'referendum';
+      return `${what} · ${which}, ${step}${holding}`;
     }
     const attempt = a.blockAttempt
       ? ` · ${name(a.blockAttempt.minion)} tries to block${overrideNote(a.blockAttempt.override, name)}`

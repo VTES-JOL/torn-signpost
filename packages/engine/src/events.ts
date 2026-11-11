@@ -82,6 +82,8 @@ export type EventBody =
       source?: true;
       /** Moved by combat damage (to torpor, or burned): `DamageResolved` tells it. */
       combat?: true;
+      /** Burned by a blood hunt: `ReferendumResolved` tells it. */
+      hunted?: true;
     }
   | { type: 'CardsDrawn'; seat: SeatId; from: 'library' | 'crypt'; cards: Rekey[] }
   | {
@@ -185,20 +187,32 @@ export type EventBody =
   | { type: 'ActionResolving' }
   /** A successful political action calls its referendum, with the terms its caller chose (M6.5). */
   | { type: 'ReferendumCalled'; terms?: string }
+  /** A blood hunt referendum on `on`, inside the action in progress (M6.5b). */
+  | { type: 'BloodHuntCalled'; on: InstanceId; cardId?: CardId }
   /** Votes cast in the polling step; a minion already cast adds them to its cast. */
   | { type: 'VotesCast'; cast: Cast }
+  /** A minion is made to abstain: its votes and ballots, cast or to come, don't count. */
+  | {
+      type: 'VotesCancelled';
+      minion: InstanceId;
+      source?: InstanceId;
+      sourceCardId?: CardId;
+      played?: true;
+    }
   /** The seat passes the rest of the polling. */
   | { type: 'Abstained'; seat: SeatId }
   /**
-   * The tally (more votes for than against passes; a tie fails). `reason`: no referendum was held
-   * because the acting vampire was no longer ready (zero-vtes rules-qa 5.9).
+   * The tally (more votes for than against passes; a tie fails), the prisci block's 3 votes
+   * included. `reason`: `not-ready`, no referendum was held because the acting vampire was no
+   * longer ready (zero-vtes rules-qa 5.9); `settled`, a card or a judge settled it (`note`).
    */
   | {
       type: 'ReferendumResolved';
       passed: boolean;
       for: number;
       against: number;
-      reason?: 'not-ready';
+      reason?: 'not-ready' | 'settled';
+      note?: string;
     }
   /** Combat begins, at the first step of round 1, at close range. */
   | { type: 'CombatStarted'; combat: CombatState }

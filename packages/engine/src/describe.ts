@@ -174,7 +174,7 @@ function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): 
         return `${capitalize(name)} ${fate}: ${seatName(ev.ousted)} was ousted`;
       }
       // Played as the source of a combat move, or moved by combat damage: their own lines tell it.
-      if (ev.source || ev.combat) return '';
+      if (ev.source || ev.combat || ev.hunted) return '';
       if (ev.played) {
         const to = parseZoneId(ev.to);
         const into =
@@ -345,10 +345,22 @@ function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): 
       const caller = a ? cardName(a.minion) : who;
       return `${caller} calls a referendum${ev.terms ? `: “${ev.terms}”` : ''}`;
     }
+    case 'BloodHuntCalled':
+      return `A blood hunt is called on ${cardName(ev.on, ev.cardId)}: the referendum begins`;
+    case 'VotesCancelled': {
+      const m = cardName(ev.minion);
+      const src = ev.source === undefined ? undefined : cardName(ev.source, ev.sourceCardId);
+      const by = src ? `${ev.played ? `${who} plays` : `${who} uses`} ${src}: ` : '';
+      return `${by}${m} abstains, its votes cancelled`;
+    }
     case 'VotesCast': {
       const c = ev.cast;
       const side = c.side === 'for' ? 'in favour' : 'against';
-      const n = `${c.votes} vote${c.votes === 1 ? '' : 's'} ${side}`;
+      const count = [
+        ...(c.votes ? [`${c.votes} vote${c.votes === 1 ? '' : 's'}`] : []),
+        ...(c.ballots ? [`${c.ballots} ballot${c.ballots === 1 ? '' : 's'}`] : []),
+      ];
+      const n = `${count.join(' and ')} ${side}`;
       const src = c.card === undefined ? undefined : cardName(c.card, c.cardId);
       const note = c.note ? `: ${c.note}` : '';
       switch (c.source) {
@@ -381,7 +393,20 @@ function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): 
         const a = before.action;
         return `No referendum: ${a ? cardName(a.minion) : 'the acting vampire'} is no longer ready`;
       }
-      return `The referendum ${ev.passed ? 'passes' : 'fails'} (${ev.for} for, ${ev.against} against)`;
+      const count = `(${ev.for} for, ${ev.against} against)`;
+      const why = ev.note ? `: ${ev.note}` : '';
+      const r = before.action?.referendum;
+      if (r?.kind === 'blood-hunt') {
+        const on = r.on === undefined ? 'the diablerist' : cardName(r.on, r.onCardId);
+        const result = ev.passed ? `the blood hunt is called: ${on} is burned` : 'no blood hunt';
+        return ev.reason === 'settled'
+          ? `${who} ends the referendum: ${result}${why}`
+          : `${capitalize(result)} ${count}`;
+      }
+      if (ev.reason === 'settled') {
+        return `${who} ends the referendum: it ${ev.passed ? 'passes' : 'fails'}${why}`;
+      }
+      return `The referendum ${ev.passed ? 'passes' : 'fails'} ${count}`;
     }
     // A block's combat was announced with the block.
     case 'CombatStarted':

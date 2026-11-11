@@ -1,0 +1,66 @@
+# A blood hunt: a priscus diablerizes a vampire in torpor, and the table votes on burning her.
+# The rulebook ("The Blood Hunt", "The Prisci Block"): the referendum is not an action, so nobody
+# plays cards before votes; the prisci vote with ballots, and the side with more of them gets 3.
+# Cards are given by VEKN ID; names and images come from the content pack (LEGAL-08).
+seed 3
+seat A alice
+seat B bob
+seat C carol
+seat D dave
+crypt A 200522 *12
+library A 101056 *40
+crypt B 200452 *12
+library B 101056 *40
+crypt C 200771 *12
+library C 100598 *40
+crypt D 200051 *12
+library D 100598 *40
+start
+
+# Fast-forward: everyone has a vampire in play, and Bob's archbishop is in torpor.
+A> transfer +7 A:uncontrolled:1
+A> move A:uncontrolled:1 ready
+B> transfer +4 B:uncontrolled:1
+B> move B:uncontrolled:1 ready
+B> transfer +4 B:uncontrolled:1
+B> move B:uncontrolled:1 ready
+B> move B:ready:1 torpor
+C> transfer +7 C:uncontrolled:1
+C> move C:uncontrolled:1 ready
+D> transfer +6 D:uncontrolled:1
+D> move D:uncontrolled:1 ready
+A> next
+A> next
+expect turn 1 A minion
+
+# Gisela, a priscus, diablerizes Bob's vampire in torpor: an action directed at Bob, who doesn't
+# block. Alice plays out the diablerie by hand, then calls the blood hunt on Gisela.
+A> action A:ready:1 B
+B> pass
+B> move B:torpor:1 B:ashHeap
+A> bloodhunt
+expect window polling minion
+
+# Alice's priscus casts a ballot against; Bob's archbishop 2 votes for, and he burns a political
+# action card for one more: anyone may, in a blood hunt.
+A> vote against A:ready:1
+A> pass
+B> vote for B:ready:1
+B> vote for B:hand:1
+B> pass
+# Carol's priscus sides with Alice: 2 ballots to 0, so the prisci block's 3 votes go against.
+C> vote against C:ready:1
+expect votes 3 3
+C> pass
+# Dave's bishop decides it.
+D> vote for D:ready:1
+D> pass
+A> pass
+B> pass
+C> pass
+log public The blood hunt is called: Gisela Harden, The Winnower (G2) is burned (4 for, 3 against)
+expect count A:ready 0
+
+# Back to the action: Alice resolves it.
+A> resolve success
+expect action none

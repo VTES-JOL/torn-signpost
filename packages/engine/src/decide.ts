@@ -1,4 +1,4 @@
-import { type CardCatalog, type Grant, titleVotes } from './catalog.ts';
+import { type CardCatalog, type Grant, titleBallots, titleVotes } from './catalog.ts';
 import {
   clockElapsed,
   deadlines,
@@ -52,6 +52,7 @@ import {
   VOTE_SIDES,
 } from './model.ts';
 import { canSee } from './projection.ts';
+import { tally } from './referendum.ts';
 import { newInstanceId, type Rng, shuffled } from './rng.ts';
 import { nextTurnSeat, predator, prey, type SeatId, windowOrder } from './seating.ts';
 import {
@@ -1060,6 +1061,14 @@ function bodiesFor(
       if (votes !== undefined && (!Number.isInteger(votes) || votes < 1 || votes > 30)) {
         reject('invalid', `Invalid number of votes: ${votes}`);
       }
+      const ballots = cmd.ballots;
+      if (ballots !== undefined && (!Number.isInteger(ballots) || ballots < 1 || ballots > 9)) {
+        reject('invalid', `Invalid number of ballots: ${ballots}`);
+      }
+      if (ballots !== undefined && cmd.source !== 'minion') {
+        reject('invalid', 'Only a minion casts ballots');
+      }
+      const hunt = r.kind === 'blood-hunt';
       const note = cmd.note?.trim();
       if (note && note.length > MAX_NOTE) reject('invalid', 'The note is too long');
       const mine = r.votes.filter((v) => v.seat === s);
@@ -1069,29 +1078,42 @@ function bodiesFor(
       switch (cmd.source) {
         case 'minion': {
           const m = readyMinion(cmd.minion ?? reject('invalid', 'Which minion votes?'), s);
+          if (r.cancelled?.includes(m.id)) {
+            reject('forbidden', 'That minion abstains: its votes are cancelled');
+          }
           const prior = r.votes.find((v) => v.minion === m.id);
           if (prior) {
             // A cast stands; votes gained later join it on the same side (rules-qa 5.1).
             if (prior.side !== cmd.side) {
               reject('forbidden', `That minion voted ${prior.side}: a cast can't be changed`);
             }
-            if (votes === undefined) reject('invalid', 'Say how many more votes it casts');
+            if (votes === undefined && ballots === undefined) {
+              reject('invalid', 'Say how many more votes it casts');
+            }
           }
-          const printed = titleVotes(m.cardId ? ctx.catalog.get(m.cardId)?.title : undefined);
+          const title = m.cardId ? ctx.catalog.get(m.cardId)?.title : undefined;
+          const printed = prior ? 0 : titleVotes(title);
+          const printedBallots = prior ? 0 : titleBallots(title);
           const n = votes ?? printed;
-          if (n < 1) {
+          const b = ballots ?? printedBallots;
+          if (n + b < 1) {
             reject(
               'invalid',
               'That minion has no votes from a title: say how many a card gives it',
             );
           }
+          const claimed =
+            !!prior ||
+            (votes !== undefined && votes !== printed) ||
+            (ballots !== undefined && ballots !== printedBallots);
           bodies.push(
             cast(
               withOptional(
                 { ...base, source: 'minion' as const, votes: n, minion: m.id },
                 {
+                  ballots: b || undefined,
                   cardId: m.cardId,
-                  claimed: prior || n !== printed ? (true as const) : undefined,
+                  claimed: claimed ? (true as const) : undefined,
                   note: note || undefined,
                 },
               ),
@@ -1106,6 +1128,7 @@ function bodiesFor(
           bodies.push(cast({ ...base, source: 'edge', votes: 1 }), { type: 'EdgeSet' });
           break;
         case 'card':
+          if (hunt) reject('invalid', 'A blood hunt has no calling card');
           if (s !== a.seat || a.card === undefined) {
             reject('invalid', "Only the caller has the calling card's vote");
           }
@@ -1133,7 +1156,7 @@ function bodiesFor(
             reject('invalid', 'Only a political action card can be burned for a vote');
           }
           // One political action card vote each; the caller's is the calling card (rules-qa 46.2).
-          if (s === a.seat && a.card !== undefined) {
+          if (!hunt && s === a.seat && a.card !== undefined) {
             reject('forbidden', 'The calling card is already your political action card vote');
           }
           if (mine.some((v) => v.source === 'burned')) {
@@ -1198,6 +1221,72 @@ function bodiesFor(
       if (!w.order.includes(s)) reject('forbidden', 'You are not part of this referendum');
       if (r.abstaining?.includes(s)) reject('no-change', 'You already abstain');
       return settle(state, [{ type: 'Abstained', seat: s }]);
+    }
+
+    case 'CancelVotes': {
+      const s = holdingImpulse();
+      const r = state.action?.referendum;
+      if (state.window?.kind !== 'polling' || !r) {
+        reject('not-now', 'Votes are cancelled in a referendum’s polling');
+      }
+      const m = card(cmd.minion);
+      if (!IN_PLAY_ZONES.has(parseZoneId(m.zone).name) || m.attachedTo !== undefined) {
+        reject('invalid', 'Choose a minion in play');
+      }
+      if (r.cancelled?.includes(m.id)) reject('no-change', 'That minion already abstains');
+      const src = combatSource(cmd.source, s);
+      const cancelled: EventBody = withOptional({ type: 'VotesCancelled', minion: m.id } as const, {
+        source: src.source?.id,
+        sourceCardId: src.source?.cardId,
+        played: src.played ? (true as const) : undefined,
+      });
+      return settle(state, [...src.with(cancelled), impulseBack()]);
+    }
+
+    case 'CallBloodHunt': {
+      const a = actingAction();
+      if (a.stage !== 'resolution') {
+        reject('not-now', 'A blood hunt is called as the action resolves (after the diablerie)');
+      }
+      const on = card(cmd.minion ?? a.minion);
+      if (!IN_PLAY_ZONES.has(parseZoneId(on.zone).name)) {
+        reject('invalid', 'The diablerist must be in play');
+      }
+      // Not an action: no cards played before votes; polling from the acting Methuselah.
+      const order = windowOrder(seatRefs(state), a.seat, { directedAt: a.seat });
+      return settle(state, [
+        withOptional({ type: 'BloodHuntCalled', on: on.id } as const, { cardId: on.cardId }),
+        {
+          type: 'WindowOpened',
+          window: { kind: 'polling', phase: 'minion', order, cursor: 0, passes: 0 },
+        },
+      ]);
+    }
+
+    case 'EndReferendum': {
+      const a = actingAction();
+      if (!a.referendum) reject('not-now', 'There is no referendum to end');
+      const note = cmd.note?.trim();
+      if (note && note.length > MAX_NOTE) reject('invalid', 'The note is too long');
+      const t = tally(a.referendum);
+      return [
+        ...(state.window ? [{ type: 'WindowClosed' } as const] : []),
+        ...referendumEnd(
+          state,
+          ids,
+          a,
+          withOptional(
+            {
+              type: 'ReferendumResolved',
+              passed: !!cmd.passed,
+              for: t.for,
+              against: t.against,
+              reason: 'settled',
+            } as const,
+            { note: note || undefined },
+          ),
+        ),
+      ];
     }
 
     case 'CancelAction': {
@@ -1714,16 +1803,16 @@ function closeWindow(state: GameState, sx: Settling, now: string, by: ActorRef):
     ];
   }
   if (state.window?.kind === 'polling' && a?.referendum) {
-    const count = (side: Cast['side']) =>
-      a.referendum?.votes.filter((v) => v.side === side).reduce((n, v) => n + v.votes, 0) ?? 0;
-    const pro = count('for');
-    const con = count('against');
-    // A tie fails (rulebook, "The Referendum"); passed or not, the action succeeded (rules-qa 5.8).
+    const t = tally(a.referendum);
+    // A tie fails (rulebook, "The Referendum").
     return [
       closed,
-      { type: 'ReferendumResolved', passed: pro > con, for: pro, against: con },
-      ...finishedActionCard(state, sx.ids, a, 'success'),
-      { type: 'ActionEnded', outcome: 'success' },
+      ...referendumEnd(state, sx.ids, a, {
+        type: 'ReferendumResolved',
+        passed: t.for > t.against,
+        for: t.for,
+        against: t.against,
+      }),
     ];
   }
   const attempt = a?.blockAttempt;
@@ -1737,6 +1826,44 @@ function closeWindow(state: GameState, sx: Settling, now: string, by: ActorRef):
       : []),
     ...combatOpening(state, 'block', a.minion, attempt.minion),
   ];
+}
+
+/**
+ * What follows a referendum's result. A political action ends successful, passed or not, and its
+ * card is burned (rules-qa 5.8). A blood hunt that passes burns the diablerist with the cards on
+ * it (rulebook, "The Blood Hunt"); the action it was called in goes back to resolving.
+ */
+function referendumEnd(
+  state: GameState,
+  ids: () => InstanceId,
+  a: NonNullable<GameState['action']>,
+  resolved: Extract<EventBody, { type: 'ReferendumResolved' }>,
+): EventBody[] {
+  const r = a.referendum;
+  if (r?.kind !== 'blood-hunt') {
+    return [
+      resolved,
+      ...finishedActionCard(state, ids, a, 'success'),
+      { type: 'ActionEnded', outcome: 'success' },
+    ];
+  }
+  const on = r.on === undefined ? undefined : state.cards[r.on];
+  if (!resolved.passed || !on || !IN_PLAY_ZONES.has(parseZoneId(on.zone).name)) return [resolved];
+  const burn = (c: CardInstance): EventBody =>
+    withOptional(
+      {
+        type: 'CardMoved',
+        card: c.id,
+        from: c.zone,
+        to: zoneId(c.owner, 'ashHeap'),
+        position: 'bottom',
+        faceDown: false,
+        hunted: true,
+      } as const,
+      { cardId: c.cardId },
+    );
+  const borne = Object.values(state.cards).filter((c) => c.attachedTo === on.id);
+  return [resolved, ...borne.map(burn), burn(on)];
 }
 
 /**

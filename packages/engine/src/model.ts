@@ -192,6 +192,8 @@ export interface Cast {
   /** The card the votes come from: the burned card, or the card granting `other` votes. */
   card?: InstanceId;
   cardId?: CardId;
+  /** A priscus's ballots in the prisci sub-referendum (rulebook, "The Prisci Block"). */
+  ballots?: number;
   /** The votes differ from what the engine knows (a minion's title): a card effect claimed. */
   claimed?: true;
   note?: string;
@@ -199,12 +201,22 @@ export interface Cast {
 
 /** A referendum in progress (docs/m6-plan.md M6.5). */
 export interface ReferendumState {
+  /**
+   * `blood-hunt`: on a diablerist (rulebook, "The Blood Hunt"); not an action of its own, so no
+   * calling card and no cards played before votes. Missing: a political action's referendum.
+   */
+  kind?: 'blood-hunt';
+  /** The vampire a blood hunt is on. */
+  on?: InstanceId;
+  onCardId?: CardId;
   /** What the caller chose as it was called; the engine doesn't read them. */
   terms?: string;
   /** In the order cast; a minion's later votes are added to its first cast (rules-qa 5.1). */
   votes: Cast[];
   /** Seats that pass the rest of the polling (R4). */
   abstaining?: SeatId[];
+  /** Minions made to abstain: their votes and ballots are cancelled, cast or to come (76.6). */
+  cancelled?: InstanceId[];
 }
 
 /** The steps of a combat round, in order (VTES rulebook, combat; docs/flow.md "Combat"). */

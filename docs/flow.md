@@ -107,12 +107,14 @@ The seat holding the impulse gets these ([Referendums](#referendums)); every oth
 
 | Offer | Shown when | Command |
 |---|---|---|
-| **Vote with *vampire* (*n*)…** | For each of the seat's ready titled vampires not yet cast. Step: for or against | `CastVotes { source: 'minion', minion, side }` |
+| **Vote with *vampire* (*n*)…** | For each of the seat's ready titled vampires (a priscus: 1 ballot) not yet cast and not abstaining. Step: for or against | `CastVotes { source: 'minion', minion, side }` |
 | **Votes from a minion (card effect)…** | The seat has a ready minion. Steps: the minion, the votes, the side | `CastVotes { source: 'minion', minion, votes, side }` |
 | **Burn the Edge for a vote…** | The seat has the Edge | `CastVotes { source: 'edge', side }` |
 | **The calling card's vote…** | The caller, with a calling card not yet cast | `CastVotes { source: 'card', side }` |
 | **Burn a political action card for a vote…** | Not the caller with a calling card, a political action card in hand, none burned yet | `CastVotes { source: 'burned', card, side }` |
 | **Other votes…** | Always. Steps: the votes, the side, the card they come from (optional), a note | `CastVotes { source: 'other', votes, side, card?, note? }` |
+| **Make a vampire abstain…** | Any vampire in play not already abstaining. Steps: the vampire, the card it comes from (optional) | `CancelVotes { minion, source? }` |
+| **End the referendum…** | The caller. Steps: it passes or fails, why (optional) | `EndReferendum { passed, note? }` |
 | **Play a card**, **Use a card…**, **Pass**, **Abstain** | As in a combat step; Pass is highlighted unless a titled vampire is | `PlayCard`, `UseCard`, `Pass`, `Abstain` |
 
 In the `referendum` window before it, the usual window offers apply (case 1), with **Abstain**
@@ -147,6 +149,9 @@ acting Methuselah gets **Hold** (`Hold`), unless it is already holding.
 - Hunt: the blood gained (default 1).
 - Political action: the terms of the referendum (optional text); the offer reads **Successful:
   call the referendum**.
+
+An `other` action at `resolution` (a diablerie) also offers **Call a blood hunt…**: the
+diablerist, the acting vampire unless another is chosen (`CallBloodHunt`).
 
 ### 3. No action, no window
 
@@ -524,7 +529,26 @@ applied by the players with the usual commands.
 | `other` | `votes` from any other source; `card` names where they come from: a card in your hand is played, one of your face-up cards in play is only named |
 
 Casts are public and never change. `ReferendumState` keeps them in order, with the seats
-abstaining.
+abstaining and the minions made to abstain.
+
+**The prisci block** (rulebook, "The Prisci Block"; rules-qa 52.9): a priscus casts 1 ballot by
+default (`titleBallots`), in a sub-referendum: whichever side has more ballots gets the block's 3
+votes; a tie gives them to neither (`tally` in `referendum.ts`).
+
+**Making a vampire abstain** (`CancelVotes { minion, source? }`, rules-qa 76.6, 77.14): on your
+impulse in polling, any vampire in play; its votes and ballots, cast or to come, are cancelled. A
+card from your hand is played for it; one in play is named.
+
+**Ending it at once** (`EndReferendum { passed, note? }`): the caller or a judge settles the
+referendum, passed or failed, for cards that do (Yoruba Shrine 35.4, Fakir al Sidi 59.18, Día de
+los Muertos 52.3). What follows is as for a tally.
+
+**Blood hunts** (`CallBloodHunt { minion? }`; rulebook, "The Blood Hunt"): the acting Methuselah,
+or a judge, calls one while the action resolves, after a diablerie played out by hand (the
+diablerie action is `other`). It's not an action: polling opens at once, from the acting
+Methuselah, with no cards played before votes and no calling card; anyone may burn a political
+action card for a vote (rules-qa 5.2). If it passes, the diablerist is burned with the cards on
+it; either way, the action goes back to resolving.
 
 ## How windows close
 
@@ -551,7 +575,7 @@ When a window closes:
 | `blocks` | Block attempt pending | The action is blocked and moves to `combat`; the blocking minion is locked, and the first combat step opens |
 | `combat` | – | The next combat step, or after End of round, the end of the combat and the action |
 | `referendum` | – | The polling opens, from the caller |
-| `polling` | – | The tally; the action ends successful |
+| `polling` | – | The tally; the action ends successful, or after a blood hunt goes back to resolving |
 
 ### Later: player-defined stops
 

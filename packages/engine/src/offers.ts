@@ -4,7 +4,7 @@
  * the server. Choosing an offer walks its steps (highlighting only the candidates); `build` turns
  * the choices into a command.
  */
-import { type CardCatalog, titleVotes } from './catalog.ts';
+import { type CardCatalog, titleBallots, titleVotes } from './catalog.ts';
 import type { ClientCommand } from './commands.ts';
 import { combatantOf, impulseHolder, isHolding, seatRefs } from './flow.ts';
 import {
@@ -269,6 +269,22 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
           }),
         });
       }
+      // Diablerie is an action of its own ("other"): its blood hunt comes as it resolves (M6.5b).
+      if (action.kind === 'other') {
+        offers.push({
+          id: 'blood-hunt',
+          label: 'Call a blood hunt…',
+          confirm: true,
+          explain: 'A referendum on burning the diablerist.',
+          steps: [{ kind: 'card', label: 'Diablerist', candidates: ready, optional: true }],
+          build: (values) => {
+            const m = v(values, 0);
+            return typeof m === 'string'
+              ? { type: 'CallBloodHunt', minion: m }
+              : { type: 'CallBloodHunt' };
+          },
+        });
+      }
     }
     const blockerSeat = action.blocker ? view.cards[action.blocker]?.controller : undefined;
     if (action.stage === 'combat' && (mine || blockerSeat === seat)) {
@@ -463,11 +479,13 @@ function pollingOffers(
   });
   // Each titled vampire not yet cast, with its title's votes.
   for (const m of minions) {
-    const n = titleVotes(catalog.get(view.cards[m]?.cardId ?? '')?.title);
-    if (!n || cast.has(m)) continue;
+    const title = catalog.get(view.cards[m]?.cardId ?? '')?.title;
+    const n = titleVotes(title);
+    const b = titleBallots(title);
+    if ((!n && !b) || cast.has(m) || r.cancelled?.includes(m)) continue;
     offers.push({
       id: `vote:${m}`,
-      label: `Vote with ${name(m)} (${n})…`,
+      label: `Vote with ${name(m)} (${n || `${b} ballot`})…`,
       primary: offers.length === 0,
       confirm: true,
       steps: [sideStep],
@@ -508,7 +526,7 @@ function pollingOffers(
     });
   }
   const mine = r.votes.filter((v) => v.seat === seat);
-  const calling = a.seat === seat && a.card !== undefined;
+  const calling = a.seat === seat && a.card !== undefined && r.kind !== 'blood-hunt';
   if (calling && !mine.some((v) => v.source === 'card')) {
     offers.push({
       id: 'vote:card',
@@ -586,6 +604,56 @@ function pollingOffers(
     steps: [],
     build: () => ({ type: 'Pass' }),
   });
+  // Kateline Nadasdy, Demonstration: a vampire made to abstain (rules-qa 76.6, 77.14).
+  const voters = view.seats
+    .filter((x) => !x.ousted && !x.withdrawn)
+    .flatMap((x) => zoneCards(view, zoneId(x.id, 'ready')))
+    .filter((m) => view.cards[m]?.attachedTo === undefined && !r.cancelled?.includes(m));
+  if (voters.length) {
+    offers.push({
+      id: 'cancel-votes',
+      label: 'Make a vampire abstain…',
+      confirm: true,
+      steps: [
+        { kind: 'card', label: 'Vampire', candidates: voters },
+        {
+          kind: 'card',
+          label: 'Card it comes from',
+          candidates: [...hand, ...my.inPlay],
+          optional: true,
+        },
+      ],
+      build: (values) => ({
+        type: 'CancelVotes',
+        minion: values[0] as InstanceId,
+        ...(typeof values[1] === 'string' ? { source: values[1] } : {}),
+      }),
+    });
+  }
+  // The caller settles it at once, for cards that do (Yoruba Shrine, Fakir al Sidi).
+  if (a.seat === seat) {
+    offers.push({
+      id: 'end-referendum',
+      label: 'End the referendum…',
+      confirm: true,
+      steps: [
+        {
+          kind: 'choice',
+          label: 'Result',
+          options: [
+            { value: 'pass', label: 'It passes' },
+            { value: 'fail', label: 'It fails' },
+          ],
+          default: 'fail',
+        },
+        { kind: 'text', label: 'Why (the card that settles it)', optional: true },
+      ],
+      build: (values) => {
+        const note = typeof values[1] === 'string' ? values[1].trim() : '';
+        return { type: 'EndReferendum', passed: values[0] === 'pass', ...(note ? { note } : {}) };
+      },
+    });
+  }
   offers.push(ABSTAIN);
   return offers;
 }

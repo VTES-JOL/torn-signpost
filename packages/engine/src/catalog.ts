@@ -63,6 +63,11 @@ export function titleVotes(title: string | undefined): number {
   return TITLE_VOTES[title.trim().toLowerCase()] ?? 0;
 }
 
+/** A priscus's ballot in the prisci sub-referendum (rulebook, "The Prisci Block"). */
+export function titleBallots(title: string | undefined): number {
+  return title?.trim().toLowerCase() === 'priscus' ? 1 : 0;
+}
+
 const TITLE_VOTES: Record<string, number> = {
   primogen: 1,
   bishop: 1,

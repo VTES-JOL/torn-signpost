@@ -128,9 +128,17 @@ export const PlayerCommand = z.discriminatedUnion('type', [
     minion: opt(Id),
     card: opt(Id),
     votes: opt(z.number().int().min(1).max(30)),
+    ballots: opt(z.number().int().min(1).max(9)),
     note: opt(z.string().max(200)),
   }),
   z.strictObject({ type: z.literal('Abstain') }),
+  z.strictObject({ type: z.literal('CancelVotes'), minion: Id, source: opt(Id) }),
+  z.strictObject({ type: z.literal('CallBloodHunt'), minion: opt(Id) }),
+  z.strictObject({
+    type: z.literal('EndReferendum'),
+    passed: z.boolean(),
+    note: opt(z.string().max(200)),
+  }),
   z.strictObject({ type: z.literal('EndCombat') }),
   z.strictObject({ type: z.literal('Maneuver'), to: z.enum(['close', 'long']), source: opt(Id) }),
   z.strictObject({

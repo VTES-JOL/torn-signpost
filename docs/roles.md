@@ -36,7 +36,10 @@ what the API or engine would refuse anyway).
 - **At their seat** (GAME-10) [engine]: anything on their own cards and zones and on public ones;
   never another player's hidden zones. The structured flow: phases, actions, blocks, passes,
   holds, auto-pass and stops. In combat, only the two combatants' Methuselahs act in its steps
-  (maneuvers, strikes, cards, passes); either of them can end it (M6.4).
+  (maneuvers, strikes, cards, passes); either of them can end it (M6.4). In a referendum
+  (M6.5) every Methuselah still in the game casts votes and ballots from their own sources, makes
+  any vampire abstain with a card effect, or abstains; the caller chooses the terms, can end the
+  referendum at once, and calls a blood hunt as their own action resolves.
 - **Chat** in games they're seated in (or have joined) [API], also once the game is over (F3).
   `@name` mentions notify.
 - **Call a judge**, one open call each (GAME-18) [engine].
@@ -67,6 +70,9 @@ what the API or engine would refuse anyway).
   page); claim calls; rule: answered, more time for an away player's decision, pass for the
   player holding the impulse (in a combat's strike step, before they chose one: no strike), add time to the timer (timed games), disqualify (tournament games),
   refer to the admins (casual games).
+- **Steer an action in progress** for its Methuselah [engine]: resolve or cancel it, call a blood
+  hunt as it resolves, and end its referendum at once (`endreferendum pass|fail`, M6.5). Judges
+  cast no votes.
 - **Pause** without the players' allowance, and **lift anyone's pause** [engine].
 - **Notified** of every new judge call, if they've connected in the last 30 days [API].
 - Not: end games, replace players, rename players (admin powers).

@@ -118,7 +118,12 @@ export const CONSOLE_COMMANDS: Record<string, Syntax> = {
     usage:
       'vote for|against <vampire> [n] | edge | card | <political card in hand> | other <n> [via <card>] ["note"]',
   },
-  abstain: { args: [], usage: 'abstain  (pass the rest of this referendum)' },
+  abstain: {
+    args: ['options'],
+    usage: 'abstain  (pass the rest of this referendum)  |  abstain <vampire> [via <card>]',
+  },
+  bloodhunt: { args: ['card'], usage: 'bloodhunt [<vampire>]  (as your action resolves)' },
+  endreferendum: { args: ['options'], usage: 'endreferendum pass|fail ["why"]' },
   endcombat: { args: [], usage: 'endcombat' },
   cancel: { args: [], usage: 'cancel  (cancel your action)' },
   autopass: {
@@ -562,9 +567,29 @@ function parse(tokens: string[], ctx: ConsoleContext): Command {
     }
     case 'vote':
       return voteCommand(args, ctx, usage);
-    case 'abstain':
-      extra(0);
-      return { type: 'Abstain' };
+    case 'abstain': {
+      if (!args.length) return { type: 'Abstain' };
+      // Make a vampire abstain: its votes are cancelled (Kateline Nadasdy, Demonstration).
+      const opts = options(['via']);
+      if (opts.positional !== 1) usage();
+      const via = opts.at.get('via');
+      const minion = card(0).id;
+      return via === undefined
+        ? { type: 'CancelVotes', minion }
+        : { type: 'CancelVotes', minion, source: card(via).id };
+    }
+    case 'bloodhunt':
+      extra(1);
+      return args.length
+        ? { type: 'CallBloodHunt', minion: card(0).id }
+        : { type: 'CallBloodHunt' };
+    case 'endreferendum': {
+      const result = arg(0).toLowerCase();
+      if (result !== 'pass' && result !== 'fail') usage();
+      const note = args.slice(1).join(' ').trim();
+      const cmd: Command = { type: 'EndReferendum', passed: result === 'pass' };
+      return note ? { ...cmd, note } : cmd;
+    }
     case 'endcombat':
       extra(0);
       return { type: 'EndCombat' };

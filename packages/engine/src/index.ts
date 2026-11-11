@@ -10,6 +10,7 @@ export * from './grants.ts';
 export * from './model.ts';
 export * from './offers.ts';
 export * from './projection.ts';
+export * from './referendum.ts';
 export * from './rng.ts';
 export * from './scenario.ts';
 export * from './seating.ts';

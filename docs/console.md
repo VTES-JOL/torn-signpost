@@ -48,6 +48,9 @@ player. The parser lives in `packages/engine/src/console` and is shared by every
 | `vote for\|against <political card in hand>` | Burn a political action card from your hand for 1 vote (one each; not the caller when a card called it) |
 | `vote for\|against other <n> [via <card>] ["note"]` · `vote for\|against <card> <n>` | Votes from any other source; a card in your hand is played for them, one in play is named |
 | `abstain` | Pass the rest of this referendum's polling |
+| `abstain <vampire> [via <card>]` | Make a vampire abstain (Kateline Nadasdy, Demonstration): its votes and ballots, cast or to come, are cancelled. On your impulse in polling |
+| `bloodhunt [<vampire>]` | As your action resolves (after a diablerie): a blood hunt referendum on that vampire, the acting one by default. Polling opens at once; if it passes, the vampire is burned with the cards on it, and the action goes back to resolving |
+| `endreferendum pass\|fail ["why"]` | Settle the referendum at once (Yoruba Shrine, Fakir al Sidi, Día de los Muertos): the caller or a judge |
 | `maneuver long\|close [via <card>]` | In the range step of a combat: change the range. `via` names the card it comes from: in your hand (played with it) or in play |
 | `strike hand [n]` · `strike <n>[R][A]` · `strike dodge` · `strike ends` · `strike steal <n>` · `strike other "text"` · `strike none`, then `[first] [via <card>]` | In the strike step: choose your strike. `2R` is 2 ranged damage, `2A` aggravated, `2RA` both; `ends` is a combat-ends strike; `first` marks a first strike. The acting minion chooses first |
 | `prevent <n> [via <card>]` | In the damage step: prevent damage your minion is about to take |

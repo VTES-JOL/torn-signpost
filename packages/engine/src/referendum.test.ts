@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { titleVotes } from './catalog.ts';
+import { titleBallots, titleVotes } from './catalog.ts';
 import type { Command } from './commands.ts';
 import { parseConsole } from './console/index.ts';
 import { decide } from './decide.ts';
@@ -9,6 +9,7 @@ import type { GameState } from './model.ts';
 import type { OfferStep, StepValue } from './offers.ts';
 import { availableActions } from './offers.ts';
 import { project } from './projection.ts';
+import { tally } from './referendum.ts';
 import { seededRng } from './rng.ts';
 import { runScenario } from './scenario.ts';
 import { testCatalog } from './testing/fixtures.ts';
@@ -349,5 +350,94 @@ X> pass
     // Abstaining twice, or casting after abstaining.
     const abstained = run('S> abstain\n').state;
     expect(send({ type: 'Abstain' }, 'sarah', abstained)).toMatch(/already abstain/);
+  });
+
+  it('counts the prisci block for the side with more ballots, and nobody on a tie', () => {
+    const r = (ballots: [number, number], votes: [number, number] = [0, 0]) =>
+      tally({
+        votes: [
+          { seat: 'A', source: 'minion', side: 'for', votes: votes[0], ballots: ballots[0] },
+          { seat: 'B', source: 'minion', side: 'against', votes: votes[1], ballots: ballots[1] },
+        ],
+      });
+    expect(r([2, 1])).toEqual({ for: 3, against: 0, prisci: { for: 2, against: 1, side: 'for' } });
+    expect(r([0, 1], [2, 0])).toMatchObject({ for: 2, against: 3 });
+    expect(r([1, 1], [1, 1])).toEqual({ for: 1, against: 1, prisci: { for: 1, against: 1 } });
+    expect(tally({ votes: [] })).toEqual({ for: 0, against: 0 });
+    expect(titleBallots('Priscus')).toBe(1);
+    expect(titleBallots('Prince')).toBe(0);
+  });
+
+  it('offers a blood hunt as a diablerie resolves, and refuses one at the wrong time', () => {
+    const resolving = runScenario(
+      POLLING.split('S> political')[0] +
+        'S> action S:ready:1 X\nX> pass\nexpect action other S resolution\n',
+      testCatalog,
+    );
+    expect(resolving.failure).toBeUndefined();
+    const offers = availableActions(
+      project(resolving.state, { kind: 'player', seat: 'S' }),
+      'S',
+      testCatalog,
+    );
+    const hunt = offers.find((o) => o.id === 'blood-hunt');
+    expect(hunt?.build([undefined])).toEqual({ type: 'CallBloodHunt' });
+    expect(hunt?.build(['m1'])).toEqual({ type: 'CallBloodHunt', minion: 'm1' });
+    const send = (cmd: Command, at: GameState, user = 'sarah') => {
+      const r = decide(at, cmd, {
+        actor: { kind: 'player', user },
+        now: '2026-01-01T00:00:00.000Z',
+        rng: seededRng(1),
+        catalog: testCatalog,
+      });
+      return r.ok ? 'accepted' : r.rejection.message;
+    };
+    const handCard = resolving.state.zones['S:hand']?.[0] ?? '';
+    expect(send({ type: 'CallBloodHunt', minion: handCard }, resolving.state)).toMatch(/in play/);
+    expect(send({ type: 'CallBloodHunt' }, resolving.state, 'alexis')).toMatch(/not your action/);
+    expect(send({ type: 'EndReferendum', passed: true }, resolving.state)).toMatch(/no referendum/);
+    const polling = run('').state;
+    expect(send({ type: 'CallBloodHunt' }, polling)).toMatch(/as the action resolves/);
+    expect(send({ type: 'EndReferendum', passed: false, note: 'x'.repeat(201) }, polling)).toMatch(
+      /too long/,
+    );
+    const ready = polling.zones['S:ready']?.[0] ?? '';
+    const cast = (more: object) =>
+      send(
+        { type: 'CastVotes', source: 'minion', side: 'for', minion: ready, ...more } as Command,
+        polling,
+      );
+    expect(cast({ ballots: 0 })).toMatch(/Invalid number of ballots/);
+    expect(cast({ source: 'other', votes: 1, ballots: 1 })).toMatch(/Only a minion casts ballots/);
+    expect(cast({ ballots: 2 })).toBe('accepted');
+    expect(send({ type: 'CancelVotes', minion: handCard }, polling)).toMatch(/minion in play/);
+    const silenced = run('S> abstain S:ready:1\n').state;
+    expect(send({ type: 'CancelVotes', minion: ready }, silenced)).toMatch(/already abstains/);
+    const before = runScenario(POLLING.split('S> political')[0] ?? '', testCatalog).state;
+    expect(send({ type: 'CancelVotes', minion: ready }, before)).toMatch(/impulse/);
+  });
+
+  it('parses the console’s blood hunt, abstain and end commands', () => {
+    const r = run('');
+    const ctx = { view: r.state, seat: 'S', catalog: testCatalog };
+    const parsed = (line: string) => {
+      const p = parseConsole(line, ctx);
+      return p.ok ? p.command : p.error;
+    };
+    expect(parsed('bloodhunt')).toEqual({ type: 'CallBloodHunt' });
+    expect(parsed('bloodhunt S:ready:1')).toMatchObject({ type: 'CallBloodHunt' });
+    expect(parsed('abstain S:ready:1')).toMatchObject({ type: 'CancelVotes' });
+    expect(parsed('abstain S:ready:1 via S:hand:2')).toMatchObject({
+      type: 'CancelVotes',
+      source: expect.any(String),
+    });
+    expect(parsed('abstain S:ready:1 X:ready:1')).toMatch(/^Usage/);
+    expect(parsed('endreferendum pass Yoruba Shrine')).toEqual({
+      type: 'EndReferendum',
+      passed: true,
+      note: 'Yoruba Shrine',
+    });
+    expect(parsed('endreferendum fail')).toEqual({ type: 'EndReferendum', passed: false });
+    expect(parsed('endreferendum maybe')).toMatch(/^Usage/);
   });
 });

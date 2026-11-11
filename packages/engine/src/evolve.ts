@@ -311,6 +311,7 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
       // Votes a minion gains after casting join its cast, on the same side (rules-qa 5.1).
       if (prior) {
         prior.votes += cast.votes;
+        if (cast.ballots) prior.ballots = (prior.ballots ?? 0) + cast.ballots;
         if (cast.claimed) prior.claimed = true;
       } else votes.push(cast);
       d.action = { ...a, referendum: { ...r, votes } };
@@ -322,8 +323,40 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
       d.action = { ...actionOf(d), referendum: { ...r, abstaining } };
       break;
     }
-    case 'ReferendumResolved':
+    case 'BloodHuntCalled':
+      d.action = {
+        ...actionOf(d),
+        stage: 'referendum',
+        referendum: {
+          kind: 'blood-hunt',
+          on: ev.on,
+          ...(ev.cardId ? { onCardId: ev.cardId } : {}),
+          votes: [],
+        },
+      };
       break;
+    case 'VotesCancelled': {
+      // Its votes and ballots, cast or to come, no longer count (rules-qa 76.6).
+      const r = referendumOf(d);
+      d.action = {
+        ...actionOf(d),
+        referendum: {
+          ...r,
+          votes: r.votes.filter((v) => v.minion !== ev.minion),
+          cancelled: [...(r.cancelled ?? []), ev.minion],
+        },
+      };
+      break;
+    }
+    case 'ReferendumResolved': {
+      // A blood hunt is over: the action it was called in goes back to resolving.
+      const a = d.action;
+      if (a?.referendum?.kind === 'blood-hunt') {
+        const { referendum: _, ...rest } = a;
+        d.action = { ...rest, stage: 'resolution' };
+      }
+      break;
+    }
     case 'CombatStarted':
       d.action = { ...actionOf(d), stage: 'combat', combat: copyCombat(ev.combat) };
       break;
