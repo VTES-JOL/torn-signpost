@@ -46,7 +46,8 @@ beforeAll(() => {
   auth = Template.fromStack(a);
   api = Template.fromStack(p);
   ops = Template.fromStack(o);
-});
+  // Synthesizing every stack takes seconds locally but can pass 10 s on a busy CI runner.
+}, 60_000);
 
 describe('foundation', () => {
   it('retains the main table with PITR, streams and deletion protection', () => {
