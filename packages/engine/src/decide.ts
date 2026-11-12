@@ -43,6 +43,7 @@ import type {
 import {
   ACTION_KINDS,
   COMBAT_STEPS,
+  LEAVE_TORPOR_COST,
   PHASES,
   PLAYER_CALL_REASONS,
   STOP_ACTORS,
@@ -288,6 +289,15 @@ function bodiesFor(
     if (m.zone !== zoneId(s, 'ready') || m.attachedTo !== undefined) {
       reject('invalid', 'Choose one of your minions in your ready region');
     }
+    return m;
+  };
+  /** One of `s`'s vampires in their torpor region, face up (rulebook, "Torpor"). */
+  const torpidVampire = (id: InstanceId, s: SeatId): CardInstance => {
+    const m = card(id);
+    if (m.zone !== zoneId(s, 'torpor') || m.attachedTo !== undefined || m.faceDown) {
+      reject('invalid', 'Choose one of your vampires in torpor');
+    }
+    if (!isVampire(m, ctx.catalog)) reject('invalid', 'Only a vampire leaves torpor');
     return m;
   };
   /** Whether the catalog says the card lifts the rule. */
@@ -636,9 +646,12 @@ function bodiesFor(
       if (state.action) reject('not-now', 'Another action is in progress');
       if (state.window) reject('not-now', 'Waiting for the other players to pass');
       if (!ACTION_KINDS.includes(cmd.kind)) reject('invalid', `Unknown action ${cmd.kind}`);
-      const minion = readyMinion(cmd.minion, s);
+      // A vampire in torpor can take no action but leaving torpor (rulebook, "Torpor").
+      const minion =
+        cmd.kind === 'leave-torpor' ? torpidVampire(cmd.minion, s) : readyMinion(cmd.minion, s);
       if (minion.locked) reject('invalid', 'Locked minions cannot act; unlock it first if allowed');
-      let target = cmd.target === s ? undefined : cmd.target;
+      // Leaving torpor is undirected (rulebook, "Leave Torpor").
+      let target = cmd.target === s || cmd.kind === 'leave-torpor' ? undefined : cmd.target;
       if (target !== undefined) {
         const t = seat(target);
         if (t.ousted || t.withdrawn) reject('invalid', 'That player is out of the game');
@@ -731,7 +744,14 @@ function bodiesFor(
       if (a.seat === s) reject('forbidden', 'You cannot block your own action');
       // A decision not to block stands, whatever card effect comes later.
       if (a.declined.includes(s)) reject('forbidden', 'You already declined to block this action');
-      if (a.blockAttempt) reject('not-now', 'A block attempt is already pending');
+      // One attempt at a time; its Methuselah may start another with a different minion, which
+      // fails the one under way (zero-vtes rules-qa 48.3, 114.1).
+      if (a.blockAttempt && a.blockAttempt.seat !== s) {
+        reject('not-now', 'A block attempt is already pending');
+      }
+      if (a.blockAttempt?.minion === cmd.minion) {
+        reject('no-change', 'That minion is already attempting to block');
+      }
       const minion = readyMinion(cmd.minion, s);
       // Only ready unlocked minions block (rulebook, "Locking and Unlocking").
       if (minion.locked)
@@ -810,6 +830,9 @@ function bodiesFor(
     case 'ResolveAction': {
       const a = actingAction();
       if (a.stage !== 'resolution') reject('not-now', 'The action is not ready to resolve');
+      if (a.kind === 'leave-torpor' && cmd.outcome === 'combat') {
+        reject('invalid', 'A vampire in torpor cannot enter combat');
+      }
       if (cmd.outcome === 'combat') {
         // An action that enters combat (docs/flow.md, "Combat"): the acting minion fights another.
         const opponent = card(cmd.opponent ?? reject('invalid', 'Which minion does it fight?'));
@@ -870,6 +893,35 @@ function bodiesFor(
           const gain = Math.min(amount, room);
           if (gain > 0)
             bodies.push({ type: 'CounterAdjusted', card: m.id, counter: 'blood', delta: gain });
+        }
+      }
+      if (cmd.outcome === 'success' && a.kind === 'leave-torpor') {
+        // The vampire moves to the ready region and pays the cost: 2 blood by default, or what a
+        // card makes it (rulebook, "Leave Torpor"). Out of torpor already, it fizzles: nothing
+        // happens, nothing is paid (zero-vtes rules-qa, ANK 20220218).
+        const cost = cmd.amount ?? LEAVE_TORPOR_COST;
+        const m = state.cards[a.minion];
+        if (m && parseZoneId(m.zone).name === 'torpor') {
+          const blood = m.counters.blood ?? 0;
+          if (cost > blood) {
+            reject('not-enough', `Leaving torpor costs ${cost} blood; it has ${blood}`);
+          }
+          if (cost > 0) {
+            bodies.push({ type: 'CounterAdjusted', card: m.id, counter: 'blood', delta: -cost });
+          }
+          bodies.push(
+            withOptional(
+              {
+                type: 'CardMoved',
+                card: m.id,
+                from: m.zone,
+                to: zoneId(m.controller, 'ready'),
+                position: 'bottom',
+                faceDown: false,
+              } as const,
+              { cardId: m.cardId },
+            ),
+          );
         }
       }
       bodies.push(...finishActionCard(a, cmd.outcome));
@@ -1266,6 +1318,46 @@ function bodiesFor(
           window: { kind: 'polling', phase: 'minion', order, cursor: 0, passes: 0 },
         },
       ]);
+    }
+
+    case 'Diablerize': {
+      const a = state.action ?? reject('not-now', 'No action in progress');
+      if (a.stage !== 'diablerie' || a.blocker === undefined) {
+        reject('not-now', 'There is no diablerie to decide');
+      }
+      const diablerist = card(a.blocker);
+      if (mySeat !== undefined && mySeat !== diablerist.controller) {
+        reject('forbidden', 'Only the blocking vampire’s Methuselah decides');
+      }
+      if (cmd.decline) {
+        // Not diablerized: the action fails, and no cost is paid.
+        return settle(state, [
+          ...finishedActionCard(state, ids, a, 'blocked'),
+          { type: 'ActionEnded', outcome: 'blocked' },
+        ]);
+      }
+      const victim = card(a.minion);
+      // The diablerie names both vampires to the table: neither may be face down.
+      if (parseZoneId(victim.zone).name !== 'torpor' || victim.faceDown) {
+        reject('invalid', 'The vampire is no longer in torpor');
+      }
+      if (diablerist.faceDown || !IN_PLAY_ZONES.has(parseZoneId(diablerist.zone).name)) {
+        reject('invalid', 'The blocking vampire is no longer in play');
+      }
+      const bodies = diablerie(state, diablerist, victim, ctx.catalog);
+      // The blood hunt follows at once (rulebook, "The Blood Hunt"): not an action, no cards
+      // played before votes; polling from the acting Methuselah, as for any blood hunt.
+      const order = windowOrder(seatRefs(state), a.seat, { directedAt: a.seat });
+      bodies.push(
+        withOptional({ type: 'BloodHuntCalled', on: diablerist.id } as const, {
+          cardId: diablerist.cardId,
+        }),
+        {
+          type: 'WindowOpened',
+          window: { kind: 'polling', phase: 'minion', order, cursor: 0, passes: 0 },
+        },
+      );
+      return settle(state, bodies);
     }
 
     case 'EndReferendum': {
@@ -1823,6 +1915,23 @@ function closeWindow(state: GameState, sx: Settling, now: string, by: ActorRef):
   const attempt = a?.blockAttempt;
   if (!a || !attempt) return [closed, { type: 'ActionResolving' }];
   const blocker = state.cards[attempt.minion];
+  if (a.kind === 'leave-torpor') {
+    // No combat: a vampire in torpor can't enter one. A blocking vampire's Methuselah may
+    // diablerize it; an ally's block simply fails the action, nothing paid (rulebook, "Leave
+    // Torpor").
+    const lock: EventBody[] =
+      blocker && !blocker.locked ? [{ type: 'CardLocked', card: blocker.id, locked: true }] : [];
+    if (blocker && isVampire(blocker, sx.catalog)) {
+      return [closed, { type: 'ActionBlocked', blocker: attempt.minion, diablerie: true }, ...lock];
+    }
+    return [
+      closed,
+      { type: 'ActionBlocked', blocker: attempt.minion },
+      ...lock,
+      ...finishedActionCard(state, sx.ids, a, 'blocked'),
+      { type: 'ActionEnded', outcome: 'blocked' },
+    ];
+  }
   return [
     closed,
     { type: 'ActionBlocked', blocker: attempt.minion },
@@ -1830,6 +1939,60 @@ function closeWindow(state: GameState, sx: Settling, now: string, by: ActorRef):
       ? [{ type: 'CardLocked', card: blocker.id, locked: true } as const]
       : []),
     ...combatOpening(state, 'block', a.minion, attempt.minion),
+  ];
+}
+
+/**
+ * A diablerie (rulebook, "Diablerie"): the victim's blood moves to the diablerist, what's over its
+ * capacity draining off, and the victim is burned with every card and counter on it. Taking the
+ * victim's equipment, and a Discipline from an older victim, are left to the players' moves.
+ */
+function diablerie(
+  state: GameState,
+  diablerist: CardInstance,
+  victim: CardInstance,
+  catalog: CardCatalog,
+): EventBody[] {
+  const blood = victim.counters.blood ?? 0;
+  const capacity = diablerist.cardId ? catalog.get(diablerist.cardId)?.capacity : undefined;
+  const room =
+    capacity === undefined ? blood : Math.max(0, capacity - (diablerist.counters.blood ?? 0));
+  const gained = Math.min(blood, room);
+  const burn = (c: CardInstance): EventBody =>
+    withOptional(
+      {
+        type: 'CardMoved',
+        card: c.id,
+        from: c.zone,
+        to: zoneId(c.owner, 'ashHeap'),
+        position: 'bottom',
+        faceDown: false,
+      } as const,
+      { cardId: c.cardId },
+    );
+  const borne = Object.values(state.cards).filter((c) => c.attachedTo === victim.id);
+  return [
+    withOptional(
+      {
+        type: 'Diablerized',
+        diablerist: diablerist.id,
+        victim: victim.id,
+        blood: gained,
+      } as const,
+      { diableristCardId: diablerist.cardId, victimCardId: victim.cardId },
+    ),
+    ...(gained > 0
+      ? [
+          {
+            type: 'BloodTransferred',
+            from: { card: victim.id },
+            to: { card: diablerist.id },
+            amount: gained,
+          } as const,
+        ]
+      : []),
+    ...borne.map(burn),
+    burn(victim),
   ];
 }
 
@@ -1852,8 +2015,18 @@ function referendumEnd(
       { type: 'ActionEnded', outcome: 'success' },
     ];
   }
+  // A blood hunt after a blocker's diablerie ends the leave-torpor action it blocked.
+  const ends: EventBody[] =
+    a.kind === 'leave-torpor' && a.blocker !== undefined
+      ? [
+          ...finishedActionCard(state, ids, a, 'blocked'),
+          { type: 'ActionEnded', outcome: 'blocked' },
+        ]
+      : [];
   const on = r.on === undefined ? undefined : state.cards[r.on];
-  if (!resolved.passed || !on || !IN_PLAY_ZONES.has(parseZoneId(on.zone).name)) return [resolved];
+  if (!resolved.passed || !on || !IN_PLAY_ZONES.has(parseZoneId(on.zone).name)) {
+    return [resolved, ...ends];
+  }
   const burn = (c: CardInstance): EventBody =>
     withOptional(
       {
@@ -1868,7 +2041,7 @@ function referendumEnd(
       { cardId: c.cardId },
     );
   const borne = Object.values(state.cards).filter((c) => c.attachedTo === on.id);
-  return [resolved, ...borne.map(burn), burn(on)];
+  return [resolved, ...borne.map(burn), burn(on), ...ends];
 }
 
 /**

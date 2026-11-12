@@ -32,6 +32,7 @@ const WAIT_NAMES: Record<WaitKind, string> = {
   resolve: 'resolving an action',
   combat: 'combat',
   vote: 'a vote',
+  diablerie: 'a diablerie',
 };
 
 const CALL_REASONS: Record<JudgeCallReason, string> = {
@@ -212,6 +213,11 @@ function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): 
         ? `${who} turned ${cardName(ev.card, ev.cardId)} face down`
         : `${who} turned ${cardName(ev.card, ev.cardId)} face up`;
     case 'CardLocked':
+      // A successful block locks the blocker as the last pass closes the window: not that
+      // player's doing.
+      if (ev.locked && before.action?.blocker === ev.card) {
+        return `${cardName(ev.card)} is locked: it blocked`;
+      }
       return `${who} ${ev.locked ? 'locked' : 'unlocked'} ${cardName(ev.card)}`;
     case 'CardContested':
       return `${who} marked ${cardName(ev.card)} as ${ev.contested ? 'contested' : 'uncontested'}`;
@@ -332,12 +338,24 @@ function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): 
       const card = a.card === undefined ? '' : ` with ${cardName(a.card, a.cardId)}`;
       return `${who}: ${cardName(a.minion)} ${verb}${target}${card}${overrideNote(a.override)}`;
     }
-    case 'BlockAttempted':
-      return `${seatName(ev.seat)} tries to block with ${cardName(ev.minion)}${overrideNote(ev.override)}`;
+    case 'BlockAttempted': {
+      // A new attempt by the same Methuselah fails the one under way (rules-qa 114.1).
+      const was = before.action?.blockAttempt;
+      const instead =
+        was?.seat === ev.seat ? ` instead of ${cardName(was.minion)}, whose attempt fails` : '';
+      return `${seatName(ev.seat)} tries to block with ${cardName(ev.minion)}${instead}${overrideNote(ev.override)}`;
+    }
     case 'BlockWithdrawn':
       return `${seatName(ev.seat)} withdrew the block`;
-    case 'ActionBlocked':
-      return `${cardName(ev.blocker)} blocks: combat`;
+    case 'ActionBlocked': {
+      if (before.action?.kind !== 'leave-torpor') return `${cardName(ev.blocker)} blocks: combat`;
+      const victim = cardName(before.action.minion);
+      return ev.diablerie
+        ? `${cardName(ev.blocker)} blocks: it may diablerize ${victim}`
+        : `${cardName(ev.blocker)} blocks: ${victim} stays in torpor`;
+    }
+    case 'Diablerized':
+      return `${cardName(ev.diablerist, ev.diableristCardId)} diablerizes ${cardName(ev.victim, ev.victimCardId)}${ev.blood ? `, taking ${ev.blood} blood` : ''}`;
     case 'ActionResolving':
       return 'The action was not blocked';
     case 'ReferendumCalled': {
@@ -498,7 +516,10 @@ function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): 
       return {
         success: 'The action succeeded',
         failure: 'The action failed',
-        blocked: 'Combat is over; the action was blocked',
+        blocked:
+          before.action?.kind === 'leave-torpor'
+            ? 'The action was blocked; nothing is paid'
+            : 'Combat is over; the action was blocked',
         cancelled: `${who} cancelled the action`,
         ousted: 'The action ends: a Methuselah in it was ousted',
       }[ev.outcome];
@@ -540,6 +561,7 @@ const ACTION_VERBS: Record<ActionKind, string> = {
   equip: 'equips',
   recruit: 'recruits an ally',
   employ: 'employs a retainer',
+  'leave-torpor': 'tries to leave torpor',
   other: 'takes an action',
 };
 

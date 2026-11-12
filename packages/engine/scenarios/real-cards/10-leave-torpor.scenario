@@ -1,0 +1,69 @@
+# Leaving torpor, blocked: the blocker switches minions, then diablerizes, and a blood hunt follows.
+# The rulebook ("Leave Torpor", "Diablerie", "The Blood Hunt"): a vampire in torpor can take only
+# this action, undirected; blocked, there's no combat, and a blocking vampire may diablerize it.
+# A blocker may switch minions while its attempt is under way (zero-vtes rules-qa 114.1).
+# Cards are given by VEKN ID; names and images come from the content pack (LEGAL-08).
+seed 3
+seat A alice
+seat B bob
+seat C carol
+seat D dave
+crypt A 200522 *12
+library A 101056 *40
+crypt B 200452 *12
+library B 101056 *40
+crypt C 200771 *12
+library C 100598 *40
+crypt D 200051 *12
+library D 100598 *40
+start
+
+# Fast-forward: Alice's vampire is in torpor; Bob has two archbishops, Carol a priscus, Dave a
+# bishop.
+A> transfer +7 A:uncontrolled:1
+A> move A:uncontrolled:1 ready
+A> move A:ready:1 torpor
+B> transfer +4 B:uncontrolled:1
+B> move B:uncontrolled:1 ready
+B> transfer +4 B:uncontrolled:1
+B> move B:uncontrolled:1 ready
+C> transfer +7 C:uncontrolled:1
+C> move C:uncontrolled:1 ready
+D> transfer +6 D:uncontrolled:1
+D> move D:uncontrolled:1 ready
+A> next
+A> next
+expect turn 1 A minion
+
+# Gisela tries to leave torpor. Bob, her prey, blocks with one archbishop, then switches to the
+# other: the first attempt fails. Nobody does anything more, so the block succeeds: no combat.
+A> leavetorpor A:torpor:1
+expect action leave-torpor A blocks
+B> block B:ready:1
+A> pass
+B> block B:ready:2
+A> pass
+B> pass
+D> pass
+# Carol, not an eligible blocker, passes automatically.
+expect waiting B:diablerie
+
+# Bob diablerizes her: her blood goes to his archbishop, up to its capacity, and she is burned.
+# The blood hunt follows at once, polled from Alice.
+B> diablerize
+expect count A:torpor 0
+expect window polling minion
+A> pass
+B> vote against B:ready:1
+B> pass
+C> vote for C:ready:1
+C> pass
+D> vote for D:ready:1
+D> pass
+expect votes 4 2
+A> pass
+B> pass
+C> pass
+# Passed, 4 to 2: the diablerist is burned, and the action ends, blocked.
+expect action none
+expect count B:ready 1

@@ -13,6 +13,7 @@ import {
   COMBAT_STEPS,
   type GameState,
   type InstanceId,
+  LEAVE_TORPOR_COST,
   type PHASES,
 } from './model.ts';
 import { prey, type SeatId } from './seating.ts';
@@ -189,6 +190,18 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
         },
       });
     }
+    // Another minion may take over the attempt, failing the one under way (rules-qa 114.1).
+    const switchTo = unlocked.filter((m) => m !== action?.blockAttempt?.minion);
+    if (action?.blockAttempt?.seat === seat && window.kind === 'blocks' && switchTo.length) {
+      offers.push({
+        id: 'block-switch',
+        label: 'Block with another minion…',
+        confirm: true,
+        explain: 'The attempt under way fails; one attempt at a time.',
+        steps: [{ kind: 'card', label: 'Blocking minion', candidates: switchTo }],
+        build: (values) => ({ type: 'Block', minion: id(values, 0) }),
+      });
+    }
     if (action?.blockAttempt?.seat === seat) {
       offers.push({
         id: 'withdraw',
@@ -218,6 +231,9 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
         steps.push({ kind: 'amount', label: 'Bleed amount', min: 0, default: 1 });
       if (action.kind === 'hunt')
         steps.push({ kind: 'amount', label: 'Blood gained', min: 0, default: 1 });
+      const leaving = action.kind === 'leave-torpor';
+      if (leaving)
+        steps.push({ kind: 'amount', label: 'Blood paid', min: 0, default: LEAVE_TORPOR_COST });
       if (action.kind === 'bleed')
         steps.push({ kind: 'toggle', label: 'Take the Edge', default: !me.hasEdge });
       // A political action's terms are chosen as it succeeds (M6.5, R1).
@@ -225,7 +241,11 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
       if (political) steps.push({ kind: 'text', label: 'Terms of the referendum', optional: true });
       offers.push({
         id: 'success',
-        label: political ? 'Successful: call the referendum' : 'Successful',
+        label: political
+          ? 'Successful: call the referendum'
+          : leaving
+            ? 'Successful: out of torpor'
+            : 'Successful',
         primary: true,
         confirm: true,
         steps,
@@ -256,7 +276,7 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
         .filter((x) => x.id !== seat && !x.ousted && !x.withdrawn)
         .flatMap((x) => zoneCards(view, zoneId(x.id, 'ready')))
         .filter((m) => view.cards[m]?.attachedTo === undefined);
-      if (opponents.length) {
+      if (opponents.length && !leaving) {
         offers.push({
           id: 'enter-combat',
           label: 'Enter combat…',
@@ -287,6 +307,28 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
       }
     }
     const blockerSeat = action.blocker ? view.cards[action.blocker]?.controller : undefined;
+    // A blocked leave-torpor action: the blocking vampire may diablerize (rulebook, "Leave Torpor").
+    if (action.stage === 'diablerie' && blockerSeat === seat) {
+      offers.push(
+        {
+          id: 'diablerize',
+          label: 'Diablerize',
+          primary: true,
+          confirm: true,
+          explain: 'Burn the vampire and take its blood; a blood hunt follows.',
+          steps: [],
+          build: () => ({ type: 'Diablerize' }),
+        },
+        {
+          id: 'no-diablerie',
+          label: 'Don’t diablerize',
+          confirm: false,
+          steps: [],
+          build: () => ({ type: 'Diablerize', decline: true }),
+        },
+      );
+      return offers;
+    }
     if (action.stage === 'combat' && (mine || blockerSeat === seat)) {
       offers.push({
         id: 'endcombat',
@@ -308,6 +350,30 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
       });
     }
     return offers;
+  }
+
+  // A vampire in torpor may act only to leave it (rulebook, "Torpor").
+  if (myTurn && turn.phase === 'minion' && !action && !window) {
+    const torpid = zoneCards(view, zoneId(seat, 'torpor')).filter((m) => {
+      const c = view.cards[m];
+      return (
+        c &&
+        c.attachedTo === undefined &&
+        !c.locked &&
+        !c.faceDown &&
+        (!c.cardId || catalog.get(c.cardId)?.kind !== 'library')
+      );
+    });
+    if (torpid.length) {
+      offers.push({
+        id: 'action:leave-torpor',
+        label: 'Leave torpor',
+        confirm: true,
+        explain: `Costs ${LEAVE_TORPOR_COST} blood if it succeeds; blocked by a vampire, it may be diablerized.`,
+        steps: [{ kind: 'card', label: 'Vampire in torpor', candidates: torpid }],
+        build: (values) => ({ type: 'DeclareAction', kind: 'leave-torpor', minion: id(values, 0) }),
+      });
+    }
   }
 
   if (myTurn && turn.phase === 'minion' && unlocked.length) {

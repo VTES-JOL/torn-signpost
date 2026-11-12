@@ -123,6 +123,11 @@ export const CONSOLE_COMMANDS: Record<string, Syntax> = {
     usage: 'abstain  (pass the rest of this referendum)  |  abstain <vampire> [via <card>]',
   },
   bloodhunt: { args: ['card'], usage: 'bloodhunt [<vampire>]  (as your action resolves)' },
+  leavetorpor: { args: ['card'], usage: 'leavetorpor <vampire>  (a vampire of yours in torpor)' },
+  diablerize: {
+    args: ['options'],
+    usage: 'diablerize [no]  (you blocked a vampire leaving torpor)',
+  },
   endreferendum: { args: ['options'], usage: 'endreferendum pass|fail ["why"]' },
   endcombat: { args: [], usage: 'endcombat' },
   cancel: { args: [], usage: 'cancel  (cancel your action)' },
@@ -577,6 +582,17 @@ function parse(tokens: string[], ctx: ConsoleContext): Command {
       return via === undefined
         ? { type: 'CancelVotes', minion }
         : { type: 'CancelVotes', minion, source: card(via).id };
+    }
+    case 'leavetorpor':
+      extra(1);
+      if (!args.length) usage();
+      return { type: 'DeclareAction', kind: 'leave-torpor', minion: card(0).id };
+    case 'diablerize': {
+      extra(1);
+      const answer = args[0]?.toLowerCase();
+      if (answer === undefined) return { type: 'Diablerize' };
+      if (answer === 'no') return { type: 'Diablerize', decline: true };
+      return usage();
     }
     case 'bloodhunt':
       extra(1);

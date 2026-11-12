@@ -195,7 +195,9 @@ Checks:
 - The sender is the acting player, in the minion phase.
 - No action is in progress and no window is open.
 - `kind` is a known action kind.
-- The minion is the sender's, in their ready region, and unlocked.
+- The minion is the sender's, in their ready region, and unlocked. For `leave-torpor` it is one of
+  their vampires in torpor, face up and unlocked instead: a vampire in torpor can take no other
+  action (rulebook, "Torpor"). Leaving torpor is undirected; a target is ignored.
 - The target, if given, isn't ousted or withdrawn. Targeting your own seat counts as no target.
 - A bleed without a target goes to the sender's prey; it's rejected if there's nobody to bleed.
 - The action card, if given, is in the sender's hand. It stays there until the action ends.
@@ -223,7 +225,9 @@ Checks:
 - A block window is open and the sender holds the impulse.
 - The sender isn't the acting player and hasn't declined. A decision not to block stands, whatever
   card effect comes later.
-- No block attempt is pending.
+- No other seat's block attempt is pending. The seat whose attempt is under way may start another
+  with a different minion: the attempt under way fails, and only one runs at a time (zero-vtes
+  rules-qa 48.3, 114.1). Passing on it declines to block (82.1).
 - The minion is the sender's, in their ready region, and unlocked (rulebook: only ready unlocked
   minions block; a card that lets a locked minion block means unlocking it first).
 - A sender that isn't an eligible blocker needs a card effect; see [Overrides](#overrides).
@@ -265,6 +269,10 @@ Effect:
   of 1 or more is successful (zero-vtes rules-qa 24.4).
 - Successful hunt: the minion gains that much blood, capped at its capacity when the catalog
   knows it.
+- Successful leave-torpor action: the vampire moves to its ready region and pays `amount` blood (2
+  by default, the rulebook's cost; less for a card that reduces it). It's refused if the vampire
+  can't pay. Out of torpor already, nothing happens. `combat` is refused: a vampire in torpor
+  can't enter combat.
 - The action card is finished and the action ends.
 
 ### `EndCombat`
@@ -273,6 +281,23 @@ Checks: the action is at `combat`, and the sender is the acting player, controls
 is a judge.
 
 Effect: the action card is finished and the action ends as blocked.
+
+### `Diablerize { decline? }`
+
+A blocked leave-torpor action has no combat (rulebook, "Leave Torpor"). When every seat has passed
+on a block attempt by a **vampire**, the action waits at stage `diablerie` on that vampire's
+Methuselah (wait kind `diablerie`); blocked by an **ally**, it simply ends as blocked.
+
+Checks: the action is at `diablerie`, and the sender controls the blocking vampire (or is a judge).
+To diablerize, the vampire must still be in torpor, and both vampires face up and in play.
+
+Effect:
+- `decline`: the action ends as blocked; the vampire stays in torpor and pays nothing.
+- Otherwise a diablerie (rulebook, "Diablerie"): the victim's blood moves to the diablerist, up to
+  its capacity, the rest draining off; the victim is burned with every card on it. Taking its
+  equipment, and a Discipline from an older victim, are left to the players' moves. The blood
+  hunt follows at once, as with `CallBloodHunt` (no cards played before votes, polling from the
+  acting Methuselah); when it's over the action ends as blocked.
 
 ### `CancelAction`
 
@@ -595,6 +620,8 @@ point. Trigger ideas:
 DeclareAction ──► blocks window
                    │ every seat passes, no attempt ──► resolution ──► ResolveAction ──► ended (success | failure)
                    │ every seat passes, attempt ─────► combat steps ─► End of round, or EndCombat ─► ended (blocked)
+                   │ (leave-torpor) attempt by a vampire ──► diablerie ──► Diablerize ──► blood hunt ──► ended (blocked)
+                   │                                                    └─ Diablerize decline, or an ally's block ──► ended (blocked)
                    resolution ──► ResolveAction combat ──► combat steps ──► … ──────────────────► ended (success)
                    resolution ──► ResolveAction success (political) ──► before votes ──► polling ──► ended (success)
                    │ Block ──► impulse back to acting player, passes reset

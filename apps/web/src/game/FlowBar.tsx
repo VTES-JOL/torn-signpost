@@ -52,6 +52,7 @@ const VERBS: Record<ActionKind, string> = {
   equip: 'equips',
   recruit: 'recruits an ally',
   employ: 'employs a retainer',
+  'leave-torpor': 'tries to leave torpor',
   other: 'takes an action',
 };
 
@@ -68,6 +69,7 @@ const NOUNS: Record<ActionKind, string> = {
   equip: 'equip action',
   recruit: 'recruit action',
   employ: 'employ action',
+  'leave-torpor': 'attempt to leave torpor',
   other: 'action',
 };
 
@@ -78,6 +80,7 @@ const WAIT_LABELS: Record<Exclude<WaitKind, 'phase'>, string> = {
   resolve: 'resolving the action',
   combat: 'combat',
   vote: 'votes',
+  diablerie: 'whether to diablerize',
 };
 
 /**
@@ -142,6 +145,8 @@ export function promptFor(
         return { mine: true, text: `Resolve ${action}: did it succeed?` };
       case 'combat':
         return { mine: true, text: `Combat (${action}): end combat when it's over` };
+      case 'diablerie':
+        return { mine: true, text: `You blocked ${action}: diablerize the vampire, or not?` };
     }
   }
   const names = waits.map((w) => who(w.seat));

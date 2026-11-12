@@ -39,7 +39,7 @@ export function tempo(state: GameState): Tempo {
  *   combat steps (M6.4), the two Methuselahs in it, to end it;
  * - `vote`: the seat holding the impulse in a referendum's polling step, to cast votes or pass.
  */
-export type WaitKind = 'phase' | 'impulse' | 'block' | 'resolve' | 'combat' | 'vote';
+export type WaitKind = 'phase' | 'impulse' | 'block' | 'resolve' | 'combat' | 'vote' | 'diablerie';
 
 export interface Wait {
   seat: SeatId;
@@ -103,6 +103,11 @@ function currentWaits(state: GameState): Omit<Wait, 'since'>[] {
     return [{ seat: holder, kind: blocking ? 'block' : 'impulse' }];
   }
   if (a?.stage === 'resolution') return live(a.seat) ? [{ seat: a.seat, kind: 'resolve' }] : [];
+  if (a?.stage === 'diablerie') {
+    // A blocked leave-torpor action: the blocking vampire's Methuselah decides.
+    const by = a.blocker === undefined ? undefined : state.cards[a.blocker]?.controller;
+    return live(by) ? [{ seat: by, kind: 'diablerie' }] : [];
+  }
   if (a?.stage === 'combat') {
     const blocker = a.blocker === undefined ? undefined : state.cards[a.blocker]?.controller;
     return [a.seat, blocker]

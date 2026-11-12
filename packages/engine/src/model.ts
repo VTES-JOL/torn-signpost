@@ -141,9 +141,14 @@ export const ACTION_KINDS = [
   'equip',
   'recruit',
   'employ',
+  /** A vampire in torpor acts to leave it (rulebook, "Leave Torpor"): undirected, 2 blood. */
+  'leave-torpor',
   'other',
 ] as const;
 export type ActionKind = (typeof ACTION_KINDS)[number];
+
+/** What leaving torpor costs by default (rulebook, "Leave Torpor"). */
+export const LEAVE_TORPOR_COST = 2;
 
 /** A minion action in progress (GAME-06): declared → block window → combat or resolution. */
 export interface ActionState {
@@ -162,7 +167,11 @@ export interface ActionState {
   /** Set when the action breaks the default targeting rule (a bleed on someone else's prey…). */
   override?: Override;
   blockAttempt?: { seat: SeatId; minion: InstanceId; override?: Override };
-  stage: 'blocks' | 'combat' | 'resolution' | 'referendum';
+  /**
+   * `diablerie`: a blocked leave-torpor action, waiting on the blocking vampire's Methuselah to
+   * diablerize the acting vampire or not (rulebook, "Leave Torpor").
+   */
+  stage: 'blocks' | 'combat' | 'resolution' | 'referendum' | 'diablerie';
   blocker?: InstanceId;
   /** The fight at stage `combat` (docs/m6-plan.md M6.4). Missing in games from before it. */
   combat?: CombatState;

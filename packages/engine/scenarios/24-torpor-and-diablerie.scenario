@@ -1,0 +1,103 @@
+# Leaving torpor, and diablerie when it's blocked (rulebook, "Torpor", "Leave Torpor", "Diablerie",
+# "The Blood Hunt"; zero-vtes rules-qa 48.3, 82.1, 114.1). A vampire in torpor can take no action
+# but leaving it: undirected, so the prey and the predator may block; 2 blood if it succeeds.
+# Blocked, there's no combat: a blocking vampire's Methuselah may diablerize it, and a blood hunt
+# follows; otherwise the action fails and nothing is paid. A blocker may switch minions while its
+# attempt is under way, which fails the first attempt.
+seed 24
+seat A alice
+seat B bob
+seat C carol
+crypt A "Vera Nightfall" *12
+library A "Iron Ward" *40
+crypt B "Marek Hale" *12
+library B "Iron Ward" *40
+crypt C "Odile Fen" *12
+library C "Iron Ward" *40
+start
+
+# Fast-forward: Alice has two vampires in torpor (4 blood and 1), Bob two princes, Carol a primogen.
+A> transfer +4 A:uncontrolled:1
+A> move A:uncontrolled:1 ready
+A> transfer +1 A:uncontrolled:1
+A> move A:uncontrolled:1 ready
+A> move A:ready:1 torpor
+A> move A:ready:1 torpor
+B> transfer +4 B:uncontrolled:1
+B> move B:uncontrolled:1 ready
+B> transfer +4 B:uncontrolled:1
+B> move B:uncontrolled:1 ready
+C> transfer +5 C:uncontrolled:1
+C> move C:uncontrolled:1 ready
+A> next
+A> next
+expect turn 1 A minion
+
+# In torpor, a vampire can't hunt, bleed or take any other action: only leave torpor.
+reject:invalid A> hunt A:torpor:1
+
+# Leaving torpor: Bob (the prey) and Carol (the predator) may block, and don't. It succeeds: the
+# vampire is ready again, and pays 2 blood.
+A> leavetorpor A:torpor:1
+expect action leave-torpor A blocks
+B> pass
+C> pass
+expect action leave-torpor A resolution
+A> resolve success
+log public The action succeeded
+expect count A:torpor 1
+expect card A:ready:1 blood 2
+
+# The other has 1 blood: it can't pay, so the action fails.
+A> leavetorpor A:torpor:1
+B> pass
+C> pass
+reject:not-enough A> resolve success
+A> resolve failure
+expect count A:torpor 1
+
+# Blocked. Bob tries with one prince, then switches to the other: the first attempt fails, and
+# only one runs at a time (114.1). Nobody else does anything, so the block succeeds: no combat.
+A> unlock A:torpor:1
+A> blood +2 A:torpor:1
+A> leavetorpor A:torpor:1
+B> block B:ready:1
+A> pass
+B> block B:ready:2
+log public B tries to block with Marek Hale instead of Marek Hale, whose attempt fails
+A> pass
+B> pass
+C> pass
+log public Marek Hale is locked: it blocked
+expect waiting B:diablerie
+# Bob doesn't diablerize: the action fails, and nothing is paid.
+B> diablerize no
+log public The action was blocked; nothing is paid
+expect action none
+expect card A:torpor:1 blood 3
+
+# Blocked again, by Bob's other prince, who diablerizes: the blood moves to him (up to his
+# capacity of 6, so 2 of the 3), the victim is burned, and the blood hunt follows at once, polled
+# from the acting Methuselah.
+A> unlock A:torpor:1
+A> leavetorpor A:torpor:1
+B> block B:ready:1
+A> pass
+B> pass
+C> pass
+B> diablerize
+log public Marek Hale diablerizes Vera Nightfall, taking 2 blood
+expect card B:ready:1 blood 6
+expect count A:torpor 0
+expect count A:ashHeap 1
+expect window polling minion
+# Carol's primogen votes to burn him; Bob's other prince votes against. It fails, 1 to 2.
+A> pass
+B> vote against B:ready:2
+B> pass
+C> vote for C:ready:1
+C> pass
+A> pass
+B> pass
+expect action none
+expect count B:ready 2

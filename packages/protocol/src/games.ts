@@ -134,6 +134,7 @@ export const PlayerCommand = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('Abstain') }),
   z.strictObject({ type: z.literal('CancelVotes'), minion: Id, source: opt(Id) }),
   z.strictObject({ type: z.literal('CallBloodHunt'), minion: opt(Id) }),
+  z.strictObject({ type: z.literal('Diablerize'), decline: opt(z.boolean()) }),
   z.strictObject({
     type: z.literal('EndReferendum'),
     passed: z.boolean(),

@@ -217,6 +217,7 @@ function commandFor(state: GameState, [, kind, a, b, c, d]: Step): Command {
     { type: 'CancelVotes', minion: pick('ready', a) },
     { type: 'CallBloodHunt' },
     { type: 'EndReferendum', passed: c % 2 === 0 },
+    { type: 'Diablerize', ...(c % 2 ? { decline: true } : {}) },
   ];
   const pool = [...commands, ...flow];
   return pool[kind % pool.length] as Command;
@@ -306,6 +307,15 @@ function guidedStep(state: GameState, [, kind, a, , c, d]: Step): [Command, Acto
     return [{ type: 'Pass' }, actor];
   }
   if (act?.stage === 'combat') return [{ type: 'EndCombat' }, actor];
+  if (act?.stage === 'diablerie') {
+    // A blocked leave-torpor action: the blocking vampire's Methuselah decides.
+    const by = act.blocker === undefined ? undefined : state.cards[act.blocker]?.controller;
+    const user = state.seats.find((s) => s.id === by)?.occupant ?? '';
+    return [
+      { type: 'Diablerize', ...(c % 2 ? { decline: true } : {}) },
+      { kind: 'player', user },
+    ];
+  }
   if (act?.stage === 'resolution') {
     if (n === 0) return [{ type: 'CancelAction' }, actor];
     if (n === 1) {
@@ -335,14 +345,22 @@ function guidedStep(state: GameState, [, kind, a, , c, d]: Step): [Command, Acto
   }
   if (state.turn?.phase === 'minion' && n < 8) {
     const target = state.seats[d % state.seats.length]?.id;
-    const locked = state.cards[minion]?.locked;
-    if (locked) return [{ type: 'SetLocked', card: minion, locked: false }, actor];
+    // A vampire in torpor sometimes tries to leave it.
+    const torpid = state.zones[zoneId(fs, 'torpor')] ?? [];
+    const leaving = torpid.length > 0 && c % 4 === 3;
+    const acting = leaving ? (torpid[a % torpid.length] ?? 'none') : minion;
+    const locked = state.cards[acting]?.locked;
+    if (locked) return [{ type: 'SetLocked', card: acting, locked: false }, actor];
     return [
       {
         type: 'DeclareAction',
-        minion,
+        minion: acting,
         // Political actions a third of the time, so random games reach referendums.
-        kind: c % 3 === 1 ? 'political' : (ACTION_KINDS[c % ACTION_KINDS.length] ?? 'bleed'),
+        kind: leaving
+          ? 'leave-torpor'
+          : c % 3 === 1
+            ? 'political'
+            : (ACTION_KINDS[c % ACTION_KINDS.length] ?? 'bleed'),
         ...(d % 3 === 0 && target ? { target } : {}),
         ...(d % 2 === 0 ? { card } : {}),
         ...(c % 4 === 0 ? { override: a % 2 ? { source: minion } : {} } : {}),

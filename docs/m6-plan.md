@@ -518,6 +518,47 @@ players' pages.
 - Docs: `docs/roles.md` (anyone can see a counted game's result, F2; chat after the end, F3),
   architecture §5.3 (the meta's `ended`, the finished index key) and §4.4.
 
+### M6.7 Checked against zero-vtes (2026-11-12)
+
+The engine was compared with zero-vtes at `1f33be5` (Protocol 2.27.0): its rules digest
+(`docs/rules-digest.md`, the rulings arranged by mechanism) and rules-qa up to Batch 115. Only what
+both engines model was compared (zero-vtes also automates every card). Ousting and its rewards,
+game wins, withdrawal, bleeds and the Edge, the block loop and referendums matched; none of the
+rules-qa items cited here had been revised.
+
+Done in this increment:
+
+- **Leaving torpor** (rulebook, "Leave Torpor", "Torpor"): a vampire in torpor could take no
+  action at all. It now takes the leave-torpor action, undirected, 2 blood on success; blocked,
+  there's no combat: a blocking vampire's Methuselah may diablerize it (`Diablerize`, the blood
+  hunt following at once) or not, and an ally's block simply fails it. Scenario 24.
+- **Changing blockers** (rules-qa 48.3, 114.1, settled by zero-vtes's owner on 2026-11-11): the
+  Methuselah whose attempt is under way may attempt with another minion, which fails the first.
+
+Still to do, in rough order:
+
+1. **The would-be-successful window** (zero-vtes digest §5.2, §10.1; rules-qa 24.2, 54.1): after
+   blocks are declined on a bleed or a political action, a window over the action's order before
+   it resolves (Spying Mission, Major Boon, Yawp Court).
+2. **The after-resolution window** (§5.2, §10.4; rules-qa 5.8, 23.3): every action has one,
+   blocked, failed or ended ones included; after a political action's referendum, after a
+   diablerie's blood hunt.
+3. **Combat for everyone else** (§12.1; rules-qa 98.1, 98.2): after the two combatants, every
+   other Methuselah clockwise from the acting one has the impulse in each step, for cards that
+   reach a combat they're not in. Today only the combatants' Methuselahs do.
+4. **The acting minion leaving** (rulebook, "Resolve the Action"; §24.3): an acting minion that
+   leaves the ready region before block resolution ends the action, the blocker not locked.
+5. **`EndCombat` and the end of round** (rules-qa 19.5): a combat ended early still has its
+   end-of-round window.
+6. Smaller: withdrawal's short hand read as the turn began (95.3); no polling-step cards in a
+   blood hunt (PIB 20150105).
+7. **Rescue and diablerie as actions** of their own (rulebook, "Rescue a Vampire from Torpor",
+   "Diablerise a Vampire in Torpor"): today an `other` action with the players' moves, and
+   `CallBloodHunt`.
+
+Process: cite zero-vtes with the commit it was checked at, and start each rules feature from the
+digest's section for that mechanism, not only rules-qa.
+
 ## M5b leftovers folded in: done
 
 - **Mentions by current name**: the game records each player's display name at the start and a

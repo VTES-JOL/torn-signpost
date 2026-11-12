@@ -36,7 +36,7 @@ player. The parser lives in `packages/engine/src/console` and is shared by every
 | `political <minion> [with <card>]` | Declare a political action |
 | `equip\|recruit\|employ <minion> with <card>` | Declare an equip, recruit or employ action with a card from your hand. On success the card goes into play (equipment attached to the minion) |
 | `action <minion> [seat] [with <card>]` | Declare any other action, directed at a seat or not |
-| `block <minion> [via <card>\|override]` | Try to block the current action (needs the impulse; you must be the target, or prey or predator for undirected actions). Otherwise name the card effect that allows it: `via` a card in your hand (played with the attempt) or in play, or `override` without a card (casual games) |
+| `block <minion> [via <card>\|override]` | Try to block the current action (needs the impulse; you must be the target, or prey or predator for undirected actions). Otherwise name the card effect that allows it: `via` a card in your hand (played with the attempt) or in play, or `override` without a card (casual games). With your attempt under way, `block` with another minion switches to it: the first attempt fails (rules-qa 114.1) |
 | `unblock` | Withdraw your block attempt |
 | `pass` | Pass the impulse. With no block attempt pending, an eligible blocker's pass declines to block |
 | `play <card> [ready] [on <host>] [noreplace]` | Play a card from your hand: to the ash heap, into your ready region, or attached to a minion. It is replaced from your library unless `noreplace`. In a window it needs the impulse and returns it to the acting player |
@@ -50,6 +50,8 @@ player. The parser lives in `packages/engine/src/console` and is shared by every
 | `abstain` | Pass the rest of this referendum's polling |
 | `abstain <vampire> [via <card>]` | Make a vampire abstain (Kateline Nadasdy, Demonstration): its votes and ballots, cast or to come, are cancelled. On your impulse in polling |
 | `bloodhunt [<vampire>]` | As your action resolves (after a diablerie): a blood hunt referendum on that vampire (face up, in play), the acting one by default. Polling opens at once; if it passes, the vampire is burned with the cards on it, and the action goes back to resolving |
+| `leavetorpor <vampire>` | A vampire of yours in torpor acts to leave it: undirected, so your prey and predator may block. On success (`resolve success [n]`) it moves to your ready region and pays `n` blood (2 by default) |
+| `diablerize [no]` | You blocked a vampire leaving torpor with a vampire: diablerize it (its blood to yours, up to capacity; it's burned; the blood hunt follows at once), or `no` and the action fails |
 | `endreferendum pass\|fail ["why"]` | Settle the referendum at once (Yoruba Shrine, Fakir al Sidi, Día de los Muertos): the caller or a judge |
 | `maneuver long\|close [via <card>]` | In the range step of a combat: change the range. `via` names the card it comes from: in your hand (played with it) or in play |
 | `strike hand [n]` · `strike <n>[R][A]` · `strike dodge` · `strike ends` · `strike steal <n>` · `strike other "text"` · `strike none`, then `[first] [via <card>]` | In the strike step: choose your strike. `2R` is 2 ranged damage, `2A` aggravated, `2RA` both; `ends` is a combat-ends strike; `first` marks a first strike. The acting minion chooses first |
@@ -148,7 +150,8 @@ expect edge A|none
 expect ousted B true|false
 expect present B yes|no
 expect tempo live|async        # live while every Methuselah still in the game is present
-expect waiting B:block         # who the game waits on and why (seat:kind, space-separated), or none
+expect waiting B:block         # who the game waits on and why (seat:kind, space-separated), or none;
+                               # kinds: phase, impulse, block, resolve, combat, vote, diablerie
 expect elapsed 30m             # table clock, whole minutes played while live
 expect paused yes|no
 expect status active|finished  # the game's status

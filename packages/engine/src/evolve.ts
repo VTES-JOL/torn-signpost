@@ -288,9 +288,12 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
     }
     case 'ActionBlocked': {
       const { blockAttempt: _, ...a } = actionOf(d);
-      d.action = { ...a, stage: 'combat', blocker: ev.blocker };
+      d.action = { ...a, stage: ev.diablerie ? 'diablerie' : 'combat', blocker: ev.blocker };
       break;
     }
+    case 'Diablerized':
+      // The blood and the burn are their own events; this one is for the log.
+      break;
     case 'ActionResolving':
       d.action = { ...actionOf(d), stage: 'resolution' };
       break;

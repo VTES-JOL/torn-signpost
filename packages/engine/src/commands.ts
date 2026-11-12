@@ -162,6 +162,11 @@ export type Command =
    * vampire) while the action resolves (M6.5b).
    */
   | { type: 'CallBloodHunt'; minion?: InstanceId }
+  /**
+   * A leave-torpor action was blocked by a vampire: its Methuselah diablerizes the acting vampire
+   * (and a blood hunt follows), or `decline`s and the action fails (rulebook, "Leave Torpor").
+   */
+  | { type: 'Diablerize'; decline?: boolean }
   /** Settle the referendum at once, for cards that do (Yoruba Shrine, Fakir al Sidi). */
   | { type: 'EndReferendum'; passed: boolean; note?: string }
   /**

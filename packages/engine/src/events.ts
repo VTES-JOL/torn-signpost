@@ -183,7 +183,20 @@ export type EventBody =
   | { type: 'ActionDeclared'; action: ActionState }
   | { type: 'BlockAttempted'; seat: SeatId; minion: InstanceId; override?: Override }
   | { type: 'BlockWithdrawn'; seat: SeatId }
-  | { type: 'ActionBlocked'; blocker: InstanceId }
+  /** `diablerie`: a leave-torpor action blocked by a vampire, whose Methuselah now decides. */
+  | { type: 'ActionBlocked'; blocker: InstanceId; diablerie?: true }
+  /**
+   * A diablerie (rulebook, "Diablerie"): the victim's blood goes to the diablerist, up to its
+   * capacity (`blood`; the rest drains off), and the victim is burned with the cards on it.
+   */
+  | {
+      type: 'Diablerized';
+      diablerist: InstanceId;
+      victim: InstanceId;
+      blood: number;
+      diableristCardId?: CardId;
+      victimCardId?: CardId;
+    }
   | { type: 'ActionResolving' }
   /** A successful political action calls its referendum, with the terms its caller chose (M6.5). */
   | { type: 'ReferendumCalled'; terms?: string }
