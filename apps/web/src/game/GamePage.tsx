@@ -3,18 +3,16 @@
 import { createCatalog } from '@torn-signpost/engine';
 import type { DeckSummary } from '@torn-signpost/protocol';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { flushSync } from 'react-dom';
 import { Link, useParams } from 'react-router';
 import { ApiError, useApi } from '../api.ts';
 import { useAuth } from '../auth.tsx';
 import { useCards, useConfig } from '../content.tsx';
 import { GameResult } from '../pages/GameResultPage.tsx';
+import { animate } from './animate.ts';
 import { ConsolePanel } from './ConsolePanel.tsx';
 import { GameClient, type GameSnapshot } from './client.ts';
 import { LogPanel } from './LogPanel.tsx';
 import { Table } from './Table.tsx';
-
-const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export function GamePage() {
   const { id = '' } = useParams();
@@ -39,12 +37,7 @@ export function GamePage() {
       catalog,
       ...(auth.user ? { user: auth.user } : {}),
       // Animate other players' moves with a view transition (UX-08), unless motion is reduced.
-      animate: (apply) => {
-        const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
-        if (doc.startViewTransition && !reducedMotion())
-          doc.startViewTransition(() => flushSync(apply));
-        else apply();
-      },
+      animate,
     });
   }, [id, wsUrl, catalog, auth.user?.sub]);
 

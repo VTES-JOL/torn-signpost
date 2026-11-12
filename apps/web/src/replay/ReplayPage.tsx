@@ -4,9 +4,10 @@
  * same page can later replay recorded games (GAME-17).
  */
 import { type CardCatalog, createCatalog, runScenario, type Viewer } from '@torn-signpost/engine';
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, useParams } from 'react-router';
 import { useCards } from '../content.tsx';
+import { animate } from '../game/animate.ts';
 import { ConsolePanel } from '../game/ConsolePanel.tsx';
 import { LogPanel } from '../game/LogPanel.tsx';
 import { Table } from '../game/Table.tsx';
@@ -49,6 +50,13 @@ export function ReplayPage() {
 
 type Panel = 'script' | 'log' | 'console';
 
+/** How long each step shows while playing, in milliseconds. */
+const SPEEDS: [number, string][] = [
+  [2500, 'Slow'],
+  [1200, 'Normal'],
+  [500, 'Fast'],
+];
+
 function ScenarioPlayer({ scenario, catalog }: { scenario: ScenarioFile; catalog: CardCatalog }) {
   const run = useMemo(() => runScenario(scenario.source, catalog), [scenario, catalog]);
   const client = useMemo(() => {
@@ -64,19 +72,59 @@ function ScenarioPlayer({ scenario, catalog }: { scenario: ScenarioFile; catalog
   const { steps, cursor } = useSyncExternalStore(client.subscribe, client.getPosition);
   const [panel, setPanel] = useState<Panel>('script');
   const [error, setError] = useState<string>();
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(1200);
+
+  /** Move to a step, with the cards sliding to their new places. */
+  const go = useCallback((n: number) => animate(() => client.goto(n)), [client]);
+  /** Stepping by hand stops the playback. */
+  const step = useCallback(
+    (n: number) => {
+      setPlaying(false);
+      go(n);
+    },
+    [go],
+  );
+  const togglePlay = useCallback(() => {
+    if (playing) return setPlaying(false);
+    const { cursor, steps } = client.getPosition();
+    // From the end, play again from the start of the game.
+    if (cursor >= steps.length)
+      go(
+        Math.max(
+          0,
+          steps.findIndex((s) => s.kind === 'command'),
+        ),
+      );
+    setPlaying(true);
+  }, [playing, client, go]);
+
+  // Playing: one step at a time, stopping at the end (or when someone plays on from here).
+  useEffect(() => {
+    if (!playing) return;
+    if (cursor >= steps.length) {
+      setPlaying(false);
+      return;
+    }
+    const t = setTimeout(() => go(cursor + 1), speed);
+    return () => clearTimeout(t);
+  }, [playing, cursor, steps.length, speed, go]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.target instanceof HTMLSelectElement) return;
-      if (e.key === 'ArrowRight') client.goto(client.getPosition().cursor + 1);
-      else if (e.key === 'ArrowLeft') client.goto(client.getPosition().cursor - 1);
+      if (e.target instanceof HTMLSelectElement || e.target instanceof HTMLButtonElement) {
+        if (e.key === ' ') return;
+      }
+      if (e.key === 'ArrowRight') step(client.getPosition().cursor + 1);
+      else if (e.key === 'ArrowLeft') step(client.getPosition().cursor - 1);
+      else if (e.key === ' ') togglePlay();
       else return;
       e.preventDefault();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [client]);
+  }, [client, step, togglePlay]);
   useEffect(() => {
     if (!error) return;
     const t = setTimeout(() => setError(undefined), 5000);
@@ -126,30 +174,45 @@ function ScenarioPlayer({ scenario, catalog }: { scenario: ScenarioFile; catalog
         </label>
         <fieldset className="replay-controls">
           <legend className="sr-only">Step through the replay</legend>
-          <button type="button" onClick={() => client.goto(0)} disabled={cursor === 0}>
+          <button type="button" onClick={() => step(0)} disabled={cursor === 0}>
             ⏮<span className="sr-only">First step</span>
           </button>
-          <button type="button" onClick={() => client.goto(cursor - 1)} disabled={cursor === 0}>
+          <button type="button" onClick={() => step(cursor - 1)} disabled={cursor === 0}>
             ◀<span className="sr-only">Previous step</span>
           </button>
           <span className="small">
             Step {cursor} of {steps.length}
           </span>
-          <button
-            type="button"
-            className="primary"
-            onClick={() => client.goto(cursor + 1)}
-            disabled={cursor === steps.length}
-          >
+          <button type="button" onClick={() => step(cursor + 1)} disabled={cursor === steps.length}>
             ▶<span className="sr-only">Next step</span>
           </button>
           <button
             type="button"
-            onClick={() => client.goto(steps.length)}
+            onClick={() => step(steps.length)}
             disabled={cursor === steps.length}
           >
             ⏭<span className="sr-only">Last step</span>
           </button>
+          <button
+            type="button"
+            className="primary replay-play"
+            onClick={togglePlay}
+            aria-pressed={playing}
+            title="Play or pause (space)"
+          >
+            {playing ? 'Pause' : cursor >= steps.length ? 'Play again' : 'Play'}
+          </button>
+          <select
+            aria-label="Playback speed"
+            value={speed}
+            onChange={(e) => setSpeed(Number(e.target.value))}
+          >
+            {SPEEDS.map(([ms, label]) => (
+              <option key={ms} value={ms}>
+                {label}
+              </option>
+            ))}
+          </select>
         </fieldset>
       </div>
       {steps.some((s) => s.live) && (
@@ -201,12 +264,7 @@ function ScenarioPlayer({ scenario, catalog }: { scenario: ScenarioFile; catalog
             ))}
           </div>
           {panel === 'script' && (
-            <Script
-              source={scenario.source}
-              steps={steps}
-              cursor={cursor}
-              onGoto={(n) => client.goto(n)}
-            />
+            <Script source={scenario.source} steps={steps} cursor={cursor} onGoto={step} />
           )}
           {panel === 'log' && <LogPanel client={client} snapshot={snapshot} canChat="none" />}
           {panel === 'console' &&
