@@ -1252,6 +1252,11 @@ function bodiesFor(
       if (!IN_PLAY_ZONES.has(parseZoneId(on.zone).name)) {
         reject('invalid', 'The diablerist must be in play');
       }
+      // Only a vampire diablerizes, and the hunt names it to the whole table: never a face-down
+      // card, whose identity the others can't see.
+      if (on.faceDown || !isVampire(on, ctx.catalog)) {
+        reject('invalid', 'The diablerist must be a face-up vampire');
+      }
       // Not an action: no cards played before votes; polling from the acting Methuselah.
       const order = windowOrder(seatRefs(state), a.seat, { directedAt: a.seat });
       return settle(state, [

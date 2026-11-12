@@ -395,6 +395,26 @@ X> pass
     const handCard = resolving.state.zones['S:hand']?.[0] ?? '';
     expect(send({ type: 'CallBloodHunt', minion: handCard }, resolving.state)).toMatch(/in play/);
     expect(send({ type: 'CallBloodHunt' }, resolving.state, 'alexis')).toMatch(/not your action/);
+    // Only a face-up vampire diablerizes: a library card in play, or a face-down card, is refused
+    // (and a hunt on a face-down card would name it to the whole table).
+    const ally = resolving.state.cards[handCard];
+    const minion = resolving.state.action?.minion ?? '';
+    const acting = resolving.state.cards[minion];
+    if (!ally || !acting) throw new Error('missing cards');
+    const withAlly: GameState = {
+      ...resolving.state,
+      cards: {
+        ...resolving.state.cards,
+        [handCard]: { ...ally, zone: 'S:ready', faceDown: false },
+      },
+    };
+    expect(send({ type: 'CallBloodHunt', minion: handCard }, withAlly)).toMatch(/face-up vampire/);
+    const faceDown: GameState = {
+      ...resolving.state,
+      cards: { ...resolving.state.cards, [minion]: { ...acting, faceDown: true } },
+    };
+    expect(send({ type: 'CallBloodHunt' }, faceDown)).toMatch(/face-up vampire/);
+    expect(send({ type: 'CallBloodHunt' }, resolving.state)).toBe('accepted');
     expect(send({ type: 'EndReferendum', passed: true }, resolving.state)).toMatch(/no referendum/);
     const polling = run('').state;
     expect(send({ type: 'CallBloodHunt' }, polling)).toMatch(/as the action resolves/);
