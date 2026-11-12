@@ -14,6 +14,7 @@ play-by-post, from a phone, a browser or a Mac. Live beta at <https://tornsignpo
 - [Requirements](docs/01-requirements.md)
 - [Architecture & design](docs/02-architecture.md)
 - [Command console](docs/console.md)
+- [VTES Script Notation (draft)](docs/notation.md)
 - [Structured flow: phases, actions and windows](docs/flow.md)
 - [Roles and privileges: players, judges, admins](docs/roles.md)
 - [Testing](docs/testing.md)

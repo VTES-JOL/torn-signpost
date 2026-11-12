@@ -95,6 +95,9 @@ the web app's **Replay** page (behind the `replay` flag, on locally) plays them 
 step forward and back, watch from any seat, the judge, a spectator or everything, and play on from
 any step.
 
+Scenarios are the basis of the game notation (GAME-22, `docs/notation.md`, a draft): the same
+grammar, extended to record any VTES game, from any source, with its table talk.
+
 ### Writing a Replay scenario
 
 1. **Start from a real example** where you can: the rulebook's worked examples, or a ruling
