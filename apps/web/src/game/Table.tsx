@@ -333,11 +333,11 @@ function SeatArea({
         {presence && !s.ousted && <PresenceDot present={!!s.present} />}
         <strong>{client.seatName(seat)}</strong>
         {label && <span className="muted small">{label}</span>}
-        {turn && <span className="badge">{view.turn?.phase}</span>}
+        {turn && <span className="badge attention">{view.turn?.phase}</span>}
         {s.hasEdge && <span className="badge ok">Edge</span>}
         {s.withdrawing && (
           <span
-            className="badge"
+            className="badge warning"
             title="Leaves the game at the start of their next turn, unless they lose or spend pool or blood, or a minion of theirs enters combat"
           >
             withdrawing

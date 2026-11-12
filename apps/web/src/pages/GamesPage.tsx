@@ -65,7 +65,7 @@ export function GamesPage() {
         {games?.map((g) => (
           <li key={g.id}>
             <Link to={`/games/${g.id}`}>{g.name}</Link>
-            {g.waitingOnYou && <span className="badge">Waiting on you</span>}
+            {g.waitingOnYou && <span className="badge attention">Waiting on you</span>}
             {g.ended ? (
               <span className="muted">
                 {g.format} · ended {date(g.ended.at)} · {endingLine(g.ended)}

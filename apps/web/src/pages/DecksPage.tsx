@@ -90,7 +90,7 @@ export function DecksPage() {
                 .filter(Boolean)
                 .join(' · ')}
             </span>
-            <span className={d.legal ? 'badge ok' : 'badge'}>
+            <span className={d.legal ? 'badge ok' : 'badge danger'}>
               {d.legal ? 'Legal' : 'Not legal'}
             </span>
           </li>

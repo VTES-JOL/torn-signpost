@@ -1,10 +1,32 @@
+/*
+ * Colour roles. Each colour has one job, so what's red, amber or green means something:
+ * - accent: the brand red, for primary actions (filled buttons) and errors; --accent-text where
+ *   it's text, readable on every surface (4.5:1 or more);
+ * - attention: "this is yours, now": your decision, the turn, the current step, focus, drop
+ *   targets, unread items;
+ * - success, warning, danger, info: status;
+ * - blood and life: the game's counters, as on the cards;
+ * - everything else (badges, pool, links, selected tabs) stays neutral.
+ * Contrast is checked against both --bg and --surface.
+ */
 :root {
   --bg: #f6f2ee;
   --surface: #ffffff;
   --text: #1d1416;
   --muted: #5f5154;
+  --border: #bcaeab;
   --accent: #8b1a26;
-  --border: #d9cfcb;
+  --accent-text: #8b1a26;
+  --on-accent: #ffffff;
+  --attention: #8a5300;
+  --on-attention: #ffffff;
+  --success: #2a7040;
+  --warning: #8a5300;
+  --danger: #8b1a26;
+  --info: #245e93;
+  --blood: #b01828;
+  --life: #2f7a45;
+  --table: color-mix(in srgb, var(--bg) 70%, #2a1418);
   color-scheme: light;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
@@ -15,8 +37,19 @@
     --surface: #1c1417;
     --text: #efe6e3;
     --muted: #a8999c;
-    --accent: #d2404f;
-    --border: #3a2c30;
+    --border: #5c4a4f;
+    --accent: #b3303d;
+    --accent-text: #f0707b;
+    --on-accent: #ffffff;
+    --attention: #e8b04b;
+    --on-attention: #1d1416;
+    --success: #62c084;
+    --warning: #e8b04b;
+    --danger: #f0707b;
+    --info: #7fb2e5;
+    --blood: #b01828;
+    --life: #2f7a45;
+    --table: color-mix(in srgb, var(--bg) 70%, #2a1418);
     color-scheme: dark;
   }
 }
@@ -32,7 +65,9 @@ body {
 }
 
 a {
-  color: var(--accent);
+  color: inherit;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 0.15em;
 }
 
 h1 {
@@ -75,9 +110,9 @@ h1 {
   align-self: flex-start;
   margin: 0 0 1rem;
   padding: 0.25rem 0.6rem;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--attention);
   border-radius: 999px;
-  color: var(--accent);
+  color: var(--attention);
   font-size: 0.85rem;
 }
 
@@ -245,11 +280,11 @@ button.primary,
 .button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 button.danger {
-  color: var(--accent);
+  color: var(--danger);
 }
 
 button.link {
@@ -266,7 +301,7 @@ button.link:hover {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--attention);
   outline-offset: 2px;
 }
 
@@ -289,8 +324,9 @@ button.link:hover {
 }
 
 .tabs [role="tab"][aria-selected="true"] {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--text);
+  color: var(--text);
+  font-weight: 600;
 }
 
 .badge {
@@ -298,19 +334,36 @@ button.link:hover {
   font-size: 0.8rem;
   padding: 0.1rem 0.5rem;
   border-radius: 999px;
-  border: 1px solid var(--accent);
-  color: var(--accent);
+  border: 1px solid var(--border);
+  color: var(--muted);
 }
 
 .badge.ok {
-  border-color: #3c8d5a;
-  color: #3c8d5a;
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.badge.attention {
+  border-color: var(--attention);
+  background: var(--attention);
+  color: var(--on-attention);
+  font-weight: 600;
+}
+
+.badge.warning {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.badge.danger {
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .issues {
   margin: 0 0 1rem;
   padding-left: 1.25rem;
-  color: var(--accent);
+  color: var(--danger);
 }
 
 /* Card search */
@@ -399,7 +452,7 @@ button.link:hover {
 .in-deck {
   font-size: 0.8rem;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--accent-text);
   font-variant-numeric: tabular-nums;
 }
 
@@ -418,7 +471,7 @@ button.link:hover {
 .add-remove .add {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .card-preview {
@@ -663,7 +716,7 @@ dialog::backdrop {
 }
 
 .unsaved {
-  color: var(--accent);
+  color: var(--warning);
 }
 
 /* A button that opens a short menu below it (Export). */
@@ -867,7 +920,7 @@ dialog::backdrop {
   min-height: 12rem;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--bg) 70%, #2a1418);
+  background: var(--table);
   touch-action: pan-x pan-y;
 }
 
@@ -929,8 +982,8 @@ dialog::backdrop {
 }
 
 .seat.turn {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  border-color: var(--attention);
+  box-shadow: 0 0 0 1px var(--attention);
 }
 
 .seat.ousted {
@@ -958,7 +1011,7 @@ dialog::backdrop {
 }
 
 .presence-dot.on {
-  background: #3c8d5a;
+  background: var(--success);
 }
 
 /* Away: a hollow ring, so the state doesn't rest on colour alone. */
@@ -982,8 +1035,11 @@ dialog::backdrop {
   margin-left: auto;
   padding: 0.1rem 0.5rem;
   border-radius: 999px;
-  background: #7a1420;
-  color: #fff;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   cursor: grab;
   touch-action: none;
 }
@@ -1148,11 +1204,11 @@ dialog::backdrop {
 }
 
 .counter-blood {
-  background: #b01828;
+  background: var(--blood);
 }
 
 .counter-life {
-  background: #2f7a45;
+  background: var(--life);
 }
 
 .stacks {
@@ -1192,13 +1248,13 @@ dialog::backdrop {
 }
 
 [data-accepts] {
-  outline: 2px dashed color-mix(in srgb, var(--accent) 60%, transparent);
+  outline: 2px dashed color-mix(in srgb, var(--attention) 60%, transparent);
   outline-offset: 2px;
 }
 
 [data-over] {
-  outline: 3px solid var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  outline: 3px solid var(--attention);
+  background: color-mix(in srgb, var(--attention) 12%, transparent);
 }
 
 body.dragging {
@@ -1222,7 +1278,7 @@ body.dragging {
 .drag-ghost span {
   padding: 0.2rem 0.5rem;
   border-radius: 999px;
-  background: #b01828;
+  background: var(--blood);
   color: #fff;
 }
 
@@ -1285,7 +1341,7 @@ body.dragging {
 }
 
 .picking {
-  color: var(--accent);
+  color: var(--attention);
   margin: 0 0 0.5rem;
 }
 
@@ -1298,7 +1354,7 @@ body.dragging {
   padding: 0.6rem 1rem;
   border-radius: 8px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .log,
@@ -1339,7 +1395,7 @@ body.dragging {
 }
 
 .log-entries li.mention {
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  background: color-mix(in srgb, var(--attention) 15%, transparent);
 }
 
 .console-output {
@@ -1347,7 +1403,7 @@ body.dragging {
 }
 
 .console-output .error {
-  color: var(--accent);
+  color: var(--danger);
 }
 
 .console input,
@@ -1441,7 +1497,7 @@ body.dragging {
 }
 
 .card.contested img {
-  outline: 2px dashed #e0a030;
+  outline: 2px dashed var(--warning);
 }
 
 /* Account (AUTH-05) */
@@ -1483,8 +1539,8 @@ body.dragging {
 }
 
 .flow-bar.yours {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  border-color: var(--attention);
+  box-shadow: 0 0 0 1px var(--attention);
 }
 
 .flow-head {
@@ -1507,7 +1563,7 @@ body.dragging {
 }
 
 .clock-time.low {
-  color: var(--accent);
+  color: var(--danger);
 }
 
 .flow-prompt {
@@ -1524,7 +1580,7 @@ body.dragging {
 }
 
 .flow-bar.yours .flow-prompt strong {
-  color: var(--accent);
+  color: var(--attention);
 }
 
 .flow-offers,
@@ -1562,8 +1618,8 @@ body.dragging {
 }
 
 .combat-steps li.current {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--attention);
+  color: var(--attention);
   font-weight: 600;
 }
 
@@ -1652,7 +1708,7 @@ body.dragging {
 }
 
 .card.candidate {
-  outline: 3px solid var(--accent);
+  outline: 3px solid var(--attention);
   outline-offset: 1px;
 }
 
@@ -1736,7 +1792,7 @@ body.dragging {
 }
 
 .script-step.current button {
-  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  background: color-mix(in srgb, var(--attention) 25%, transparent);
 }
 
 .script-step p {
@@ -1745,7 +1801,7 @@ body.dragging {
 
 .script-step.failed code,
 .script-step.failed p {
-  color: var(--accent);
+  color: var(--danger);
 }
 
 .judge-calls {
@@ -1761,7 +1817,7 @@ body.dragging {
 }
 
 .judge-call {
-  border: 1px solid var(--accent);
+  border: 1px solid var(--warning);
   border-radius: 8px;
   padding: 0.3rem 0.5rem;
 }
@@ -1780,7 +1836,7 @@ body.dragging {
   padding: 0 0.4rem;
   border-radius: 999px;
   background: var(--accent);
-  color: var(--surface);
+  color: var(--on-accent);
   font-size: 0.75rem;
   font-weight: 700;
 }
@@ -1829,7 +1885,7 @@ body.dragging {
 }
 
 .bell-panel li.unread a {
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--attention);
   font-weight: 600;
 }
 
@@ -1883,7 +1939,7 @@ body.dragging {
 .game-over {
   margin-block: 0.5rem;
   padding: 0.75rem 1rem;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--attention);
   border-radius: 0.5rem;
   background: var(--surface);
 }
@@ -1899,7 +1955,7 @@ body.dragging {
 }
 
 .game-over tr.winner th {
-  color: var(--accent);
+  color: var(--attention);
 }
 
 .end-game {
@@ -1962,8 +2018,9 @@ body.dragging {
 }
 
 .segmented > [aria-pressed="true"] {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--text);
+  color: var(--text);
+  font-weight: 600;
   position: relative;
 }
 
