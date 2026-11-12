@@ -518,13 +518,17 @@ players' pages.
 - Docs: `docs/roles.md` (anyone can see a counted game's result, F2; chat after the end, F3),
   architecture §5.3 (the meta's `ended`, the finished index key) and §4.4.
 
-## M5b leftovers folded in
+## M5b leftovers folded in: done
 
-- **Mentions by current name**: seats record the player's display name at the start and on a
-  replacement, and mentions match it (M5b review).
-- **Judge queue filters**: claimed or unclaimed, tournament or casual (M5b.4 plan).
+- **Mentions by current name**: the game records each player's display name at the start and a
+  replacement's when they take their seat (in the game's players, not the event log, which keeps
+  only user IDs for account deletion); mentions match it and reach only the seats' current
+  players (M5b review). This also fixed a replacement showing as a user ID at the table.
+- **Judge queue filters**: claimed or unclaimed (mine, other judges'), tournament or casual,
+  alongside the reason (M5b.4 plan).
 - **Trigger tests**: deadline reminders, being ousted, block decisions (M5b.5 plan).
-- **Digest times**: a time zone on the Account page, so digests arrive at 17:00 local.
+- **Digest times**: a time zone on the Account page, so digests arrive at 17:00 local. The digest
+  now runs hourly and sends each user's when it's due in their zone.
 
 ## Order and size
 

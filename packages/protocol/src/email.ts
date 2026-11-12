@@ -30,6 +30,33 @@ export const EMAIL_CATEGORY: Record<NotificationKind, EmailCategory> = {
   withdrawal: 'game',
 };
 
+/** Whether the runtime knows the IANA time zone (it throws on an unknown one). */
+export function validTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The hour (0–23) it is at `at` in `timeZone`, or in UTC. */
+export function localHour(at: Date, timeZone = 'UTC'): number {
+  const hour = new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone })
+    .formatToParts(at)
+    .find((p) => p.type === 'hour')?.value;
+  return Number(hour) % 24;
+}
+
+/** Local hours digests go out at: the evening for daily, morning and evening for twice daily. */
+export const DIGEST_HOURS = { daily: [17], 'twice-daily': [5, 17] } as const;
+
+/** Whether an hourly digest run at `at` sends this user's digest. */
+export function digestDue(prefs: Pick<EmailPrefs, 'digest' | 'timeZone'>, at: Date): boolean {
+  const zone = prefs.timeZone && validTimeZone(prefs.timeZone) ? prefs.timeZone : 'UTC';
+  return (DIGEST_HOURS[prefs.digest] as readonly number[]).includes(localHour(at, zone));
+}
+
 export const EmailMode = z.enum(['immediate', 'digest', 'off']);
 export type EmailMode = z.infer<typeof EmailMode>;
 
@@ -42,8 +69,10 @@ export const EmailPrefs = z.strictObject({
     deadline: EmailMode,
     game: EmailMode,
   }),
-  /** Digests go out at 17:00 UTC, or at 05:00 and 17:00 UTC. */
+  /** Digests go out at 17:00, or at 05:00 and 17:00, in `timeZone`. */
   digest: z.enum(['daily', 'twice-daily']),
+  /** An IANA time zone such as `Europe/Paris`, for digest times; UTC when unset. */
+  timeZone: z.string().max(64).refine(validTimeZone, 'Unknown time zone').optional(),
 });
 export type EmailPrefs = z.infer<typeof EmailPrefs>;
 

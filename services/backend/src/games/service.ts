@@ -41,7 +41,7 @@ import type {
   ResolveEscalationRequest,
   ServerMessage,
 } from '@torn-signpost/protocol';
-import type { Identity } from '../auth.ts';
+import { type Identity, placeholderName } from '../auth.ts';
 import type { Content } from '../content/catalog.ts';
 import type { GameMeta, GameStore } from '../db/store.ts';
 import type { DeckService } from '../decks/service.ts';
@@ -72,6 +72,13 @@ export interface GameServiceDeps {
   timers?: Timers;
   /** In-app notifications (NOTIF-01); none in some tests. */
   notifier?: Notifier;
+  /**
+   * A user's chosen display name (AUTH-05). Recorded for each player when the game starts and for
+   * a replacement when they take their seat, so the table and @mentions use the name they have
+   * now rather than whatever they were called when they joined (a "Player 1a2b" placeholder,
+   * say). Without it, the name from joining stands.
+   */
+  nameOf?: (sub: string) => Promise<string | undefined>;
   /** Results and stats of counted games (STATS-01..03); none in some tests. */
   results?: {
     gameEnded(meta: GameMeta, state: GameState): Promise<void>;
@@ -253,7 +260,15 @@ export class GameService {
       commandId: `start-${id}`,
       user: user.sub,
       snapshot: after,
-      meta: { status: 'active', players: meta.players.map(({ deck: _, ...p }) => p) },
+      meta: {
+        status: 'active',
+        players: await Promise.all(
+          meta.players.map(async ({ deck: _, ...p }) => ({
+            ...p,
+            name: (await this.deps.nameOf?.(p.user)) ?? p.name,
+          })),
+        ),
+      },
       listed: meta.visibility === 'public',
     });
     if (appended !== 'ok') throw new ApiError(409, 'not_open', 'The game has already started');
@@ -348,6 +363,30 @@ export class GameService {
     } catch (e) {
       console.error('judge queue sync failed', { id: meta.id, error: String(e) });
     }
+  }
+
+  /**
+   * What a command changes in the game's meta: a finished game moves to the lobby's finished list
+   * (GAME-09), newest ended first; a replacement joins its players, under their current name.
+   */
+  private async metaPatch(
+    meta: GameMeta,
+    before: GameState,
+    after: GameState,
+    events: readonly GameEvent[],
+  ): Promise<{ meta?: Partial<Pick<GameMeta, 'status' | 'players' | 'ended'>>; listed?: boolean }> {
+    const patch: {
+      meta?: Partial<Pick<GameMeta, 'status' | 'players' | 'ended'>>;
+      listed?: boolean;
+    } = ended(before, after) ? this.finishing(meta, after) : {};
+    const players = [...meta.players];
+    for (const ev of events) {
+      if (ev.type !== 'PlayerReplaced' || players.some((p) => p.user === ev.user)) continue;
+      const name = (await this.deps.nameOf?.(ev.user)) ?? placeholderName(ev.user);
+      players.push({ user: ev.user, name });
+    }
+    if (players.length > meta.players.length) patch.meta = { ...patch.meta, players };
+    return patch;
   }
 
   /**
@@ -485,7 +524,7 @@ export class GameService {
         commandId: `system-${this.deps.newId()}`,
         user: 'system',
         ...(crossesSnapshot(state, after) || ended(state, after) ? { snapshot: after } : {}),
-        ...(ended(state, after) ? this.finishing(meta, after) : {}),
+        ...(await this.metaPatch(meta, state, after, result.events)),
       });
       if (appended === 'ok') {
         this.remember(after);
@@ -549,7 +588,10 @@ export class GameService {
       text: req.text,
       author: user.sub,
       authorName: user.name,
-      people: meta.players,
+      // Whoever holds a seat now, by the name recorded when they took it.
+      people: state
+        ? meta.players.filter((p) => state.seats.some((s) => s.occupant === p.user))
+        : meta.players,
     });
     return message;
   }
@@ -635,8 +677,7 @@ export class GameService {
         commandId: req.commandId,
         user: user.sub,
         ...(crosses || ended(state, after) ? { snapshot: after } : {}),
-        // A finished game moves to the lobby's finished list (GAME-09), newest ended first.
-        ...(ended(state, after) ? this.finishing(meta, after) : {}),
+        ...(await this.metaPatch(meta, state, after, result.events)),
       });
       if (appended === 'ok') {
         this.remember(after);

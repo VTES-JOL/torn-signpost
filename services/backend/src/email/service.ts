@@ -10,6 +10,7 @@
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import {
+  digestDue,
   EMAIL_CATEGORY,
   type EmailCategory,
   type EmailPrefs,
@@ -31,9 +32,6 @@ export const EMAIL_DELAY_MS = 2 * 60_000;
 export const IDLE_MS = 15 * 60_000;
 /** Activity is recorded at most this often per user and process. */
 const TOUCH_EVERY_MS = 60_000;
-
-/** Digest runs: every one for twice-daily, the evening one for daily. */
-export type DigestSlot = 'morning' | 'evening';
 
 export interface EmailServiceDeps {
   store: EmailStore;
@@ -155,16 +153,17 @@ export class EmailService {
   }
 
   /**
-   * The digest run: one email per user listing their unread notifications that wait for it. Daily
-   * users are only sent the evening one; what's read by then, or seen while they're on the site,
-   * is dropped.
+   * The hourly digest run: one email per user whose digest is due now in their time zone
+   * (`digestDue`: 17:00 for daily, 05:00 and 17:00 for twice daily), listing their unread
+   * notifications that wait for it. What's read by then, or seen while they're on the site, is
+   * dropped.
    */
-  async digest(slot: DigestSlot): Promise<{ sent: number }> {
+  async digest(at: Date = this.now()): Promise<{ sent: number }> {
     let sent = 0;
     for (const [user, ids] of await this.deps.store.digestQueue()) {
       try {
         const prefs = await this.deps.store.prefs(user);
-        if (prefs.digest === 'daily' && slot === 'morning') continue;
+        if (!digestDue(prefs, at)) continue;
         await this.deps.store.clearDigest(user, ids);
         if (!(await this.away(user))) continue;
         const items = (

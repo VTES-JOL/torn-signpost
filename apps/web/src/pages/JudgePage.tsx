@@ -13,11 +13,39 @@ import { REASON_LABELS } from '../game/JudgeCalls.tsx';
 /** How often the queue refreshes; new calls also show up as notifications later (M5b.5). */
 const REFRESH_MS = 15_000;
 
+export interface QueueFilter {
+  /** A `JudgeCall` reason, or '' for every reason. */
+  reason: string;
+  status: 'any' | 'unclaimed' | 'mine' | 'others';
+  kind: 'any' | 'tournament' | 'casual';
+}
+
+export const ANY: QueueFilter = { reason: '', status: 'any', kind: 'any' };
+
+/** The calls a judge asked to see; `me` is their user ID, for their own claims. */
+export function filterQueue(
+  entries: readonly JudgeQueueEntry[],
+  f: QueueFilter,
+  me: string | undefined,
+): JudgeQueueEntry[] {
+  return entries.filter((e) => {
+    const by = e.call.claimedBy;
+    if (f.reason && e.call.reason !== f.reason) return false;
+    if (f.status === 'unclaimed' && by) return false;
+    if (f.status === 'mine' && (!by || by !== me)) return false;
+    if (f.status === 'others' && (!by || by === me)) return false;
+    if (f.kind === 'tournament' && !e.tournament) return false;
+    if (f.kind === 'casual' && e.tournament) return false;
+    return true;
+  });
+}
+
 export function JudgePage() {
   const api = useApi();
   const { user } = useAuth();
   const [entries, setEntries] = useState<JudgeQueueEntry[]>();
-  const [reason, setReason] = useState('');
+  const [filter, setFilter] = useState<QueueFilter>(ANY);
+  const set = (patch: Partial<QueueFilter>) => setFilter((f) => ({ ...f, ...patch }));
   const [error, setError] = useState<string>();
   const [now, setNow] = useState(() => Date.now());
   const judge = !!user?.groups.includes('judge');
@@ -56,7 +84,8 @@ export function JudgePage() {
     }
   };
 
-  const shown = (entries ?? []).filter((e) => !reason || e.call.reason === reason);
+  const shown = filterQueue(entries ?? [], filter, user?.sub);
+  const filtered = shown.length < (entries?.length ?? 0);
   return (
     <section>
       <h1>Judge queue</h1>
@@ -65,7 +94,11 @@ export function JudgePage() {
       </p>
       {error && <p className="notice">{error}</p>}
       <div className="toolbar">
-        <select aria-label="Reason" value={reason} onChange={(e) => setReason(e.target.value)}>
+        <select
+          aria-label="Reason"
+          value={filter.reason}
+          onChange={(e) => set({ reason: e.target.value })}
+        >
           <option value="">Every reason</option>
           {Object.entries(REASON_LABELS).map(([k, label]) => (
             <option key={k} value={k}>
@@ -73,12 +106,44 @@ export function JudgePage() {
             </option>
           ))}
         </select>
+        <select
+          aria-label="Claimed"
+          value={filter.status}
+          onChange={(e) => set({ status: e.target.value as QueueFilter['status'] })}
+        >
+          <option value="any">Claimed or not</option>
+          <option value="unclaimed">Unclaimed</option>
+          <option value="mine">Claimed by me</option>
+          <option value="others">Claimed by other judges</option>
+        </select>
+        <select
+          aria-label="Game kind"
+          value={filter.kind}
+          onChange={(e) => set({ kind: e.target.value as QueueFilter['kind'] })}
+        >
+          <option value="any">Tournament or casual</option>
+          <option value="tournament">Tournament games</option>
+          <option value="casual">Casual games</option>
+        </select>
         <button type="button" onClick={() => void load()}>
           Refresh
         </button>
       </div>
       {!entries && <p className="muted">Loading…</p>}
-      {entries && shown.length === 0 && <p className="muted">No open calls.</p>}
+      {entries && shown.length === 0 && (
+        <p className="muted">
+          {filtered ? (
+            <>
+              No open calls match.{' '}
+              <button type="button" onClick={() => setFilter(ANY)}>
+                Show every call
+              </button>
+            </>
+          ) : (
+            'No open calls.'
+          )}
+        </p>
+      )}
       <ul className="deck-list judge-queue">
         {shown.map((e) => (
           <li key={`${e.gameId}-${e.call.id}`}>

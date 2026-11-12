@@ -257,25 +257,21 @@ export class ApiStack extends Stack {
         ],
       }),
     );
-    // Digests at 05:00 and 17:00 UTC; daily ones only go out in the evening.
-    for (const [slot, hour] of [
-      ['morning', 5],
-      ['evening', 17],
-    ] as const) {
-      new scheduler.CfnSchedule(this, `Digest${slot[0]?.toUpperCase()}${slot.slice(1)}`, {
-        groupName: scheduleGroup.name ?? 'default',
-        scheduleExpression: `cron(0 ${hour} * * ? *)`,
-        scheduleExpressionTimezone: 'UTC',
-        flexibleTimeWindow: { mode: 'FLEXIBLE', maximumWindowInMinutes: 15 },
-        target: {
-          arn: timersArn,
-          roleArn: schedulerRole.roleArn,
-          input: JSON.stringify({ kind: 'digest', slot }),
-          deadLetterConfig: { arn: this.timersDeadLetters.queueArn },
-          retryPolicy: { maximumRetryAttempts: 2 },
-        },
-      }).addResourceDependency(scheduleGroup);
-    }
+    // The digest runs hourly: each user's goes out at 17:00 (and 05:00 for twice daily) in their
+    // own time zone, so the run checks the hour per user. Early in the hour, so it stays that hour.
+    new scheduler.CfnSchedule(this, 'Digest', {
+      groupName: scheduleGroup.name ?? 'default',
+      scheduleExpression: 'cron(0 * * * ? *)',
+      scheduleExpressionTimezone: 'UTC',
+      flexibleTimeWindow: { mode: 'FLEXIBLE', maximumWindowInMinutes: 15 },
+      target: {
+        arn: timersArn,
+        roleArn: schedulerRole.roleArn,
+        input: JSON.stringify({ kind: 'digest' }),
+        deadLetterConfig: { arn: this.timersDeadLetters.queueArn },
+        retryPolicy: { maximumRetryAttempts: 2 },
+      },
+    }).addResourceDependency(scheduleGroup);
 
     const domainName = new apigw.DomainName(this, 'ApiDomain', {
       domainName: h.api,

@@ -26,14 +26,18 @@ export function bearer(header: string | undefined | null): string | undefined {
   return m?.[1];
 }
 
+/** How a user shows until they choose a display name (AUTH-05). */
+export function placeholderName(sub: string): string {
+  return `Player ${sub.slice(0, 4)}`;
+}
+
 export function cognitoAuthenticator(userPoolId: string, clientId: string): Authenticator {
   const verifier = CognitoJwtVerifier.create({ userPoolId, clientId, tokenUse: 'id' });
   return async (token) => {
     if (!token) return GUEST;
     try {
       const claims = await verifier.verify(token);
-      const name =
-        typeof claims.name === 'string' ? claims.name : `Player ${claims.sub.slice(0, 4)}`;
+      const name = typeof claims.name === 'string' ? claims.name : placeholderName(claims.sub);
       const verified = claims.email_verified === true;
       return {
         kind: 'user',

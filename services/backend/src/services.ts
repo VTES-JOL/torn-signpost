@@ -90,6 +90,7 @@ export function createServices(opts: {
     newId,
     ...(email ? { email } : {}),
   });
+  const profiles = new ProfileService({ store: profileStore });
   const games = new GameService({
     store,
     content,
@@ -100,9 +101,9 @@ export function createServices(opts: {
     presence: !!opts.presence,
     notifier: notifications,
     results,
+    nameOf: (sub) => profiles.nameOf(sub),
     ...(timers ? { timers } : {}),
   });
-  const profiles = new ProfileService({ store: profileStore });
   const realtime = new Realtime(store, opts.gateway, games, {
     notifications,
     ...(email ? { email } : {}),
@@ -135,8 +136,8 @@ export async function fireTimer(services: Services, payload: TimerPayload): Prom
       await services.email?.sendNow(payload.user, payload.id);
       return;
     case 'digest': {
-      const result = await services.email?.digest(payload.slot);
-      console.log('digest sent', { slot: payload.slot, ...result });
+      const result = await services.email?.digest();
+      console.log('digest run', { ...result });
       return;
     }
   }

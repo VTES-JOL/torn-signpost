@@ -417,7 +417,7 @@ sequenceDiagram
 | Admin queue | `ADMINQ` | `<at>#<gameId>#<callId>` | casual games a judge referred to the admins (GAME-19), until an admin replaces the player or dismisses it |
 | Last activity | `USER#<sub>` | `ACTIVE` | TTL 30 days; when the user last used the site, so an idle open tab doesn't hold back email |
 | Email address | `USER#<sub>` | `EMAIL` | the verified sign-in address, refreshed as the user makes requests (NOTIF-02) |
-| Email preferences | `USER#<sub>` | `EMAILPREFS` | per category: immediate, digest or off; digest daily or twice daily |
+| Email preferences | `USER#<sub>` | `EMAILPREFS` | per category: immediate, digest or off; digest daily or twice daily; time zone for the digest |
 | Digest queue | `DIGESTQ` | `<sub>#<notificationId>` | TTL 3 days; notifications waiting for the next digest run |
 | Profile | `USER#<sub>` | `PROFILE` | display name, avatar, prefs. Unique handles via `HANDLE#<lower>` items (AUTH-05) |
 | Stats | `USER#<sub>` | `STATS#<season>`, `STATS#all` | counters (STATS-02), flat attributes per format; the season item on GSI1 `STATS#<season>` / sub for the leaderboards (STATS-03) |
@@ -506,7 +506,11 @@ rename them (`PUT /users/{name}/name`), and a name is never released: each is cl
 `HANDLE#<lower>` item owned by its user, written in the same transaction as the profile and
 conditional on the profile still holding the old name. The API resolves the name for every
 signed-in request (cached for 60 s per Lambda), so games, chat and decks record it without extra
-lookups; names already recorded keep the name used at the time. Until a name is chosen the user
+lookups; names already recorded keep the name used at the time, with one exception: when a game
+starts, each player's name in it is refreshed from their profile (so a "Player 1a2b" placeholder
+from joining gives way to the name they chose since), and a replacement joins the game's players
+under their name. The table and @mentions use these; mentions reach only the seats' current
+players. Until a name is chosen the user
 shows as "Player 1a2b" and the web app asks for one.
 
 ### 5.7 Tournaments & seating (TOURN-*)
@@ -692,8 +696,9 @@ primitives, and corrections are new commands.
 - Email (NOTIF-02): a notification whose category the user wants at once is checked again two
   minutes later (a one-off timer) and emailed only if it's still unread and the user has no
   connection used in the last 15 minutes (changes over HTTP, opening a game, or the web app
-  reporting input; not pings or polling); digest categories wait in `DIGESTQ` for the 05:00/17:00
-  UTC runs, which apply the same checks. Opening a game marks its notifications read, and a turn
+  reporting input; not pings or polling); digest categories wait in `DIGESTQ` for the hourly
+  digest run, which sends each user's at 17:00 (daily) or 05:00 and 17:00 (twice daily) in the
+  time zone they chose on the Account page (UTC if none), and applies the same checks. Opening a game marks its notifications read, and a turn
   or decision notification is marked read once the game stops waiting on that player. The timers Lambda sends through SES (the only Lambda allowed to), one recipient
   per message, with signed one-click unsubscribe links. Switched by `emailEnabled`.
 - Not yet: structural window elision beyond auto-pass.

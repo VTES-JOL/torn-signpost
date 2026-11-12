@@ -217,13 +217,15 @@ describe('email', () => {
     expect(JSON.stringify(sends[0])).toContain('TimersFunctionServiceRole');
   });
 
-  it('runs the digest twice a day, with email on for the beta', () => {
-    for (const hour of [5, 17]) {
-      api.hasResourceProperties('AWS::Scheduler::Schedule', {
-        ScheduleExpression: `cron(0 ${hour} * * ? *)`,
-        ScheduleExpressionTimezone: 'UTC',
-      });
-    }
+  it('runs the digest hourly (each user at their own 17:00), with email on for the beta', () => {
+    api.resourcePropertiesCountIs(
+      'AWS::Scheduler::Schedule',
+      {
+        ScheduleExpression: 'cron(0 * * * ? *)',
+        Target: Match.objectLike({ Input: '{"kind":"digest"}' }),
+      },
+      1,
+    );
     api.hasResourceProperties('AWS::Lambda::Function', {
       Environment: { Variables: Match.objectLike({ EMAIL_ENABLED: 'true' }) },
     });

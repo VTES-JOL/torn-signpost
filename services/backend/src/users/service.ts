@@ -78,6 +78,11 @@ export class ProfileService {
     return { sub: user.sub, name: req.name, chosen: true, groups: user.groups };
   }
 
+  /** The user's chosen display name, if they have one (cached like `resolve`). */
+  nameOf(sub: string): Promise<string | undefined> {
+    return this.chosenName(sub);
+  }
+
   /** The user whose current display name is `name` (ignoring case), if anyone's. */
   async userByName(name: string): Promise<string | undefined> {
     const sub = await this.deps.store.ownerOf(name);

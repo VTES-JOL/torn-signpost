@@ -25,8 +25,8 @@ export type TimerPayload =
   | { kind: 'game'; gameId: string; command: GameTimerCommand }
   /** A notification someone wants by email: send it if it's still unread and they're away. */
   | { kind: 'email'; user: string; id: string }
-  /** A digest run (a recurring schedule, not a one-off). */
-  | { kind: 'digest'; slot: 'morning' | 'evening' };
+  /** The hourly digest run (a recurring schedule, not a one-off). */
+  | { kind: 'digest' };
 
 export interface Timers {
   /** Fire `payload` at `at`; scheduling the same key again moves it. */

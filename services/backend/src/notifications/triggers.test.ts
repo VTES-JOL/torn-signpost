@@ -9,6 +9,7 @@ import {
   newGame,
   seededRng,
   waitingOn,
+  zoneId,
 } from '@torn-signpost/engine';
 import { describe, expect, it } from 'vitest';
 import { testContent, testDeck } from '../testing/content.ts';
@@ -33,7 +34,7 @@ function apply(state: GameState, command: Command, actor: Actor) {
   return { events: r.events, after: r.events.reduce(evolve, state) };
 }
 
-function started() {
+function started(settings: { deadlineMs?: number } = {}) {
   const users = ['alice', 'bob', 'carol'];
   return apply(
     newGame('g'),
@@ -42,10 +43,14 @@ function started() {
       gameId: 'g',
       format: 'standard',
       seats: users.map((user, i) => ({ id: String(i + 1), user, ...expand(testDeck) })),
+      settings,
     },
     { kind: 'system' },
   ).after;
 }
+
+const HOUR = 60 * 60 * 1000;
+const judgeJo = { kind: 'judge', user: 'jo' } as const;
 
 const occupantOf = (s: GameState, seat: string | undefined) =>
   s.seats.find((x) => x.id === seat)?.occupant ?? '';
@@ -161,6 +166,69 @@ describe('withdrawal', () => {
       },
       { user: 'bob', kind: 'withdrawal', text: 'You withdrew from the game (+½ VP)' },
     ]);
+  });
+});
+
+describe('deadlines, ousts and blocks (M5b.5 leftovers)', () => {
+  it('reminds an away player once half their time to decide has gone', () => {
+    const s = started({ deadlineMs: 24 * HOUR });
+    // Not yet: nothing is due.
+    clock += 11 * HOUR;
+    expect(() => apply(s, { type: 'CheckDeadline', seat: '1' }, { kind: 'system' })).toThrow();
+    clock += 2 * HOUR;
+    const { drafts } = notify(s, { type: 'CheckDeadline', seat: '1' }, undefined);
+    expect(drafts).toEqual([
+      { user: 'alice', kind: 'deadline', text: 'Half your time to decide has gone' },
+    ]);
+  });
+
+  it('tells a player they were ousted, or disqualified', () => {
+    const s = started();
+    const pool = s.seats.find((x) => x.id === '2')?.pool ?? 0;
+    const oust = apply(s, { type: 'AdjustPool', seat: '2', delta: -pool }, judgeJo);
+    expect(gameNotifications({ before: s, ...oust, actor: 'jo' })).toContainEqual({
+      user: 'bob',
+      kind: 'ousted',
+      text: 'You were ousted',
+    });
+    const call = apply(
+      s,
+      { type: 'CallJudge', reason: 'other', seat: '3' },
+      {
+        kind: 'player',
+        user: 'alice',
+      },
+    ).after;
+    const id = call.judgeCalls?.[0]?.id ?? '';
+    const tournament = { ...call, settings: { ...call.settings, tournament: true } };
+    const dq = apply(
+      tournament,
+      { type: 'ResolveJudgeCall', id, ruling: { kind: 'disqualify', seat: '3' } },
+      judgeJo,
+    );
+    expect(gameNotifications({ before: tournament, ...dq, actor: 'jo' })).toContainEqual({
+      user: 'carol',
+      kind: 'ousted',
+      text: 'A judge disqualified you',
+    });
+  });
+
+  it('asks an away prey to decide on a block, and not one at the table', () => {
+    let s = started();
+    const alice = { kind: 'player', user: 'alice' } as const;
+    const minion = s.zones[zoneId('1', 'uncontrolled')]?.[0] ?? '';
+    s = apply(s, { type: 'MoveCard', card: minion, to: zoneId('1', 'ready') }, alice).after;
+    while (s.turn?.phase !== 'minion') s = apply(s, { type: 'AdvancePhase' }, alice).after;
+    const bleed = { type: 'DeclareAction', minion, kind: 'bleed', target: '2' } as const;
+    expect(notify(s, bleed, 'alice').drafts).toContainEqual({
+      user: 'bob',
+      kind: 'decision',
+      text: 'An action is coming your way: block it or let it through',
+    });
+    const present = apply(s, { type: 'SetPresence', seat: '2', present: true }, { kind: 'system' });
+    expect(notify(present.after, bleed, 'alice').drafts.filter((d) => d.user === 'bob')).toEqual(
+      [],
+    );
   });
 });
 

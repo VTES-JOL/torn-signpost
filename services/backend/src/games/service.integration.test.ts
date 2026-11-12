@@ -258,6 +258,61 @@ describe.skipIf(!available)('game service (DynamoDB Local)', () => {
     });
   });
 
+  describe('names (M6, mentions by current name)', () => {
+    it('records current display names at the start and for a replacement; mentions follow seats', async () => {
+      // Bob joined before choosing a name; dave has one, and comes in as carol's replacement.
+      const chosen: Record<string, string> = { alice: 'Alice', bob: 'Nocturne', dave: 'Dusk' };
+      const chats: { people: readonly { user: string; name: string }[] }[] = [];
+      const games = new GameService({
+        store,
+        content: testContent,
+        rng: seededRng(7),
+        publisher: new Fanout(store, recordingGateway().gateway),
+        newId: () => `names-${++n}`,
+        nameOf: async (sub) => chosen[sub],
+        notifier: {
+          afterCommand: async () => {},
+          chat: async (input) => {
+            chats.push(input);
+          },
+        },
+      });
+      const g = await games.create(alice, {
+        name: 'Names',
+        format: 'standard',
+        visibility: 'public',
+        maxSeats: 3,
+      });
+      for (const p of [alice, bob, carol]) await games.join(p, g.id, { deck });
+      expect((await games.details(alice, g.id)).game.players.map((p) => p.name)).toEqual([
+        'alice',
+        'bob',
+        'carol',
+      ]);
+      await games.start(alice, g.id);
+      // Carol has no chosen name: hers from joining stands.
+      expect((await games.details(alice, g.id)).game.players.map((p) => p.name)).toEqual([
+        'Alice',
+        'Nocturne',
+        'carol',
+      ]);
+      const seat = (await games.details(carol, g.id)).seat ?? '';
+      await games.command(admin, g.id, cmd({ type: 'ReplacePlayer', seat, user: 'dave' }));
+      expect((await games.details(alice, g.id)).game.players).toContainEqual({
+        user: 'dave',
+        name: 'Dusk',
+      });
+      // Mentions go to whoever holds a seat now: dave, not carol.
+      await games.chat(alice, g.id, { text: 'hi @Dusk and @carol' });
+      expect(
+        chats
+          .at(-1)
+          ?.people.map((p) => p.user)
+          .sort(),
+      ).toEqual(['alice', 'bob', 'dave']);
+    });
+  });
+
   describe('commands', () => {
     it('applies commands and answers with the caller’s projection', async () => {
       const { games } = service(store, recordingGateway().gateway);

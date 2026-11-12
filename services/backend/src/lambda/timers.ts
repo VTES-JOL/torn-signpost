@@ -18,7 +18,8 @@ const Payload = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('presence'), gameId: z.string(), user: z.string() }),
   z.object({ kind: z.literal('game'), gameId: z.string(), command: GameCommand }),
   z.object({ kind: z.literal('email'), user: z.string(), id: z.string() }),
-  z.object({ kind: z.literal('digest'), slot: z.enum(['morning', 'evening']) }),
+  // Schedules from before digests went hourly still send a slot; it's ignored.
+  z.object({ kind: z.literal('digest') }),
 ]) satisfies z.ZodType<TimerPayload>;
 
 const services = servicesFor(process.env.WS_CALLBACK_URL ?? '');

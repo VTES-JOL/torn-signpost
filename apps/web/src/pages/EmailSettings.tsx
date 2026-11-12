@@ -21,6 +21,24 @@ const LABELS: Record<EmailCategory, string> = {
   game: 'Games starting and ending, and being ousted',
 };
 
+/** Every IANA zone the browser knows, for the digest time. */
+const ZONES: readonly string[] = (() => {
+  try {
+    return Intl.supportedValuesOf('timeZone');
+  } catch {
+    return [];
+  }
+})();
+
+/** The browser's own zone, offered as the obvious choice. */
+const HERE = (() => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return undefined;
+  }
+})();
+
 const MODES: [EmailMode, string][] = [
   ['immediate', 'At once'],
   ['digest', 'In the digest'],
@@ -91,9 +109,34 @@ export function EmailSettings() {
                   void save({ ...prefs, digest: e.target.value as EmailPrefs['digest'] })
                 }
               >
-                <option value="daily">Daily, at 17:00 UTC</option>
-                <option value="twice-daily">Twice daily, at 05:00 and 17:00 UTC</option>
+                <option value="daily">Daily, at 17:00</option>
+                <option value="twice-daily">Twice daily, at 05:00 and 17:00</option>
               </select>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Your time zone, for the digest</th>
+            <td>
+              <select
+                aria-label="Time zone"
+                value={prefs.timeZone ?? ''}
+                onChange={(e) => {
+                  const { timeZone: _, ...rest } = prefs;
+                  void save(e.target.value ? { ...rest, timeZone: e.target.value } : rest);
+                }}
+              >
+                <option value="">UTC</option>
+                {ZONES.filter((z) => z !== 'UTC').map((z) => (
+                  <option key={z} value={z}>
+                    {z.replaceAll('_', ' ')}
+                  </option>
+                ))}
+              </select>{' '}
+              {HERE && HERE !== 'UTC' && HERE !== prefs.timeZone && (
+                <button type="button" onClick={() => void save({ ...prefs, timeZone: HERE })}>
+                  Use {HERE.replaceAll('_', ' ')}
+                </button>
+              )}
             </td>
           </tr>
         </tbody>

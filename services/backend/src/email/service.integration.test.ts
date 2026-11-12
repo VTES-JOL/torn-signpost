@@ -124,7 +124,7 @@ describe.skipIf(!available)('email notifications (DynamoDB Local)', () => {
     expect(sent).toHaveLength(2);
   });
 
-  it('collects the rest for the digest: evenings for daily, both runs for twice daily', async () => {
+  it('collects the rest for the digest: 17:00 for daily, 05:00 and 17:00 for twice daily, local time', async () => {
     const { email, store, notifications, sent, scheduled, player, notify } = setup();
     const daily = await player('dee');
     const twice = await player('tom');
@@ -137,10 +137,11 @@ describe.skipIf(!available)('email notifications (DynamoDB Local)', () => {
     await notify(twice.sub, notification('turn'));
     expect(scheduled.size).toBe(0);
 
-    await email.digest('morning');
+    // 05:00 UTC: only twice daily.
+    await email.digest(new Date('2026-11-05T05:00:00Z'));
     expect(sent.map((m) => m.to)).toEqual(['tom@mail.example']);
 
-    await email.digest('evening');
+    await email.digest(new Date('2026-11-05T17:05:00Z'));
     const mail = sent.find((m) => m.to === 'dee@mail.example');
     expect(sent).toHaveLength(2);
     // Two unread, in two games; the read one is left out.
@@ -150,8 +151,21 @@ describe.skipIf(!available)('email notifications (DynamoDB Local)', () => {
     expect(mail?.headers['List-Unsubscribe']).toContain('c=all');
 
     // The queue is cleared once sent.
-    await email.digest('evening');
+    await email.digest(new Date('2026-11-05T17:05:00Z'));
     expect(sent).toHaveLength(2);
+  });
+
+  it('sends the digest at 17:00 in the user’s own time zone', async () => {
+    const { email, store, sent, player, notify } = setup();
+    const { sub } = await player('kai');
+    await store.putPrefs(sub, { ...DEFAULT_EMAIL_PREFS, timeZone: 'America/New_York' });
+    await notify(sub, notification('turn'));
+    // 17:00 UTC is noon in New York (EST, November): not yet.
+    await email.digest(new Date('2026-11-05T17:00:00Z'));
+    expect(sent).toHaveLength(0);
+    // 22:00 UTC is 17:00 there.
+    await email.digest(new Date('2026-11-05T22:00:00Z'));
+    expect(sent.map((m) => m.to)).toEqual(['kai@mail.example']);
   });
 
   it('turns email off from a signed link, and refuses a forged one', async () => {
