@@ -92,6 +92,12 @@ pnpm sandbox      # play the engine in the terminal as any seat, judge or admin
   refuses while anyone has a game open. Stats are empty afterwards: no rebuild needed.
 - To point the local web client at the live beta API instead:
   `TS_API_URL=https://api.tornsignpost.org pnpm dev:web`.
+- Storybook: `pnpm --filter @torn-signpost/web storybook` (http://localhost:6006) has stories for
+  the web components (`apps/web/src/**/*.stories.tsx`). Game stories run the engine's scenarios
+  in the browser, as the Replay page does, at a chosen line and from a chosen seat; they're
+  playable from there, and the Actions panel shows each command sent. Card data and images come
+  from the content CDN through Storybook's `/content` proxy (`TS_CONTENT_URL` to change it).
+  Helpers are in `apps/web/src/stories/fixtures.tsx`.
 - The sandbox starts a three-player table with invented test cards. Type `.help` for commands,
   `.as B` to switch seats, `.save file.scenario` to keep the session as a golden scenario.
   Options: `--scenario <file>`, `--catalog <cards.json>` or `--real` (the local content pack),
