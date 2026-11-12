@@ -134,7 +134,7 @@ export function decide(state: GameState, cmd: Command, ctx: DecideContext): Deci
           state,
           withOusts(
             state,
-            withImpliedPass(state, cmd, ctx, by, ids),
+            withMinionGone(state, withImpliedPass(state, cmd, ctx, by, ids), ctx.now, by, ids),
             ctx.now,
             by,
             { ids, catalog: ctx.catalog },
@@ -997,6 +997,21 @@ function bodiesFor(
       if (mySeat !== undefined && mySeat !== a.seat && !fighting.includes(mySeat)) {
         reject('forbidden', 'Only the players in combat can end it');
       }
+      // In a combat with steps, ending it early skips to the end of the round: no strike resolves,
+      // but the end-of-round window still opens (zero-vtes rules-qa 19.5).
+      const c = a.combat;
+      if (c && state.window?.kind === 'combat') {
+        if (c.ending && c.step === 'end-of-round') reject('no-change', 'The combat is ending');
+        return settle(state, [
+          {
+            type: 'CombatStepped',
+            step: 'end-of-round',
+            round: c.round,
+            ending: true,
+            ended: mySeat === undefined ? {} : { seat: mySeat },
+          },
+        ]);
+      }
       return settle(state, combatEnd(state, ids));
     }
 
@@ -1741,6 +1756,41 @@ function settleWindow(
     s = applyBodies(s, next, now, by);
   }
   return out;
+}
+
+/**
+ * An acting minion that leaves the ready region before blocks are resolved ends the action: it
+ * has no outcome and no after-resolution window, and a block attempt under way is dropped with
+ * nobody locked (rulebook, "Resolve the Action"; zero-vtes digest §24.3, §3.2). Its action card
+ * was played, so it goes to the ash heap. A vampire leaving torpor ends it only by leaving play.
+ */
+function withMinionGone(
+  state: GameState,
+  bodies: EventBody[],
+  now: string,
+  by: ActorRef,
+  ids: () => InstanceId,
+): EventBody[] {
+  if (state.status !== 'active') return bodies;
+  const after = applyBodies(state, bodies, now, by);
+  if (after.action?.stage !== 'blocks') return bodies;
+  const a = after.action;
+  const m = after.cards[a.minion];
+  const where = m ? parseZoneId(m.zone) : undefined;
+  const stays =
+    m !== undefined &&
+    where?.seat === m.controller &&
+    (where.name === 'ready' || (a.kind === 'leave-torpor' && where.name === 'torpor'));
+  if (stays) return bodies;
+  const card = a.card === undefined ? undefined : after.cards[a.card];
+  return [
+    ...bodies,
+    ...(after.window ? [{ type: 'WindowClosed' } as const] : []),
+    ...(card && card.zone === zoneId(a.seat, 'hand')
+      ? playedFromHand(after, ids, card, zoneId(a.seat, 'ashHeap'), true)
+      : []),
+    { type: 'ActionEnded', outcome: 'minion-gone' },
+  ];
 }
 
 /**

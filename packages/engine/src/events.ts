@@ -242,6 +242,11 @@ export type EventBody =
       exchange?: InstanceId[];
       continues?: true;
       ending?: true;
+      /**
+       * `EndCombat` ended it early: straight to the end of the round, no strike resolving, and the
+       * end-of-round window still open (zero-vtes rules-qa 19.5). The seat, or none for a judge.
+       */
+      ended?: { seat?: SeatId };
     }
   /** The strikes are in: the damage and blood each minion is about to take. */
   | { type: 'DamagePending'; pending: Partial<Record<InstanceId, PendingDamage>>; later?: true }
@@ -303,8 +308,12 @@ export type EventBody =
   | { type: 'ActionConcluded'; outcome: ActionOutcome }
   | {
       type: 'ActionEnded';
-      /** `ousted`: the acting Methuselah, the target or the blocker's was ousted (DQ9). */
-      outcome: 'success' | 'failure' | 'blocked' | 'cancelled' | 'ousted';
+      /**
+       * `ousted`: the acting Methuselah, the target or the blocker's was ousted (DQ9).
+       * `minion-gone`: the acting minion left the ready region before blocks were resolved
+       * (rulebook, "Resolve the Action"; zero-vtes digest §24.3).
+       */
+      outcome: 'success' | 'failure' | 'blocked' | 'cancelled' | 'ousted' | 'minion-gone';
     }
   /**
    * A Methuselah reached 0 pool and is out of the game (GAME-08). Their cards in play have already

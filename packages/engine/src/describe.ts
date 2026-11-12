@@ -436,6 +436,10 @@ function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): 
     case 'CombatStepped': {
       const c = before.action?.combat;
       if (c && ev.round > c.round) return `Round ${ev.round} of combat`;
+      if (ev.ended) {
+        const by = ev.ended.seat === undefined ? 'A judge' : seatName(ev.ended.seat);
+        return `${by} ended the combat: no strike resolves; the end of the round, then it's over`;
+      }
       if (ev.exchange) {
         return `Additional strikes: ${ev.exchange.map((m) => cardName(m)).join(' and ')}`;
       }
@@ -535,6 +539,7 @@ function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): 
             : 'Combat is over; the action was blocked',
         cancelled: `${who} cancelled the action`,
         ousted: 'The action ends: a Methuselah in it was ousted',
+        'minion-gone': 'The action ends: the acting minion left the ready region',
       }[ev.outcome];
     case 'JudgeCalled': {
       const c = ev.call;

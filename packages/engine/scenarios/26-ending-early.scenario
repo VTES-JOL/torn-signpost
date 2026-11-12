@@ -1,0 +1,69 @@
+# Ending early. An acting minion that leaves the ready region before blocks are resolved ends its
+# action, the blocker not locked (rulebook, "Resolve the Action"; zero-vtes docs/rules-digest.md
+# §24.3, checked at 1f33be5): ended before resolution, it has no after-resolution window (§3.2).
+# A combat ended early by a card (Saulot's Guiding Wisdom) resolves no strike, but its
+# end-of-round window still opens (rules-qa 19.5).
+# Alice plays first; her prey is Bob. Long Reach is an action card.
+seed 26
+seat A alice
+seat B bob
+seat C carol
+crypt A "Vera Nightfall" *12
+library A "Long Reach" *40
+crypt B "Tomas Grey" *12
+library B "Quick Feed" *40
+crypt C "Ilse Várga" *12
+library C "Signal Fire" *40
+start
+
+A> move A:uncontrolled:1 ready
+A> move A:uncontrolled:1 ready
+B> move B:uncontrolled:1 ready
+A> transfer +4 A:ready:1
+A> transfer +4 A:ready:2
+B> transfer +4 B:ready:1
+A> next
+A> next
+expect turn 1 A minion
+
+# Vera bleeds Bob with Long Reach. Bob tries to block; then, with a card effect, he sends Vera to
+# torpor before the block resolves (the players' move). The action ends at once: Tomas isn't
+# locked, Long Reach is spent, and there's no window after it.
+A> bleed A:ready:1 with A:hand:1
+B> block B:ready:1
+B> move A:ready:1 torpor
+log public The action ends: the acting minion left the ready region
+expect action none
+expect window none
+expect card B:ready:1 locked false
+expect count A:ashHeap 1
+expect count A:hand 7
+expect pool B 26
+
+# The other vampire bleeds; Bob blocks, and the combat starts. In the strikes, a card ends the
+# combat (Saulot's Guiding Wisdom, say): Bob ends it. No strike resolves, but the end of the round
+# comes first, where cards may still be played.
+A> bleed A:ready:1
+B> block B:ready:1
+A> pass
+B> pass
+expect action bleed A combat
+A> pass
+B> pass
+A> pass
+B> pass
+A> pass
+B> pass
+expect combat 1 strikes close
+A> strike hand
+B> endcombat
+log public B ended the combat: no strike resolves; the end of the round, then it's over
+expect combat 1 end-of-round close
+expect card A:ready:1 blood 4
+expect card B:ready:1 blood 4
+reject:no-change B> endcombat
+A> pass
+B> pass
+log public Combat is over; the action was blocked
+A> pass
+expect action none

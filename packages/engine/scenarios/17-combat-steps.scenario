@@ -141,6 +141,10 @@ B> strike dodge via B:hand:1
 log public Round 1 · Strikes: Tomas Grey plays Quick Feed to strike: dodge
 expect combat 1 damage long
 B> endcombat
+# Ending it early still leaves the end of the round (zero-vtes rules-qa 19.5).
+expect combat 1 end-of-round long
+A> pass
+B> pass
 A> pass
 expect action none
 
@@ -160,6 +164,8 @@ reject:forbidden B> endcombat
 A> pass
 expect impulse C
 C> endcombat
+A> pass
+C> pass
 log public The action succeeded
 A> pass
 expect action none
@@ -183,6 +189,8 @@ judge> rule passfor B
 log public Round 1 · Strikes: Tomas Grey doesn't strike
 expect combat 1 damage close
 A> endcombat
+A> pass
+B> pass
 A> pass
 expect action none
 

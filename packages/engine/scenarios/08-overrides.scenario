@@ -84,6 +84,8 @@ C> pass
 expect action bleed A combat
 C> endcombat
 A> pass
+C> pass
+A> pass
 expect action none
 A> unlock A:ready:1
 

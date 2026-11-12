@@ -60,7 +60,7 @@ player. The parser lives in `packages/engine/src/console` and is shared by every
 | `press continue\|end [via <card>]` | In the press step: press to continue the combat, or to end it |
 | `pass strikes` / `pass round` | In combat: pass every step up to the strikes, or to the end of the round, unless the other combatant does something first |
 | `use <card> ["what it does"]` | Use an ability of one of your face-up cards in play: logged for the table, with the combat step if in one. In a window it needs the impulse |
-| `endcombat` | End the combat at once, in any step; a blocked action counts as blocked |
+| `endcombat` | End the combat early, for a card that does (Saulot's Guiding Wisdom): no strike resolves, and it goes straight to the end of the round, whose window still opens (zero-vtes rules-qa 19.5); then it's over. A blocked action counts as blocked |
 | `cancel` | Cancel your action (an override; nothing else happens) |
 | `look <card>` | **Judges**: look at a hidden card. Every player sees that it happened |
 | `replace <seat> <user>` | **Admins**, non-tournament games: hand a seat to another player (GAME-19) |

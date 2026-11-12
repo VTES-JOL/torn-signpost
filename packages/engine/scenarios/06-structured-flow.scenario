@@ -130,6 +130,9 @@ expect card B:ready:1 locked true
 log public Tomas Grey blocks: combat
 reject:forbidden C> endcombat
 B> endcombat
+# Ending it early still leaves the end of the round (zero-vtes rules-qa 19.5).
+A> pass
+B> pass
 # B ended combat, but the card and its replacement are A's.
 log public A played Iron Ward
 log public A drew 1 card from their library

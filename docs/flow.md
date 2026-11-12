@@ -291,8 +291,21 @@ Effect:
 Checks: the action is at `combat`, and the sender is the acting player, controls the blocker, or
 is a judge.
 
-Effect: the action card is finished and the action concludes as blocked; its after-resolution
-window opens.
+Effect: in a combat with steps, it goes straight to End of round, marked as ending: no strike
+resolves, damage pending is dropped, and the end-of-round window still opens (zero-vtes rules-qa
+19.5); when it closes the combat is over. Refused once it's ending there. In a combat from before
+combat steps, it ends at once. Either way, the action card is then finished and the action
+concludes, as blocked or (an action that entered combat) successful.
+
+### The acting minion leaving
+
+If the acting minion leaves its ready region while the action is still at `blocks` (burned, sent
+to torpor by a card effect, or moved there by the players), the action ends at once with outcome
+`minion-gone` (rulebook, "Resolve the Action"; zero-vtes digest §24.3). A block attempt under way
+is dropped, so the blocker isn't locked; the action card, played, goes to the ash heap and is
+replaced. Ended before resolution, it has no after-resolution window (§3.2). A vampire leaving
+torpor ends its action this way only by leaving play. After blocks, a minion gone by resolution
+is the resolution's business (a political action calls no referendum, rules-qa 5.9).
 
 ### `Diablerize { decline? }`
 
@@ -671,5 +684,6 @@ DeclareAction ──► blocks window
                    │ Block ──► impulse back to acting player, passes reset
                    │ WithdrawBlock ──► seat declined
 concluded ──► after-resolution window ──► every seat passes ──► ended
+acting minion leaves the ready region (at blocks) ──────────────────────────────────► ended (minion-gone)
 CancelAction (before it concludes) ─────────────────────────────────────────────────► ended (cancelled)
 ```

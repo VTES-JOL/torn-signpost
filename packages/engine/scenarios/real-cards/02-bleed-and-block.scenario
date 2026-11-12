@@ -40,6 +40,8 @@ B> pass
 expect action bleed A combat
 B> endcombat
 A> pass
+B> pass
+A> pass
 expect action none
 
 # Her second vampire bleeds Bob too, adding a modifier. Bob doesn't block.

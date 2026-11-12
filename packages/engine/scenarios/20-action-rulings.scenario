@@ -63,6 +63,8 @@ P> pass
 expect action recruit S combat
 S> endcombat
 S> pass
+P> pass
+S> pass
 expect action none
 
 # A blocker must be ready and unlocked: Ilse, locked by her block, can't block again.

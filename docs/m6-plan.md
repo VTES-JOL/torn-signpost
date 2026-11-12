@@ -542,19 +542,20 @@ Done in this increment:
   action's referendum and a diablerie's blood hunt; not a cancelled one. The acting Methuselah's
   next move (resolving; the next action or the end of the phase) passes each window when nobody
   else would stop it, so neither costs a click on every action. Scenarios 25 and real-cards 11.
+- **The acting minion leaving** (rulebook, "Resolve the Action"; digest §24.3): leaving the ready
+  region before blocks are resolved ends the action (`minion-gone`), the blocker not locked, with
+  no after-resolution window (§3.2). Scenario 26.
+- **`EndCombat` and the end of round** (rules-qa 19.5): a combat ended early goes to End of round,
+  no strike resolving; its window still opens. Scenario 26.
 
 Still to do, in rough order:
 
 1. **Combat for everyone else** (§12.1; rules-qa 98.1, 98.2): after the two combatants, every
    other Methuselah clockwise from the acting one has the impulse in each step, for cards that
    reach a combat they're not in. Today only the combatants' Methuselahs do.
-2. **The acting minion leaving** (rulebook, "Resolve the Action"; §24.3): an acting minion that
-   leaves the ready region before block resolution ends the action, the blocker not locked.
-3. **`EndCombat` and the end of round** (rules-qa 19.5): a combat ended early still has its
-   end-of-round window.
-4. Smaller: withdrawal's short hand read as the turn began (95.3); no polling-step cards in a
+2. Smaller: withdrawal's short hand read as the turn began (95.3); no polling-step cards in a
    blood hunt (PIB 20150105).
-5. **Rescue and diablerie as actions** of their own (rulebook, "Rescue a Vampire from Torpor",
+3. **Rescue and diablerie as actions** of their own (rulebook, "Rescue a Vampire from Torpor",
    "Diablerise a Vampire in Torpor"): today an `other` action with the players' moves, and
    `CallBloodHunt`.
 
