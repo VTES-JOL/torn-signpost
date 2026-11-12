@@ -32,6 +32,9 @@ test('a bleed: the prey decides not to block and the actor resolves it', async (
   await flow(a).getByRole('button', { name: 'Take the Edge' }).click();
   await flow(a).getByRole('button', { name: 'Confirm' }).click();
 
+  // The action's after-resolution window: Alice passes it, and nobody else has anything to play.
+  await expect(flow(a)).toContainText("Your decision: Play a card after Vera Nightfall's bleed");
+  await flow(a).getByRole('button', { name: 'Pass', exact: true }).click();
   await expect(flow(a)).toContainText('Your decision: Your minion phase');
   await expect(flow(p)).not.toContainText('Your decision');
   await expect

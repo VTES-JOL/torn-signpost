@@ -62,6 +62,9 @@ test('a blocked bleed is fought step by step, and everyone reads each step in th
   // Wait for the impulse to arrive: the buttons change as it does.
   await expect(flow(p)).toContainText('Your decision: Combat, Round 1 · Damage');
   await flow(p).getByRole('button', { name: 'Pass to the end of the round' }).click();
+  // The action's after-resolution window: Alice passes it, and nobody else has anything to play.
+  await expect(flow(a)).toContainText("Your decision: Play a card after Vera Nightfall's bleed");
+  await flow(a).getByRole('button', { name: 'Pass', exact: true }).click();
   await expect(flow(a)).toContainText('Your decision: Your minion phase');
   await expect(log(w)).toContainText('Combat is over; the action was blocked');
   await expect(panel(w)).toHaveCount(0);
