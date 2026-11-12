@@ -40,6 +40,7 @@ import type {
   Override,
   PendingDamage,
   StopRule,
+  Turn,
   ZoneId,
 } from './model.ts';
 import {
@@ -48,6 +49,7 @@ import {
   LEAVE_TORPOR_COST,
   PHASES,
   PLAYER_CALL_REASONS,
+  RESCUE_COST,
   STOP_ACTORS,
   STOP_TRIGGERS,
   STRIKE_KINDS,
@@ -61,6 +63,7 @@ import { nextTurnSeat, predator, prey, type SeatId, windowOrder } from './seatin
 import {
   canWithdraw,
   FULL_HAND,
+  shortHanded,
   WITHDRAWAL_VP,
   type WithdrawalBreak,
   withdrawalBreaks,
@@ -708,6 +711,26 @@ function bodiesFor(
       if (minion.locked) reject('invalid', 'Locked minions cannot act; unlock it first if allowed');
       // Leaving torpor is undirected (rulebook, "Leave Torpor").
       let target = cmd.target === s || cmd.kind === 'leave-torpor' ? undefined : cmd.target;
+      // Rescue and diablerie: a ready vampire acts on a face-up vampire in torpor, directed at its
+      // controller when it's another Methuselah's (zero-vtes rules-qa 16.4).
+      let vampire: CardInstance | undefined;
+      if (cmd.kind === 'rescue' || cmd.kind === 'diablerie') {
+        if (!isVampire(minion, ctx.catalog)) reject('invalid', 'Only a vampire takes this action');
+        vampire = card(cmd.vampire ?? reject('invalid', 'Which vampire in torpor?'));
+        if (
+          parseZoneId(vampire.zone).name !== 'torpor' ||
+          vampire.attachedTo !== undefined ||
+          vampire.faceDown ||
+          !isVampire(vampire, ctx.catalog)
+        ) {
+          reject('invalid', 'Choose a face-up vampire in torpor');
+        }
+        target = vampire.controller === s ? undefined : vampire.controller;
+        const pays = cmd.kind === 'rescue' ? (cmd.rescuedPays ?? 0) : 0;
+        if (!Number.isInteger(pays) || pays < 0 || pays > RESCUE_COST) {
+          reject('invalid', `The rescued vampire pays 0 to ${RESCUE_COST} blood`);
+        }
+      }
       if (target !== undefined) {
         const t = seat(target);
         if (t.ousted || t.withdrawn) reject('invalid', 'That player is out of the game');
@@ -764,7 +787,15 @@ function bodiesFor(
             declined: [],
             stage: 'blocks' as const,
           },
-          { target, card: cmd.card, cardId, override },
+          {
+            target,
+            card: cmd.card,
+            cardId,
+            override,
+            vampire: vampire?.id,
+            vampireCardId: vampire?.cardId,
+            rescuedPays: cmd.kind === 'rescue' && cmd.rescuedPays ? cmd.rescuedPays : undefined,
+          },
         ),
       });
       const order = windowOrder(
@@ -867,6 +898,13 @@ function bodiesFor(
       if (state.window && impulseHolder(state) !== s) {
         reject('not-now', 'Wait for the impulse to play a card');
       }
+      // Blood hunts take no polling-step effects (zero-vtes digest §24.3; PIB 20150105).
+      if (state.window?.kind === 'polling' && state.action?.referendum?.kind === 'blood-hunt') {
+        reject(
+          'forbidden',
+          'A blood hunt takes no cards played in its polling: votes from minions, the Edge, cards in play or a burned political action card only',
+        );
+      }
       let to = zoneId(s, cmd.to ?? 'ashHeap');
       const attachTo = cmd.attachTo === undefined ? undefined : rootOf(touchable(cmd.attachTo)).id;
       if (attachTo !== undefined) {
@@ -958,15 +996,11 @@ function bodiesFor(
       }
       if (cmd.outcome === 'success' && a.kind === 'leave-torpor') {
         // The vampire moves to the ready region and pays the cost: 2 blood by default, or what a
-        // card makes it (rulebook, "Leave Torpor"). Out of torpor already, it fizzles: nothing
-        // happens, nothing is paid (zero-vtes rules-qa, ANK 20220218).
+        // card makes it (rulebook, "Leave Torpor"). Out of torpor already, or unable to pay, it
+        // fizzles: successful, nothing happens, nothing is paid (zero-vtes rules-qa 3.6, 28.7).
         const cost = cmd.amount ?? LEAVE_TORPOR_COST;
         const m = state.cards[a.minion];
-        if (m && parseZoneId(m.zone).name === 'torpor') {
-          const blood = m.counters.blood ?? 0;
-          if (cost > blood) {
-            reject('not-enough', `Leaving torpor costs ${cost} blood; it has ${blood}`);
-          }
+        if (m && parseZoneId(m.zone).name === 'torpor' && cost <= (m.counters.blood ?? 0)) {
           if (cost > 0) {
             bodies.push({ type: 'CounterAdjusted', card: m.id, counter: 'blood', delta: -cost });
           }
@@ -983,6 +1017,64 @@ function bodiesFor(
               { cardId: m.cardId },
             ),
           );
+        }
+      }
+      if (cmd.outcome === 'success' && a.kind === 'rescue') {
+        // Paid as it resolves, split as announced; a share its payer can't meet, or the vampire
+        // out of torpor, fizzles it: successful, no effect (zero-vtes rules-qa 3.6, 28.7, 48.8).
+        const cost = cmd.amount ?? RESCUE_COST;
+        const rescued = a.vampire === undefined ? undefined : state.cards[a.vampire];
+        const rescuer = state.cards[a.minion];
+        const fromRescued = Math.min(a.rescuedPays ?? 0, cost);
+        const fromRescuer = cost - fromRescued;
+        if (
+          rescued &&
+          rescuer &&
+          parseZoneId(rescued.zone).name === 'torpor' &&
+          (rescued.counters.blood ?? 0) >= fromRescued &&
+          (rescuer.counters.blood ?? 0) >= fromRescuer
+        ) {
+          for (const [c, n] of [
+            [rescuer, fromRescuer],
+            [rescued, fromRescued],
+          ] as const) {
+            if (n > 0) {
+              bodies.push({ type: 'CounterAdjusted', card: c.id, counter: 'blood', delta: -n });
+            }
+          }
+          bodies.push(
+            withOptional(
+              {
+                type: 'CardMoved',
+                card: rescued.id,
+                from: rescued.zone,
+                to: zoneId(rescued.controller, 'ready'),
+                position: 'bottom',
+                faceDown: false,
+              } as const,
+              { cardId: rescued.cardId },
+            ),
+          );
+        }
+      }
+      if (cmd.outcome === 'success' && a.kind === 'diablerie') {
+        // The diablerie, then its blood hunt inside the action; the action concludes after it
+        // (rulebook, "Diablerie"; zero-vtes rules-qa 5.8). Gone from torpor by now, or a vampire
+        // no longer in play or face up: it fizzles, with no blood hunt (28.7).
+        const victim = a.vampire === undefined ? undefined : state.cards[a.vampire];
+        const diablerist = state.cards[a.minion];
+        if (
+          victim &&
+          diablerist &&
+          parseZoneId(victim.zone).name === 'torpor' &&
+          !victim.faceDown &&
+          diablerist.zone === zoneId(diablerist.controller, 'ready') &&
+          !diablerist.faceDown
+        ) {
+          return settle(state, [
+            ...diablerie(state, diablerist, victim, ctx.catalog),
+            ...bloodHunt(state, a, diablerist),
+          ]);
         }
       }
       bodies.push(...finishActionCard(a, cmd.outcome), ...concluded(state, a, cmd.outcome));
@@ -1311,6 +1403,12 @@ function bodiesFor(
         case 'other': {
           const n = votes ?? reject('invalid', 'How many votes?');
           const src = combatSource(cmd.card, s);
+          // Named from a card in play, fine; played from the hand, a polling-step effect (PIB 20150105).
+          if (hunt && src.played)
+            reject(
+              'forbidden',
+              'A blood hunt takes no cards played in its polling: votes from minions, the Edge, cards in play or a burned political action card only',
+            );
           bodies.push(
             ...src.with(
               cast(
@@ -1419,20 +1517,10 @@ function bodiesFor(
       if (diablerist.faceDown || !IN_PLAY_ZONES.has(parseZoneId(diablerist.zone).name)) {
         reject('invalid', 'The blocking vampire is no longer in play');
       }
-      const bodies = diablerie(state, diablerist, victim, ctx.catalog);
-      // The blood hunt follows at once (rulebook, "The Blood Hunt"): not an action, no cards
-      // played before votes; polling from the acting Methuselah, as for any blood hunt.
-      const order = windowOrder(seatRefs(state), a.seat, { directedAt: a.seat });
-      bodies.push(
-        withOptional({ type: 'BloodHuntCalled', on: diablerist.id } as const, {
-          cardId: diablerist.cardId,
-        }),
-        {
-          type: 'WindowOpened',
-          window: { kind: 'polling', phase: 'minion', order, cursor: 0, passes: 0 },
-        },
-      );
-      return settle(state, bodies);
+      return settle(state, [
+        ...diablerie(state, diablerist, victim, ctx.catalog),
+        ...bloodHunt(state, a, diablerist),
+      ]);
     }
 
     case 'EndReferendum': {
@@ -2081,6 +2169,23 @@ function closeWindow(state: GameState, sx: Settling, now: string, by: ActorRef):
 }
 
 /**
+ * The blood hunt after a diablerie (rulebook, "The Blood Hunt"): at once, inside the action; not
+ * an action of its own, so no cards played before votes; polling from the acting Methuselah.
+ */
+function bloodHunt(state: GameState, a: ActionState, diablerist: CardInstance): EventBody[] {
+  const order = windowOrder(seatRefs(state), a.seat, { directedAt: a.seat });
+  return [
+    withOptional({ type: 'BloodHuntCalled', on: diablerist.id } as const, {
+      cardId: diablerist.cardId,
+    }),
+    {
+      type: 'WindowOpened',
+      window: { kind: 'polling', phase: 'minion', order, cursor: 0, passes: 0 },
+    },
+  ];
+}
+
+/**
  * A diablerie (rulebook, "Diablerie"): the victim's blood moves to the diablerist, what's over its
  * capacity draining off, and the victim is burned with every card and counter on it. Taking the
  * victim's equipment, and a Discipline from an older victim, are left to the players' moves.
@@ -2153,11 +2258,14 @@ function referendumEnd(
       ...concluded(state, a, 'success'),
     ];
   }
-  // A blood hunt after a blocker's diablerie ends the leave-torpor action it blocked.
+  // A blood hunt after a blocker's diablerie ends the leave-torpor action it blocked; after a
+  // diablerie action, that action, successful (zero-vtes rules-qa 5.8).
   const ends: EventBody[] =
     a.kind === 'leave-torpor' && a.blocker !== undefined
       ? [...finishedActionCard(state, ids, a, 'blocked'), ...concluded(state, a, 'blocked')]
-      : [];
+      : a.kind === 'diablerie'
+        ? [...finishedActionCard(state, ids, a, 'success'), ...concluded(state, a, 'success')]
+        : [];
   const on = r.on === undefined ? undefined : state.cards[r.on];
   if (!resolved.passed || !on || !IN_PLAY_ZONES.has(parseZoneId(on.zone).name)) {
     return [resolved, ...ends];
@@ -2181,7 +2289,7 @@ function referendumEnd(
 
 /**
  * Combat starts (docs/flow.md, "Combat"): round 1, close range, before range is determined; each
- * step a window between the two combatants' Methuselahs, the acting minion's first.
+ * step a window over every Methuselah, the two combatants' first (zero-vtes rules-qa 98.1).
  */
 function combatOpening(
   state: GameState,
@@ -2189,9 +2297,18 @@ function combatOpening(
   acting: InstanceId,
   opposing: InstanceId,
 ): EventBody[] {
-  const order = [acting, opposing]
-    .map((id) => state.cards[id]?.controller)
-    .filter((s, i, all): s is SeatId => s !== undefined && all.indexOf(s) === i);
+  // Every Methuselah is polled in each step: the acting minion's, the opposing one's, then the
+  // others clockwise from the acting one, for cards that reach a combat they're not in
+  // (zero-vtes rules-qa 98.1, 98.2).
+  const [actingSeat, opposingSeat] = [acting, opposing].map((id) => state.cards[id]?.controller);
+  const order =
+    actingSeat === undefined
+      ? []
+      : windowOrder(
+          seatRefs(state),
+          actingSeat,
+          opposingSeat === undefined ? 'undirected' : { directedAt: opposingSeat },
+        );
   return [
     {
       type: 'CombatStarted',
@@ -2531,11 +2648,9 @@ function nextTurn(state: GameState, now = '', by: ActorRef = { kind: 'system' })
         if (s.cards[id]?.locked) unlocks.push({ type: 'CardLocked', card: id, locked: false });
       }
     }
-    return [
-      ...out,
-      { type: 'PhaseAdvanced', turn: { number: turn.number + 1, seat: seatId, phase: 'unlock' } },
-      ...unlocks,
-    ];
+    const next: Turn = { number: turn.number + 1, seat: seatId, phase: 'unlock' };
+    if (shortHanded(s, seatId)) next.shortHand = true;
+    return [...out, { type: 'PhaseAdvanced', turn: next }, ...unlocks];
   }
   return out;
 }

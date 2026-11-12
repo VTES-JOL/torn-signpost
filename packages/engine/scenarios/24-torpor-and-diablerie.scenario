@@ -48,13 +48,15 @@ log public The action succeeded
 expect count A:torpor 1
 expect card A:ready:1 blood 2
 
-# The other has 1 blood: it can't pay, so the action fails.
+# The other has 1 blood: it can't pay, so the action fizzles: successful, with no effect, nothing
+# paid (zero-vtes rules-qa 3.6).
 A> leavetorpor A:torpor:1
 B> pass
 C> pass
-reject:not-enough A> resolve success
-A> resolve failure
+A> resolve success
+log public The action succeeded
 expect count A:torpor 1
+expect card A:torpor:1 blood 1
 
 # Blocked. Bob tries with one prince, then switches to the other: the first attempt fails, and
 # only one runs at a time (114.1). Nobody else does anything, so the block succeeds: no combat.

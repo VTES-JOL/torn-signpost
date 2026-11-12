@@ -547,17 +547,19 @@ Done in this increment:
   no after-resolution window (§3.2). Scenario 26.
 - **`EndCombat` and the end of round** (rules-qa 19.5): a combat ended early goes to End of round,
   no strike resolving; its window still opens. Scenario 26.
+- **Combat for everyone else** (§12.1; rules-qa 98.1, 98.2): each combat step polls every
+  Methuselah, the combatants' first, then the others clockwise from the acting one; they play a
+  card or pass, automatically unless they hold the step. Scenario 27.
+- **Withdrawal's short hand** (95.3): the empty library and short hand are read as the turn begins
+  (`Turn.shortHand`), not when announcing. Scenario 16.
+- **Blood hunts take no polling-step cards** (PIB 20150105; digest §24.3): no card played from the
+  hand in a blood hunt's polling. Scenario 23.
+- **Rescue and diablerie as actions** (rulebook; digest §11.6, §11.7; rules-qa 3.6, 5.8, 16.4,
+  28.7, 48.8): `rescue` (2 blood split as announced) and `diablerie` (the blood hunt inside the
+  action), directed when the vampire in torpor is another's. A leave-torpor action that can't pay
+  now fizzles instead of being refused (3.6). Scenario 28.
 
-Still to do, in rough order:
-
-1. **Combat for everyone else** (§12.1; rules-qa 98.1, 98.2): after the two combatants, every
-   other Methuselah clockwise from the acting one has the impulse in each step, for cards that
-   reach a combat they're not in. Today only the combatants' Methuselahs do.
-2. Smaller: withdrawal's short hand read as the turn began (95.3); no polling-step cards in a
-   blood hunt (PIB 20150105).
-3. **Rescue and diablerie as actions** of their own (rulebook, "Rescue a Vampire from Torpor",
-   "Diablerise a Vampire in Torpor"): today an `other` action with the players' moves, and
-   `CallBloodHunt`.
+Nothing left from the review: every gap below is done.
 
 Process: cite zero-vtes with the commit it was checked at, and start each rules feature from the
 digest's section for that mechanism, not only rules-qa.

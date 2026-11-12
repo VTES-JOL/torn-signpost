@@ -35,16 +35,18 @@ what the API or engine would refuse anyway).
 - **Lobby**: create games; join and leave open ones; start a game they created [API].
 - **At their seat** (GAME-10) [engine]: anything on their own cards and zones and on public ones;
   never another player's hidden zones. The structured flow: phases, actions, blocks, passes,
-  holds, auto-pass and stops. In combat, only the two combatants' Methuselahs act in its steps
-  (maneuvers, strikes, cards, passes); either of them can end it (M6.4). In a referendum
+  holds, auto-pass and stops. In combat, only the two combatants' Methuselahs maneuver, strike,
+  prevent and press, and either of them can end it (M6.4); every other Methuselah may play a card
+  in its steps, after them, or hold a step (zero-vtes rules-qa 98.1, M6.7). In a referendum
   (M6.5) every Methuselah still in the game casts votes and ballots from their own sources, makes
   any vampire abstain with a card effect, or abstains; the caller chooses the terms, can end the
   referendum at once, and calls a blood hunt as their own action resolves. Every Methuselah has the
   impulse in an action's would-be-successful and after-resolution windows; the acting one's resolve,
   next action or end of phase passes them when nobody else would stop it (M6.7). A vampire of theirs in
   torpor may take the leave-torpor action; one that blocks it lets them diablerize it, or not
-  (the blood hunt follows at once). While their block attempt is under way they may switch it to
-  another minion (rules-qa 114.1).
+  (the blood hunt follows at once). A ready vampire of theirs may rescue or diablerize any vampire
+  in torpor (M6.7). While their block attempt is under way they may switch it to another minion
+  (rules-qa 114.1).
 - **Chat** in games they're seated in (or have joined) [API], also once the game is over (F3).
   `@name` mentions notify.
 - **Call a judge**, one open call each (GAME-18) [engine].

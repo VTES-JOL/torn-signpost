@@ -851,16 +851,24 @@ describe('withdrawal (GAME-09)', { timeout: 60_000 }, () => {
     });
   });
 
-  it('a combat step is a window between the combatants’ Methuselahs only (M6.4)', () => {
+  it('a combat step polls every Methuselah, the combatants’ first (M6.4; rules-qa 98.1)', () => {
     forEveryCommand(({ after }) => {
       const c = after.action?.combat;
       if (after.window?.kind === 'combat') {
         expect(c, 'combat state').toBeDefined();
-        // Both combatants' Methuselahs, unless a combatant has since left play by hand (and with
-        // it the record of who controls it).
+        // Both combatants' Methuselahs first, unless a combatant has since left play by hand (and
+        // with it the record of who controls it); then the others, each once, none out of the game.
         const order = after.window.order;
-        expect(order.length).toBeLessThanOrEqual(2);
-        for (const seat of combatSeats(after)) expect(order).toContain(seat);
+        const fighting = combatSeats(after);
+        for (const seat of fighting) {
+          expect(order).toContain(seat);
+          expect(order.indexOf(seat)).toBeLessThan(fighting.length);
+        }
+        expect(new Set(order).size).toBe(order.length);
+        for (const seat of order) {
+          const x = after.seats.find((s) => s.id === seat);
+          expect(x && !x.ousted && !x.withdrawn, `seat ${seat} in the game`).toBe(true);
+        }
       }
       if (c) {
         expect(after.action?.stage).toBe('combat');

@@ -16,6 +16,7 @@ import {
   type InstanceId,
   LEAVE_TORPOR_COST,
   type PHASES,
+  RESCUE_COST,
 } from './model.ts';
 import { prey, type SeatId } from './seating.ts';
 import { canWithdraw } from './withdrawal.ts';
@@ -124,6 +125,8 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
     const leaving = action.kind === 'leave-torpor';
     if (leaving)
       steps.push({ kind: 'amount', label: 'Blood paid', min: 0, default: LEAVE_TORPOR_COST });
+    if (action.kind === 'rescue')
+      steps.push({ kind: 'amount', label: 'Blood paid in all', min: 0, default: RESCUE_COST });
     if (action.kind === 'bleed')
       steps.push({ kind: 'toggle', label: 'Take the Edge', default: !me.hasEdge });
     // A political action's terms are chosen as it succeeds (M6.5, R1).
@@ -135,7 +138,11 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
         ? 'Successful: call the referendum'
         : leaving
           ? 'Successful: out of torpor'
-          : 'Successful',
+          : action.kind === 'rescue'
+            ? 'Successful: rescued'
+            : action.kind === 'diablerie'
+              ? 'Successful: diablerize, then the blood hunt'
+              : 'Successful',
       primary: true,
       confirm: true,
       steps,
@@ -179,7 +186,7 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
         }),
       });
     }
-    // Diablerie is an action of its own ("other"): its blood hunt comes as it resolves (M6.5b).
+    // A diablerie a card made, as an "other" action: its blood hunt comes as it resolves (M6.5b).
     if (action.kind === 'other') {
       offers.push({
         id: 'blood-hunt',
@@ -198,7 +205,8 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
     return offers;
   };
 
-  if (window?.kind === 'combat' && action?.combat) {
+  // A Methuselah outside the combat has the window's ordinary offers (zero-vtes rules-qa 98.2).
+  if (window?.kind === 'combat' && action?.combat && combatantOf(view, seat) !== undefined) {
     return combatOffers(view, seat, { hand, inPlay, playCard });
   }
   if (window?.kind === 'polling' && action?.referendum) {
@@ -420,6 +428,58 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
           return cmd;
         },
       });
+    }
+    // Rescue or diablerize a vampire in torpor, anyone's (rulebook, "Rescue a Vampire from
+    // Torpor", "Diablerize a Vampire in Torpor"): by a ready vampire.
+    const isVampire = (m: InstanceId) => {
+      const c = view.cards[m];
+      return !!c && !c.faceDown && (!c.cardId || catalog.get(c.cardId)?.kind !== 'library');
+    };
+    const actors = unlocked.filter(isVampire);
+    const torpid = view.seats
+      .filter((x) => !x.ousted && !x.withdrawn)
+      .flatMap((x) => zoneCards(view, zoneId(x.id, 'torpor')))
+      .filter((m) => view.cards[m]?.attachedTo === undefined && isVampire(m));
+    if (actors.length && torpid.length) {
+      const pick: OfferStep[] = [
+        { kind: 'card', label: 'Acting vampire', candidates: actors },
+        { kind: 'card', label: 'Vampire in torpor', candidates: torpid },
+      ];
+      offers.push(
+        {
+          id: 'action:rescue',
+          label: 'Rescue from torpor',
+          confirm: true,
+          explain: `Costs ${RESCUE_COST} blood as it succeeds, shared as you choose now.`,
+          steps: [
+            ...pick,
+            { kind: 'amount', label: 'Blood the rescued vampire pays', min: 0, default: 0 },
+          ],
+          build: (values) => {
+            const pays = v(values, 2);
+            return {
+              type: 'DeclareAction',
+              kind: 'rescue',
+              minion: id(values, 0),
+              vampire: id(values, 1),
+              ...(typeof pays === 'number' && pays > 0 ? { rescuedPays: pays } : {}),
+            };
+          },
+        },
+        {
+          id: 'action:diablerie',
+          label: 'Diablerize',
+          confirm: true,
+          explain: 'If it succeeds: its blood, and a blood hunt on your vampire.',
+          steps: pick,
+          build: (values) => ({
+            type: 'DeclareAction',
+            kind: 'diablerie',
+            minion: id(values, 0),
+            vampire: id(values, 1),
+          }),
+        },
+      );
     }
     // Bleeding anyone but your prey needs a card effect: the action card, or one in play.
     const myPrey = prey(seatRefs(view), seat);
@@ -655,7 +715,8 @@ function pollingOffers(
       {
         kind: 'card',
         label: 'Card they come from',
-        candidates: [...hand, ...my.inPlay],
+        // A blood hunt takes no cards played in its polling (PIB 20150105).
+        candidates: r.kind === 'blood-hunt' ? [...my.inPlay] : [...hand, ...my.inPlay],
         optional: true,
       },
       { kind: 'text', label: 'Note', optional: true },
@@ -672,7 +733,7 @@ function pollingOffers(
       };
     },
   });
-  if (hand.length) offers.push(my.playCard('Play a card', hand));
+  if (hand.length && r.kind !== 'blood-hunt') offers.push(my.playCard('Play a card', hand));
   if (my.inPlay.length) {
     offers.push({
       id: 'use',

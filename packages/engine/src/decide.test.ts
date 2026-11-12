@@ -398,6 +398,8 @@ describe('withdrawal (GAME-09, docs/m6-plan.md M6.2)', () => {
     const vampire = s.zones[`${t}:uncontrolled`]?.[0] ?? '';
     s = apply(s, { type: 'MoveCard', card: vampire, to: `${t}:ready` }, as(t));
     s = apply(s, { type: 'AdjustCounter', card: vampire, counter: 'blood', delta: 3 }, judge);
+    // As if the turn had begun so: the short hand is read then (zero-vtes rules-qa 95.3).
+    if (s.turn) s = { ...s, turn: { ...s.turn, shortHand: true } };
     return { s, t, vampire };
   }
 
@@ -407,9 +409,13 @@ describe('withdrawal (GAME-09, docs/m6-plan.md M6.2)', () => {
       availableActions(st, seat, catalog).some((o) => o.id === 'withdraw');
     expect(offered(s, t)).toBe(true);
     expect(run(s, { type: 'Withdraw' }, as(t)).ok).toBe(true);
-    // A full hand: neither.
+    // The hand is read as the turn began (95.3): a card back in hand now changes nothing, but a
+    // turn begun with a full hand allows neither.
     const card = s.zones[`${t}:ashHeap`]?.[0] ?? '';
-    const full = apply(s, { type: 'MoveCard', card, to: `${t}:hand` }, as(t));
+    const refilled = apply(s, { type: 'MoveCard', card, to: `${t}:hand` }, as(t));
+    expect(offered(refilled, t)).toBe(true);
+    const { shortHand: _, ...began } = s.turn ?? { number: 1, seat: t, phase: 'unlock' as const };
+    const full = { ...s, turn: began };
     expect(offered(full, t)).toBe(false);
     expect(run(full, { type: 'Withdraw' }, as(t)).ok).toBe(false);
     // Pending already: neither.

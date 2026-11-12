@@ -93,7 +93,10 @@ function currentWaits(state: GameState): Omit<Wait, 'since'>[] {
   if (state.window) {
     const holder = impulseHolder(state);
     if (!live(holder)) return [];
-    if (state.window.kind === 'combat') return [{ seat: holder, kind: 'combat' }];
+    if (state.window.kind === 'combat') {
+      // A Methuselah outside the combat may play what reaches it (zero-vtes rules-qa 98.2).
+      return [{ seat: holder, kind: combatantOf(state, holder) ? 'combat' : 'impulse' }];
+    }
     if (state.window.kind === 'polling') return [{ seat: holder, kind: 'vote' }];
     // Not blocked: the acting Methuselah resolves it, or plays first (zero-vtes digest §10.1).
     if (state.window.kind === 'would-succeed' && holder === a?.seat) {
@@ -170,7 +173,7 @@ export function passesAutomatically(state: GameState, seat: SeatId): boolean {
   const w = state.window;
   if (!w) return false;
   // Combat steps: only a standing pass (C6), and never past a strike still to announce.
-  if (w.kind === 'combat') {
+  if (w.kind === 'combat' && combatantOf(state, seat) !== undefined) {
     const c = state.action?.combat;
     if (!c) return false;
     if (c.step === 'strikes') {
@@ -184,6 +187,7 @@ export function passesAutomatically(state: GameState, seat: SeatId): boolean {
   }
   // Polling: everyone passes by hand, unless they abstain from the rest of it (M6.5, R4).
   if (w.kind === 'polling') return !!state.action?.referendum?.abstaining?.includes(seat);
+  // Outside a combat, the Methuselahs pass its steps as they would any window (rules-qa 98.1).
   if (w.order[0] === seat) return false;
   const a = state.action;
   if (w.kind === 'blocks' && a) {

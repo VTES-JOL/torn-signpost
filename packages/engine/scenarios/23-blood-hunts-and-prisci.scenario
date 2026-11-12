@@ -62,7 +62,9 @@ expect action none
 
 # The blood hunt: Alexis's priscus diablerizes one of Sarah's princes, sent to torpor first.
 # The referendum is not an action of its own: no cards played before votes, and no calling card;
-# anyone may burn a political action card for a vote (5.2). If it passes, the diablerist burns.
+# anyone may burn a political action card for a vote (5.2). Nor are cards played in its polling
+# (PIB 20150105; zero-vtes digest §24.3): votes come from minions, the Edge, cards in play or a
+# burned political action card. If it passes, the diablerist burns.
 S> next
 S> next
 S> next
@@ -82,6 +84,8 @@ X> pass
 P> vote for P:ready:1
 P> pass
 reject S> vote for card
+reject:forbidden S> play S:hand:1
+reject:forbidden S> vote for other 1 via S:hand:1
 S> vote for S:ready:1
 S> vote for S:hand:1
 expect votes 3 0

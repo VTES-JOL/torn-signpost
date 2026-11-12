@@ -132,6 +132,11 @@ export interface Turn {
   number: number;
   seat: SeatId;
   phase: Phase;
+  /**
+   * The seat began this turn with an empty library and less than a full hand, so it may announce
+   * a withdrawal this unlock phase: read as the turn begins (zero-vtes rules-qa 95.3).
+   */
+  shortHand?: true;
 }
 
 export const ACTION_KINDS = [
@@ -143,6 +148,10 @@ export const ACTION_KINDS = [
   'employ',
   /** A vampire in torpor acts to leave it (rulebook, "Leave Torpor"): undirected, 2 blood. */
   'leave-torpor',
+  /** A ready vampire rescues a vampire in torpor (rulebook, "Rescue a Vampire from Torpor"). */
+  'rescue',
+  /** A ready vampire diablerizes a vampire in torpor (rulebook, "Diablerize a Vampire in Torpor"). */
+  'diablerie',
   'other',
 ] as const;
 export type ActionKind = (typeof ACTION_KINDS)[number];
@@ -153,6 +162,9 @@ export type ActionOutcome = 'success' | 'failure' | 'blocked';
 /** What leaving torpor costs by default (rulebook, "Leave Torpor"). */
 export const LEAVE_TORPOR_COST = 2;
 
+/** What a rescue costs by default, split as announced (rulebook; zero-vtes rules-qa 48.8). */
+export const RESCUE_COST = 2;
+
 /** A minion action in progress (GAME-06): declared → block window → combat or resolution. */
 export interface ActionState {
   seat: SeatId;
@@ -160,6 +172,11 @@ export interface ActionState {
   kind: ActionKind;
   /** The seat the action is directed at; undirected actions have none. Bleeds always have one. */
   target?: SeatId;
+  /** A rescue's or a diablerie's vampire in torpor. */
+  vampire?: InstanceId;
+  vampireCardId?: CardId;
+  /** A rescue: the blood the rescued vampire pays as it resolves, the rescuer the rest (48.8). */
+  rescuedPays?: number;
   /** The action card played with it, still in the hand until the action ends. Public. */
   card?: InstanceId;
   cardId?: CardId;

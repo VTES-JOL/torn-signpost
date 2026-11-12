@@ -155,7 +155,8 @@ acting Methuselah gets **Hold** (`Hold`), unless it is already holding.
 - Political action: the terms of the referendum (optional text); the offer reads **Successful:
   call the referendum**.
 
-An `other` action at `resolution` (a diablerie) also offers **Call a blood hunt…**: the
+A rescue's success asks for the blood paid in all (2 by default), a diablerie's for nothing. An
+`other` action at `resolution` (a diablerie by a card) also offers **Call a blood hunt…**: the
 diablerist, the acting vampire unless another is chosen (`CallBloodHunt`).
 
 ### 3. No action, no window
@@ -203,6 +204,11 @@ Checks:
 - The minion is the sender's, in their ready region, and unlocked. For `leave-torpor` it is one of
   their vampires in torpor, face up and unlocked instead: a vampire in torpor can take no other
   action (rulebook, "Torpor"). Leaving torpor is undirected; a target is ignored.
+- `rescue` and `diablerie` (rulebook, "Rescue a Vampire from Torpor", "Diablerize a Vampire in
+  Torpor"): the minion is a vampire, and `vampire` a face-up vampire in torpor, anyone's. The
+  action is directed at that vampire's controller when it's another Methuselah's, undirected when
+  it's the sender's own (zero-vtes rules-qa 16.4); a target is ignored. A rescue's
+  `rescuedPays` (0 to 2) is the blood the rescued vampire pays, chosen now (48.8).
 - The target, if given, isn't ousted or withdrawn. Targeting your own seat counts as no target.
 - A bleed without a target goes to the sender's prey; it's rejected if there's nobody to bleed.
 - The action card, if given, is in the sender's hand. It stays there until the action ends.
@@ -280,9 +286,17 @@ Effect:
 - Successful hunt: the minion gains that much blood, capped at its capacity when the catalog
   knows it.
 - Successful leave-torpor action: the vampire moves to its ready region and pays `amount` blood (2
-  by default, the rulebook's cost; less for a card that reduces it). It's refused if the vampire
-  can't pay. Out of torpor already, nothing happens. `combat` is refused: a vampire in torpor
-  can't enter combat.
+  by default, the rulebook's cost; less for a card that reduces it). If it can't pay, or is out of
+  torpor already, the action fizzles: successful, nothing happens, nothing is paid (zero-vtes
+  rules-qa 3.6, 28.7). `combat` is refused: a vampire in torpor can't enter combat.
+- Successful rescue: `amount` blood in all (2 by default); the rescued vampire pays its share as
+  announced, the rescuer the rest, and the rescued vampire moves to its controller's ready region.
+  A share its payer can't meet, or the vampire out of torpor, fizzles it (rules-qa 3.6, 28.7,
+  48.8).
+- Successful diablerie: the diablerie (its blood to the diablerist, up to capacity; the victim
+  burned with its cards), then the blood hunt at once, polled from the acting Methuselah; the
+  action concludes successful when it's over (rules-qa 5.8). The victim out of torpor, or either
+  vampire face down or out of play, it fizzles with no blood hunt (28.7).
 - The action card is finished and the action concludes: its after-resolution window opens
   ([Action windows](#action-windows)).
 
@@ -461,8 +475,8 @@ and the lobby lists it as finished.
 ## Withdrawal
 
 With an **empty library** and **less than a full hand** (for now: fewer than 7 cards; cards that
-change the hand size aren't tracked yet), a Methuselah may `Withdraw` in their own **unlock
-phase**; the toolbar offers it only then, and asks for confirmation (GAME-09; zero-vtes rules-qa
+change the hand size aren't tracked yet), both read **as their turn begins** (zero-vtes rules-qa
+95.3; `Turn.shortHand`), a Methuselah may `Withdraw` in their own **unlock phase**; the toolbar offers it only then, and asks for confirmation (GAME-09; zero-vtes rules-qa
 Batch 95). It is public. They play on as usual, but the withdrawal no longer holds
 (`WithdrawalBroken`) if, before their next unlock phase:
 
@@ -487,9 +501,12 @@ Each round goes through the rulebook's steps, each an impulse window (`kind: 'co
 
 **Before range → Range → Before strikes → Strikes → Damage → Press → End of round**
 
-- **Who is in it.** Only the two combatants' Methuselahs, the acting minion's first. Other players
-  can't play cards in a combat step (they keep the free-form commands). Auto-pass settings and
-  stops don't apply.
+- **Who is in it.** Every Methuselah: the acting minion's first, then the opposing one's, then the
+  others clockwise from the acting one, for cards that reach a combat they're not in (Rötschreck,
+  Abjure; zero-vtes rules-qa 98.1, 98.2). Only the combatants maneuver, strike, prevent and
+  press; the others play a card or pass, and pass automatically as in any window unless they
+  hold the step or their auto-pass is off. The combatants never pass automatically except by
+  their standing passes. A hold lasts one step.
 - **Moving on.** Doing something (`Maneuver`, `PlayCard`, `UseCard`, `Prevent`,
   `AdditionalStrike`, `Press`) returns the impulse to the acting minion's Methuselah, who may play
   again, and voids the passes (`ImpulseReset`; rulebook, "Impulse"). The other side answers once
@@ -595,11 +612,15 @@ referendum, passed or failed, for cards that do (Yoruba Shrine 35.4, Fakir al Si
 los Muertos 52.3). What follows is as for a tally.
 
 **Blood hunts** (`CallBloodHunt { minion? }`; rulebook, "The Blood Hunt"): the acting Methuselah,
-or a judge, calls one while the action resolves, after a diablerie played out by hand (the
-diablerie action is `other`). It's not an action: polling opens at once, from the acting
+or a judge, calls one while an `other` action resolves, after a diablerie a card made and the
+players played out by hand. A `diablerie` action, and a blocked leave-torpor action's
+`Diablerize`, call theirs themselves. It's not an action: polling opens at once, from the acting
 Methuselah, with no cards played before votes and no calling card; anyone may burn a political
-action card for a vote (rules-qa 5.2). If it passes, the diablerist is burned with the cards on
-it; either way, the action goes back to resolving.
+action card for a vote (rules-qa 5.2). Nor are cards played in its polling (PIB 20150105; digest
+§24.3): `PlayCard`, and votes from a card played from the hand, are refused; votes named from a
+card in play still count. If it passes, the diablerist is burned with the cards on it; then a
+`diablerie` action concludes successful, a blocked leave-torpor action blocked, and an `other`
+action goes back to resolving.
 
 ## How windows close
 

@@ -17,6 +17,7 @@ import {
   type ZoneId,
 } from './model.ts';
 import type { SeatId } from './seating.ts';
+import { shortHanded } from './withdrawal.ts';
 import { HIDDEN_ZONES, IN_PLAY_ZONES, parseZoneId, zoneId } from './zones.ts';
 
 export const ENGINE_VERSION = '0.3.0';
@@ -74,7 +75,11 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
         zoneOf(d, c.zone).push(c.id);
       }
       const first = ev.seats[0];
-      if (first) d.turn = { number: 1, seat: first.id, phase: 'unlock' };
+      if (first) {
+        d.turn = { number: 1, seat: first.id, phase: 'unlock' };
+        // A library emptied by the opening draw (rules-qa 95.3).
+        if (shortHanded(d, first.id)) d.turn.shortHand = true;
+      }
       d.status = 'active';
       break;
     }
@@ -390,7 +395,11 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
       if (ev.continues) next.continues = true;
       if (ev.ending) next.ending = true;
       d.action = { ...actionOf(d), combat: next };
-      if (d.window) d.window = { ...d.window, cursor: 0, passes: 0 };
+      // Each step is a window of its own: holds asked in the last one end with it.
+      if (d.window) {
+        const { holds: _, ...w } = d.window;
+        d.window = { ...w, cursor: 0, passes: 0 };
+      }
       break;
     }
     case 'DamagePending': {

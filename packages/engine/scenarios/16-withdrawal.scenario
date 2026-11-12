@@ -12,7 +12,7 @@ library A "Iron Ward" *5
 crypt B "Tomas Grey" *8
 library B "Signal Fire" *5
 crypt C "Ilse Várga" *8
-library C "Quick Feed" *20
+library C "Quick Feed" *8
 start
 expect turn 1 A unlock
 expect count A:library 0
@@ -37,7 +37,15 @@ B> next
 B> next
 B> next
 expect turn 3 C unlock
-# Carol still has cards in her library.
+# Carol still has a card in her library.
+reject:not-now C> withdraw
+# She draws it and discards down to 6, but "less than a full hand" with an empty library is read
+# as the turn begins (zero-vtes rules-qa 95.3): not this turn.
+C> draw
+C> move C:hand:1 ashHeap
+C> move C:hand:1 ashHeap
+expect count C:library 0
+expect count C:hand 6
 reject:not-now C> withdraw
 C> next
 C> next

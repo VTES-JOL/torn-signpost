@@ -124,6 +124,11 @@ export const CONSOLE_COMMANDS: Record<string, Syntax> = {
   },
   bloodhunt: { args: ['card'], usage: 'bloodhunt [<vampire>]  (as your action resolves)' },
   leavetorpor: { args: ['card'], usage: 'leavetorpor <vampire>  (a vampire of yours in torpor)' },
+  rescue: {
+    args: ['card', 'card', 'count'],
+    usage: 'rescue <vampire> <vampire in torpor> [n]  (n: blood the rescued vampire pays)',
+  },
+  diablerie: { args: ['card', 'card'], usage: 'diablerie <vampire> <vampire in torpor>' },
   diablerize: {
     args: ['options'],
     usage: 'diablerize [no]  (you blocked a vampire leaving torpor)',
@@ -587,6 +592,22 @@ function parse(tokens: string[], ctx: ConsoleContext): Command {
       extra(1);
       if (!args.length) usage();
       return { type: 'DeclareAction', kind: 'leave-torpor', minion: card(0).id };
+    case 'rescue': {
+      extra(3);
+      if (args.length < 2) usage();
+      const pays = args[2] === undefined ? 0 : integer(args[2]);
+      return {
+        type: 'DeclareAction',
+        kind: 'rescue',
+        minion: card(0).id,
+        vampire: card(1).id,
+        ...(pays > 0 ? { rescuedPays: pays } : {}),
+      };
+    }
+    case 'diablerie':
+      extra(2);
+      if (args.length < 2) usage();
+      return { type: 'DeclareAction', kind: 'diablerie', minion: card(0).id, vampire: card(1).id };
     case 'diablerize': {
       extra(1);
       const answer = args[0]?.toLowerCase();

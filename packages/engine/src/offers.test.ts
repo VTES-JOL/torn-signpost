@@ -157,7 +157,8 @@ describe('combat offers (docs/m6-plan.md M6.4a)', () => {
       'endcombat',
     ]);
     expect(at(COMBAT, 'B').offers.map((o) => o.id)).toEqual(['pass-strikes', 'endcombat']);
-    expect(at(COMBAT, 'C').offers).toEqual([]);
+    // Carol, outside the combat, is polled after the combatants (rules-qa 98.1): she may hold.
+    expect(at(COMBAT, 'C').offers.map((o) => o.id)).toEqual(['hold']);
     expect(byId(start.offers, 'pass-strikes').build([])).toEqual({
       type: 'PassUntil',
       until: 'strikes',

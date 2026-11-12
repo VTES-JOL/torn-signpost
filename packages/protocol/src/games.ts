@@ -102,6 +102,8 @@ export const PlayerCommand = z.discriminatedUnion('type', [
     target: opt(Id),
     card: opt(Id),
     override: opt(OverrideClaim),
+    vampire: opt(Id),
+    rescuedPays: opt(z.number().int().min(0).max(20)),
   }),
   z.strictObject({ type: z.literal('Pass') }),
   z.strictObject({ type: z.literal('Block'), minion: Id, override: opt(OverrideClaim) }),

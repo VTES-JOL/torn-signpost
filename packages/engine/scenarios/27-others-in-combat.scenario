@@ -1,0 +1,58 @@
+# Combat for everyone else (zero-vtes rules-qa 98.1, 98.2, checked at 1f33be5): each combat step
+# polls every Methuselah, the acting minion's first, then the opposing one's, then the others
+# clockwise from the acting one, for cards that reach a combat they're not in (Rötschreck,
+# Abjure). They pass automatically unless they hold the step, and can't maneuver or strike.
+# Alice plays first; Bob blocks her hunt; Carol and Dave are outside the combat.
+seed 27
+seat A alice
+seat B bob
+seat C carol
+seat D dave
+crypt A "Vera Nightfall" *12
+library A "Iron Ward" *40
+crypt B "Tomas Grey" *12
+library B "Quick Feed" *40
+crypt C "Ilse Várga" *12
+library C "Signal Fire" *40
+crypt D "Odile Fen" *12
+library D "Iron Ward" *40
+start
+
+A> move A:uncontrolled:1 ready
+B> move B:uncontrolled:1 ready
+C> move C:uncontrolled:1 ready
+A> transfer +4 A:ready:1
+B> transfer +4 B:ready:1
+A> next
+A> next
+expect turn 1 A minion
+
+A> hunt A:ready:1
+B> block B:ready:1
+A> pass
+B> pass
+D> pass
+expect action hunt A combat
+expect combat 1 before-range close
+
+# Before range, Carol asks the table to wait: after Alice and Bob pass, the impulse comes to her.
+C> hold
+A> pass
+B> pass
+expect impulse C
+expect waiting C:impulse
+reject:forbidden C> maneuver long
+reject:forbidden C> strike hand
+# She plays a card that reaches the combat; the impulse returns to Alice, the passes start over.
+C> play C:hand:1
+log public Round 1 · Before range: C played Signal Fire
+expect impulse A
+A> pass
+B> pass
+expect impulse C
+C> pass
+# Dave passed automatically; the step is over, and Carol's hold with it.
+expect combat 1 range close
+A> pass
+B> pass
+expect combat 1 before-strikes close

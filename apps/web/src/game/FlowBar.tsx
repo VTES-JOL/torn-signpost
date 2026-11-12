@@ -53,6 +53,8 @@ const VERBS: Record<ActionKind, string> = {
   recruit: 'recruits an ally',
   employ: 'employs a retainer',
   'leave-torpor': 'tries to leave torpor',
+  rescue: 'tries to rescue',
+  diablerie: 'tries to diablerize',
   other: 'takes an action',
 };
 
@@ -70,6 +72,8 @@ const NOUNS: Record<ActionKind, string> = {
   recruit: 'recruit action',
   employ: 'employ action',
   'leave-torpor': 'attempt to leave torpor',
+  rescue: 'rescue',
+  diablerie: 'diablerie',
   other: 'action',
 };
 
@@ -714,11 +718,15 @@ function statusLine(
   const holding = holds.length ? ` · ${holds.map(who).join(', ')} asked to wait` : '';
   const a = view.action;
   if (a) {
-    const target = a.target
-      ? a.kind === 'bleed'
-        ? ` ${who(a.target)}`
-        : ` against ${who(a.target)}`
-      : '';
+    // A rescue or diablerie names its vampire in torpor; whose it is says whom it's against.
+    const target =
+      a.vampire !== undefined
+        ? ` ${name(a.vampire)}`
+        : a.target
+          ? a.kind === 'bleed'
+            ? ` ${who(a.target)}`
+            : ` against ${who(a.target)}`
+          : '';
     const card = a.cardId ? ` with ${name(a.card)}` : '';
     const what = `${name(a.minion)} ${VERBS[a.kind]}${target}${card}${overrideNote(a.override, name, a.card)}`;
     if (a.combat) {

@@ -331,6 +331,14 @@ function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): 
     case 'ActionDeclared': {
       const a = ev.action;
       const verb = ACTION_VERBS[a.kind];
+      // A rescue or diablerie names its vampire; whose it is says whom it's directed at.
+      if (a.vampire !== undefined) {
+        const pays = a.rescuedPays
+          ? `, ${cardName(a.vampire, a.vampireCardId)} paying ${a.rescuedPays} blood`
+          : '';
+        const card = a.card === undefined ? '' : ` with ${cardName(a.card, a.cardId)}`;
+        return `${who}: ${cardName(a.minion)} ${verb} ${cardName(a.vampire, a.vampireCardId)}${card}${pays}`;
+      }
       const target =
         a.target === undefined
           ? ''
@@ -580,6 +588,8 @@ const ACTION_VERBS: Record<ActionKind, string> = {
   recruit: 'recruits an ally',
   employ: 'employs a retainer',
   'leave-torpor': 'tries to leave torpor',
+  rescue: 'tries to rescue',
+  diablerie: 'tries to diablerize',
   other: 'takes an action',
 };
 

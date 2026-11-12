@@ -21,7 +21,15 @@ export const WITHDRAWAL_VP = 0.5;
 
 export type WithdrawalBreak = 'pool' | 'blood' | 'combat';
 
-/** Whether `seat` may announce a withdrawal now (95.3). */
+/** An empty library and less than a full hand (95.3): read for the seat as its turn begins. */
+export function shortHanded(state: GameState, seat: SeatId): boolean {
+  return (
+    zoneCards(state, zoneId(seat, 'library')).length === 0 &&
+    zoneCards(state, zoneId(seat, 'hand')).length < FULL_HAND
+  );
+}
+
+/** Whether `seat` may announce a withdrawal now: in its unlock phase, short-handed as it began (95.3). */
 export function canWithdraw(state: GameState, seat: SeatId): boolean {
   const s = state.seats.find((x) => x.id === seat);
   const t = state.turn;
@@ -33,8 +41,7 @@ export function canWithdraw(state: GameState, seat: SeatId): boolean {
     !s.withdrawing &&
     t?.seat === seat &&
     t.phase === 'unlock' &&
-    zoneCards(state, zoneId(seat, 'library')).length === 0 &&
-    zoneCards(state, zoneId(seat, 'hand')).length < FULL_HAND
+    !!t.shortHand
   );
 }
 

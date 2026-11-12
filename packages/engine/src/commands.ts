@@ -97,6 +97,10 @@ export type Command =
        * action card (the default). An action card the catalog tags needs no claim.
        */
       override?: OverrideClaim;
+      /** A rescue's or a diablerie's vampire in torpor (rulebook, "Rescue", "Diablerie"). */
+      vampire?: InstanceId;
+      /** A rescue: how much of the cost the rescued vampire pays, chosen as it's announced. */
+      rescuedPays?: number;
     }
   /** Pass the impulse. An eligible blocker's pass with no block attempt pending declines to block. */
   | { type: 'Pass' }

@@ -9,8 +9,9 @@ const flow = (page: Page) => page.getByRole('region', { name: 'Game flow' });
 test('a player with an empty library withdraws, and leaves at the start of their next turn', async ({
   browser,
 }) => {
-  // Emptying the library takes some 45 commands, slow when other tests share the API.
-  test.setTimeout(60_000);
+  // Emptying the library and two rounds of the table take some 75 commands, slow when other
+  // tests share the API.
+  test.setTimeout(90_000);
   const [alice, bob, carol] = users('alice', 'bob', 'carol');
   const game = await startGame([alice, bob, carol]);
   const start = await view(alice, game.id);
@@ -21,6 +22,18 @@ test('a player with an empty library withdraws, and leaves at the start of their
   const o = await signedIn(browser, other);
   await p.goto(`/games/${game.id}`);
   await o.goto(`/games/${game.id}`);
+  /** Play on, passing every window on the way, until `done`. */
+  const roundTheTable = async (done: (s: Awaited<ReturnType<typeof view>>) => boolean) => {
+    for (let i = 0; i < 40; i++) {
+      const s = await view(alice, game.id);
+      if (i > 0 && done(s)) return;
+      const wait = waitingOn(s)[0];
+      if (!wait) return;
+      await send(occupant(s, wait.seat), game.id, {
+        type: wait.kind === 'phase' ? 'AdvancePhase' : 'Pass',
+      });
+    }
+  };
   await expect(flow(p)).toContainText('Your decision: Your unlock phase');
   // A full library: no sign of it.
   await expect(flow(p).getByRole('button', { name: 'Withdraw…' })).toHaveCount(0);
@@ -36,6 +49,10 @@ test('a player with an empty library withdraws, and leaves at the start of their
   for (const card of hand.slice(6)) {
     await send(player, game.id, { type: 'MoveCard', card, to: zoneId(seat, 'ashHeap') });
   }
+  // Read as the turn began (zero-vtes rules-qa 95.3): not this turn, but the next.
+  await expect(flow(p)).toContainText('Your decision: Your unlock phase');
+  await expect(flow(p).getByRole('button', { name: 'Withdraw…' })).toHaveCount(0);
+  await roundTheTable((s) => s.turn?.seat === seat && s.turn.phase === 'unlock');
 
   await flow(p).getByRole('button', { name: 'Withdraw…' }).click();
   await expect(flow(p)).toContainText(
@@ -49,15 +66,7 @@ test('a player with an empty library withdraws, and leaves at the start of their
   await expect(flow(p).getByRole('button', { name: 'Withdraw…' })).toHaveCount(0);
 
   // Round the table, passing every window on the way, back to the withdrawing seat.
-  for (let i = 0; i < 40; i++) {
-    const s = await view(alice, game.id);
-    if (s.seats.find((x) => x.id === seat)?.withdrawn) break;
-    const wait = waitingOn(s)[0];
-    if (!wait) break;
-    await send(occupant(s, wait.seat), game.id, {
-      type: wait.kind === 'phase' ? 'AdvancePhase' : 'Pass',
-    });
-  }
+  await roundTheTable((s) => !!s.seats.find((x) => x.id === seat)?.withdrawn);
   await expect(p.getByText('You withdrew from the game.')).toBeVisible();
   const after = await view(alice, game.id);
   expect(after.seats.find((x) => x.id === seat)).toMatchObject({ withdrawn: true, vp: 0.5 });

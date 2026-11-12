@@ -1,0 +1,98 @@
+# Rescue and diablerie, actions of their own (rulebook, "Rescue a Vampire from Torpor", "Diablerize
+# a Vampire in Torpor", "The Blood Hunt"; zero-vtes docs/rules-digest.md §11.6, §11.7, checked at
+# 1f33be5). A ready vampire acts on a vampire in torpor: directed at its controller when it's
+# another Methuselah's, undirected when it's your own (rules-qa 16.4). A rescue costs 2 blood as it
+# succeeds, shared as announced (48.8); a share its payer can't meet, or the vampire out of torpor,
+# fizzles it: successful, no effect (3.6, 28.7). A diablerie's blood hunt comes inside the action,
+# its after-resolution window after (5.8); out of torpor by then, it fizzles with no blood hunt.
+# Alice plays first: her prey is Bob, her predator Carol.
+seed 28
+seat A alice
+seat B bob
+seat C carol
+crypt A "Vera Nightfall" *12
+library A "Iron Ward" *40
+crypt B "Marek Hale" *12
+library B "Iron Ward" *40
+crypt C "Odile Fen" *12
+library C "Iron Ward" *40
+start
+
+# Fast-forward: Alice has three vampires, one in torpor; Bob two, one in torpor; Carol one.
+A> transfer +3 A:uncontrolled:1
+A> move A:uncontrolled:1 ready
+A> transfer +1 A:uncontrolled:1
+A> move A:uncontrolled:1 ready
+A> transfer +2 A:uncontrolled:1
+A> move A:uncontrolled:1 ready
+A> move A:ready:3 torpor
+B> transfer +3 B:uncontrolled:1
+B> move B:uncontrolled:1 ready
+B> transfer +2 B:uncontrolled:1
+B> move B:uncontrolled:1 ready
+B> move B:ready:2 torpor
+C> move C:uncontrolled:1 ready
+A> next
+A> next
+expect turn 1 A minion
+
+# Rescuing her own vampire is undirected: Bob (prey) and Carol (predator) may block. The rescued
+# vampire pays 1 of the 2 blood, the rescuer the other.
+A> rescue A:ready:1 A:torpor:1 1
+log public A: Vera Nightfall tries to rescue Vera Nightfall, Vera Nightfall paying 1 blood
+expect action rescue A blocks
+B> pass
+C> pass
+A> resolve success
+log public The action succeeded
+expect count A:torpor 0
+expect count A:ready 3
+expect card A:ready:1 blood 2
+expect card A:ready:3 blood 1
+A> pass
+expect action none
+
+# Rescuing Bob's vampire is directed at him: only Bob may block. Alice's second vampire, with 1
+# blood, would pay both: it can't, so the rescue fizzles (48.8, 3.6).
+A> rescue A:ready:2 B:torpor:1
+expect action rescue A blocks
+B> pass
+A> resolve success
+log public The action succeeded
+expect count B:torpor 1
+expect card A:ready:2 blood 1
+A> pass
+
+# Diablerizing Bob's vampire, also directed at him. It succeeds: its 2 blood go to the diablerist,
+# the victim burns, and the blood hunt follows at once, polled from Alice.
+A> unlock A:ready:1
+A> diablerie A:ready:1 B:torpor:1
+log public A: Vera Nightfall tries to diablerize Marek Hale
+B> pass
+A> resolve success
+log public Vera Nightfall diablerizes Marek Hale, taking 2 blood
+expect card A:ready:1 blood 4
+expect count B:torpor 0
+expect window polling minion
+A> pass
+B> vote against B:ready:1
+B> pass
+C> pass
+A> pass
+# The hunt fails (none for, a prince's 2 votes against); the action succeeded, and its
+# after-resolution window opens after the blood hunt.
+log public No blood hunt (0 for, 2 against)
+expect action diablerie A after
+A> pass
+expect action none
+
+# Bob sends his other vampire to torpor; Alice's third goes after it. Before it resolves, the
+# vampire leaves torpor: the diablerie fizzles, no blood hunt (28.7).
+B> move B:ready:1 torpor
+A> diablerie A:ready:3 B:torpor:1
+B> pass
+B> move B:torpor:1 ready
+A> resolve success
+log public The action succeeded
+expect count B:ready 1
+expect window after-resolution minion
