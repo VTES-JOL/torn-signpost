@@ -128,7 +128,9 @@ export function describeEvent(ev: GameEvent, before: GameState, opts: DescribeOp
   const line = describeBare(ev, before, opts);
   const c = before.action?.combat;
   if (!line || !c || before.window?.kind !== 'combat') return line;
-  if (ev.type === 'ActionEnded' || ev.type === 'CombatStepped') return line;
+  if (ev.type === 'ActionEnded' || ev.type === 'ActionConcluded' || ev.type === 'CombatStepped') {
+    return line;
+  }
   return `${combatStepLabel(c)}: ${line}`;
 }
 
@@ -512,7 +514,18 @@ function describeBare(ev: GameEvent, before: GameState, opts: DescribeOptions): 
       const user = host === undefined ? who : cardName(host);
       return `${user} uses ${cardName(ev.card, ev.cardId)}${ev.note ? `: ${ev.note}` : ''}`;
     }
+    case 'ActionConcluded':
+      return {
+        success: 'The action succeeded',
+        failure: 'The action failed',
+        blocked:
+          before.action?.kind === 'leave-torpor'
+            ? 'The action was blocked; nothing is paid'
+            : 'Combat is over; the action was blocked',
+      }[ev.outcome];
     case 'ActionEnded':
+      // Said as it concluded; its after-resolution window has closed (zero-vtes digest §10.4).
+      if (before.action?.stage === 'after') return '';
       return {
         success: 'The action succeeded',
         failure: 'The action failed',

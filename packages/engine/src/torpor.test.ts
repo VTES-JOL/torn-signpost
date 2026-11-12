@@ -94,7 +94,7 @@ describe('leaving torpor (rulebook, "Leave Torpor")', () => {
   });
 
   it('blocked by an ally, simply fails: no diablerie, nothing paid', () => {
-    const s = run('B> block B:ready:2\nA> pass\nB> pass\nC> pass\n');
+    const s = run('B> block B:ready:2\nA> pass\nB> pass\nC> pass\nA> pass\n');
     expect(s.action).toBeUndefined();
     const vera = s.zones['A:torpor']?.[0] ?? '';
     expect(s.cards[vera]?.counters.blood).toBe(3);

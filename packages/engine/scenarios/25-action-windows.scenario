@@ -1,0 +1,108 @@
+# The windows around an action's resolution (zero-vtes docs/rules-digest.md §5.2, §10.1, §10.4;
+# rules-qa 5.8, 23.3, 24.1, 24.2, 24.4, 54.1; checked at 1f33be5). A bleed or a political action
+# nobody blocks opens a "would be successful" window, the acting Methuselah first, before it
+# resolves (Spying Mission, Major Boon, Yawp Court); none once it has failed. Every action that
+# resolves, fails or is blocked then has an after-resolution window (Freak Drive). The acting
+# Methuselah's next move (resolving, then the next action or the end of the phase) passes each
+# window when nobody else would stop it.
+# Alice plays first: her prey is Bob, her predator Carol.
+seed 25
+seat A alice
+seat B bob
+seat C carol
+crypt A "Vera Nightfall" *12
+library A "Open Motion" *40
+crypt B "Marek Hale" *12
+library B "Iron Ward" *40
+crypt C "Odile Fen" *12
+library C "Iron Ward" *40
+start
+
+A> move A:uncontrolled:1 ready
+A> move A:uncontrolled:1 ready
+B> move B:uncontrolled:1 ready
+C> move C:uncontrolled:1 ready
+A> next
+A> next
+expect turn 1 A minion
+
+# Carol has a card to play if the bleed would be successful (Major Boon, say): she asks the table
+# to wait. So Alice's resolve can't pass the window for her; she passes, Bob passes automatically,
+# and Carol plays it (24.2).
+A> bleed A:ready:1
+B> pass
+expect window would-succeed minion
+expect waiting A:resolve
+C> hold
+reject:not-now A> resolve success 2
+A> pass
+expect impulse C
+C> play C:hand:1
+# A card played returns the impulse to Alice, and the passes start over; Carol still holds.
+expect impulse A
+A> pass
+expect impulse C
+C> pass
+expect window none
+expect waiting A:resolve
+A> resolve success 2 edge
+expect pool B 28
+log public The action succeeded
+
+# The after-resolution window (5.8), Alice first. Holds end with the window they were asked in,
+# so nobody stops this one: Alice's pass closes it.
+expect window after-resolution minion
+expect impulse A
+A> pass
+expect action none
+expect window none
+
+# A bleed for 0 has no "would be successful": the window just closes, even with Carol holding.
+# The action still succeeded, so it has its after-resolution window (24.4).
+A> bleed A:ready:2
+B> pass
+C> hold
+A> resolve success 0
+expect pool B 28
+log public The action succeeded
+expect window after-resolution minion
+A> pass
+
+# A cancelled action ends at once: there's nothing after it.
+A> unlock A:ready:1
+A> bleed A:ready:1
+A> cancel
+expect action none
+expect window none
+
+# Bleeding Bob out: he is ousted as the bleed resolves, but the action keeps its after-resolution
+# window, without him (24.1).
+B> pool -26
+expect pool B 2
+A> unlock A:ready:1
+A> bleed A:ready:1
+B> pass
+A> resolve success 2
+expect ousted B true
+expect action bleed A after
+expect window after-resolution minion
+A> pass
+expect action none
+
+# A political action has the would-be-successful window too (54.1); its after-resolution window
+# comes after the referendum (5.8). Ending the phase passes it.
+A> unlock A:ready:2
+A> political A:ready:2 with A:hand:1
+C> pass
+expect window would-succeed minion
+A> resolve success "Alice gains 1 pool"
+expect window referendum minion
+A> pass
+expect window polling minion
+A> pass
+C> pass
+log public The referendum fails (0 for, 0 against)
+expect window after-resolution minion
+A> next
+expect action none
+expect turn 1 A influence

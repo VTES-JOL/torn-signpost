@@ -147,6 +147,9 @@ export const ACTION_KINDS = [
 ] as const;
 export type ActionKind = (typeof ACTION_KINDS)[number];
 
+/** How an action that reached its end came out; each has an after-resolution window. */
+export type ActionOutcome = 'success' | 'failure' | 'blocked';
+
 /** What leaving torpor costs by default (rulebook, "Leave Torpor"). */
 export const LEAVE_TORPOR_COST = 2;
 
@@ -169,9 +172,12 @@ export interface ActionState {
   blockAttempt?: { seat: SeatId; minion: InstanceId; override?: Override };
   /**
    * `diablerie`: a blocked leave-torpor action, waiting on the blocking vampire's Methuselah to
-   * diablerize the acting vampire or not (rulebook, "Leave Torpor").
+   * diablerize the acting vampire or not (rulebook, "Leave Torpor"). `after`: resolved, failed or
+   * blocked, in its after-resolution window (zero-vtes digest §10.4); `outcome` says which.
    */
-  stage: 'blocks' | 'combat' | 'resolution' | 'referendum' | 'diablerie';
+  stage: 'blocks' | 'combat' | 'resolution' | 'referendum' | 'diablerie' | 'after';
+  /** How it ended, at stage `after`. */
+  outcome?: ActionOutcome;
   blocker?: InstanceId;
   /** The fight at stage `combat` (docs/m6-plan.md M6.4). Missing in games from before it. */
   combat?: CombatState;
@@ -416,8 +422,18 @@ export interface ImpulseWindow {
   /**
    * `combat`: a step of a combat round, between the two combatants' Methuselahs (M6.4).
    * `referendum`: the cards played before votes are cast; `polling`: the votes (M6.5).
+   * `would-succeed`: a bleed or political action nobody blocked, before it resolves, for cards
+   * played "if the bleed would be successful" (zero-vtes digest §10.1). `after-resolution`: after
+   * an action resolved, failed or was blocked, for cards played after it (§10.4).
    */
-  kind: 'phase' | 'blocks' | 'combat' | 'referendum' | 'polling';
+  kind:
+    | 'phase'
+    | 'blocks'
+    | 'combat'
+    | 'referendum'
+    | 'polling'
+    | 'would-succeed'
+    | 'after-resolution';
   /** The phase this window belongs to (an end-of-phase round, or an action in the minion phase). */
   phase: Phase;
   order: SeatId[];

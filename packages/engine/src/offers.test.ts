@@ -111,6 +111,7 @@ describe('available actions (UX-03)', () => {
       'failure',
       'enter-combat',
       'play',
+      'pass',
       'cancel',
     ]);
     const success = offersAfter(resolving, 'A').find((o) => o.id === 'success');

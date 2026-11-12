@@ -73,6 +73,7 @@ expect waiting B:diablerie
 # Bob doesn't diablerize: the action fails, and nothing is paid.
 B> diablerize no
 log public The action was blocked; nothing is paid
+A> pass
 expect action none
 expect card A:torpor:1 blood 3
 
@@ -99,5 +100,6 @@ C> vote for C:ready:1
 C> pass
 A> pass
 B> pass
+A> pass
 expect action none
 expect count B:ready 2

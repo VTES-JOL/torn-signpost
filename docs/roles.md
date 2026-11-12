@@ -39,7 +39,9 @@ what the API or engine would refuse anyway).
   (maneuvers, strikes, cards, passes); either of them can end it (M6.4). In a referendum
   (M6.5) every Methuselah still in the game casts votes and ballots from their own sources, makes
   any vampire abstain with a card effect, or abstains; the caller chooses the terms, can end the
-  referendum at once, and calls a blood hunt as their own action resolves. A vampire of theirs in
+  referendum at once, and calls a blood hunt as their own action resolves. Every Methuselah has the
+  impulse in an action's would-be-successful and after-resolution windows; the acting one's resolve,
+  next action or end of phase passes them when nobody else would stop it (M6.7). A vampire of theirs in
   torpor may take the leave-torpor action; one that blocks it lets them diablerize it, or not
   (the blood hunt follows at once). While their block attempt is under way they may switch it to
   another minion (rules-qa 114.1).

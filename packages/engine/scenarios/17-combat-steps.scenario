@@ -105,10 +105,12 @@ expect impulse B
 B> pass
 expect combat 1 end-of-round close
 B> pass
+log public Combat is over; the action was blocked
+# Then its after-resolution window (zero-vtes digest §10.4): A passes, and so does everyone else.
+A> pass
 expect action none
 expect combat none
 expect window none
-log public Combat is over; the action was blocked
 
 # Standing passes: B passes to the strikes, but A maneuvering drops it, so B can answer.
 A> unlock A:ready:1
@@ -139,6 +141,7 @@ B> strike dodge via B:hand:1
 log public Round 1 · Strikes: Tomas Grey plays Quick Feed to strike: dodge
 expect combat 1 damage long
 B> endcombat
+A> pass
 expect action none
 
 # An action that enters combat: Vera fights Ilse, and only A and C are in it.
@@ -158,6 +161,7 @@ A> pass
 expect impulse C
 C> endcombat
 log public The action succeeded
+A> pass
 expect action none
 
 # Others aren't in the combat windows: they can't play cards there. A judge passing for a
@@ -179,6 +183,7 @@ judge> rule passfor B
 log public Round 1 · Strikes: Tomas Grey doesn't strike
 expect combat 1 damage close
 A> endcombat
+A> pass
 expect action none
 
 # Using a card in play works outside combat too; in a window it needs the impulse.

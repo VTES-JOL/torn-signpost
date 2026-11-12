@@ -57,6 +57,7 @@ P> pass
 reject S> vote for S:ready:2
 S> endreferendum fail "Fakir al Sidi"
 log public S ends the referendum: it fails: Fakir al Sidi
+S> pass
 expect action none
 
 # The blood hunt: Alexis's priscus diablerizes one of Sarah's princes, sent to torpor first.
@@ -93,4 +94,5 @@ expect count X:ready 0
 # Back to the action, which its Methuselah resolves.
 expect action other X resolution
 X> resolve success
+X> pass
 expect action none

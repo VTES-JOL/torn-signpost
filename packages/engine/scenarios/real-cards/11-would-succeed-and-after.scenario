@@ -1,0 +1,67 @@
+# Spying Mission before a bleed resolves, and Freak Drive after one, in the action's windows.
+# zero-vtes rules-qa (checked at 1f33be5): once blocks are declined, a bleed opens a "would be
+# successful" window, the acting Methuselah first, for cards like Spying Mission (24.2); every
+# action has an after-resolution window, failed ones included, for cards like Freak Drive (5.8,
+# 23.3). Cards are given by VEKN ID; names and images come from the content pack (LEGAL-08).
+seed 13
+seat A alice
+seat B bob
+seat C carol
+seat D dave
+crypt A 200510 *6 200271 *6
+library A 101857 *20 100788 *20
+crypt B 200452 *12
+library B 101056 *40
+crypt C 200771 *12
+library C 100598 *40
+crypt D 200051 *12
+library D 100598 *40
+start
+
+# Fast-forward: Alice has Gerard Rafin and Chester DuBois ready; her hand starts with Freak Drive
+# and Spying Mission.
+A> transfer +6 A:uncontrolled:1
+A> move A:uncontrolled:1 ready
+A> transfer +7 A:uncontrolled:2
+A> move A:uncontrolled:2 ready
+B> transfer +4 B:uncontrolled:1
+B> move B:uncontrolled:1 ready
+A> next
+A> next
+expect turn 1 A minion
+
+# Gerard bleeds Bob, who doesn't block. Before it succeeds, Alice holds the impulse: she plays
+# Spying Mission on Gerard. The bleed burns no pool and is unsuccessful (24.2).
+A> bleed A:ready:1
+B> pass
+expect window would-succeed minion
+expect waiting A:resolve
+A> play A:hand:2 on A:ready:1
+log public A attached Spying Mission to Gerard Rafin (G3)
+A> resolve failure
+log public The action failed
+expect pool B 26
+# A failed action still has its after-resolution window (23.3), Alice first.
+expect window after-resolution minion
+
+# Declaring Chester's bleed passes it: nobody else had anything to play.
+A> bleed A:ready:2
+expect action bleed A blocks
+B> pass
+# Resolving passes the would-be-successful window the same way.
+A> resolve success 1 edge
+expect pool B 25
+log public The action succeeded
+
+# After it, Freak Drive [for] unlocks Chester, as the action was successful (5.8), and he bleeds
+# again.
+expect window after-resolution minion
+A> play A:hand:1
+log public A played Freak Drive
+A> unlock A:ready:2
+A> bleed A:ready:2
+B> pass
+A> resolve success 1
+expect pool B 24
+A> pass
+expect action none

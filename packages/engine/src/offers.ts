@@ -9,6 +9,7 @@ import type { ClientCommand } from './commands.ts';
 import { combatantOf, impulseHolder, isHolding, seatRefs } from './flow.ts';
 import {
   type ActionKind,
+  type ActionState,
   type CardId,
   COMBAT_STEPS,
   type GameState,
@@ -112,6 +113,91 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
     build: (values) => ({ type: 'PlayCard', card: id(values, 0) }),
   });
 
+  /** Resolving an unblocked action: the acting Methuselah says how it went. */
+  const resolveOffers = (action: ActionState): Offer[] => {
+    const offers: Offer[] = [];
+    const steps: OfferStep[] = [];
+    if (action.kind === 'bleed')
+      steps.push({ kind: 'amount', label: 'Bleed amount', min: 0, default: 1 });
+    if (action.kind === 'hunt')
+      steps.push({ kind: 'amount', label: 'Blood gained', min: 0, default: 1 });
+    const leaving = action.kind === 'leave-torpor';
+    if (leaving)
+      steps.push({ kind: 'amount', label: 'Blood paid', min: 0, default: LEAVE_TORPOR_COST });
+    if (action.kind === 'bleed')
+      steps.push({ kind: 'toggle', label: 'Take the Edge', default: !me.hasEdge });
+    // A political action's terms are chosen as it succeeds (M6.5, R1).
+    const political = action.kind === 'political';
+    if (political) steps.push({ kind: 'text', label: 'Terms of the referendum', optional: true });
+    offers.push({
+      id: 'success',
+      label: political
+        ? 'Successful: call the referendum'
+        : leaving
+          ? 'Successful: out of torpor'
+          : 'Successful',
+      primary: true,
+      confirm: true,
+      steps,
+      build: (values) => {
+        const cmd: Extract<ClientCommand, { type: 'ResolveAction' }> = {
+          type: 'ResolveAction',
+          outcome: 'success',
+        };
+        if (political) {
+          const terms = typeof values[0] === 'string' ? values[0].trim() : '';
+          if (terms) cmd.terms = terms;
+          return cmd;
+        }
+        if (typeof values[0] === 'number') cmd.amount = values[0];
+        if (values[1] === true) cmd.edge = true;
+        return cmd;
+      },
+    });
+    offers.push({
+      id: 'failure',
+      label: 'Unsuccessful',
+      confirm: true,
+      steps: [],
+      build: () => ({ type: 'ResolveAction', outcome: 'failure' }),
+    });
+    // An action that enters combat: the acting minion fights a minion of another Methuselah.
+    const opponents = view.seats
+      .filter((x) => x.id !== seat && !x.ousted && !x.withdrawn)
+      .flatMap((x) => zoneCards(view, zoneId(x.id, 'ready')))
+      .filter((m) => view.cards[m]?.attachedTo === undefined);
+    if (opponents.length && !leaving) {
+      offers.push({
+        id: 'enter-combat',
+        label: 'Enter combat…',
+        confirm: true,
+        steps: [{ kind: 'card', label: 'Minion to fight', candidates: opponents }],
+        build: (values) => ({
+          type: 'ResolveAction',
+          outcome: 'combat',
+          opponent: id(values, 0),
+        }),
+      });
+    }
+    // Diablerie is an action of its own ("other"): its blood hunt comes as it resolves (M6.5b).
+    if (action.kind === 'other') {
+      offers.push({
+        id: 'blood-hunt',
+        label: 'Call a blood hunt…',
+        confirm: true,
+        explain: 'A referendum on burning the diablerist.',
+        steps: [{ kind: 'card', label: 'Diablerist', candidates: ready, optional: true }],
+        build: (values) => {
+          const m = v(values, 0);
+          return typeof m === 'string'
+            ? { type: 'CallBloodHunt', minion: m }
+            : { type: 'CallBloodHunt' };
+        },
+      });
+    }
+    return offers;
+  };
+
   if (window?.kind === 'combat' && action?.combat) {
     return combatOffers(view, seat, { hand, inPlay, playCard });
   }
@@ -211,101 +297,35 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
         build: () => ({ type: 'WithdrawBlock' }),
       });
     }
+    // Not blocked: the acting Methuselah resolves it, which passes the window when nobody else
+    // would stop it (zero-vtes digest §10.1).
+    const acting = action?.seat === seat;
+    if (window.kind === 'would-succeed' && acting && action.stage === 'resolution') {
+      offers.push(...resolveOffers(action));
+    }
     if (hand.length) offers.push(playCard('Play a card', hand));
+    // After the action: the next one, or the end of the phase, passes the window the same way.
+    const movingOn =
+      window.kind === 'after-resolution' && acting
+        ? availableActions(withoutAction(view), seat, catalog).filter(
+            (o) => o.id.startsWith('action:') || o.id === 'advance',
+          )
+        : [];
     offers.push({
       id: 'pass',
       label: canBlock ? 'Don’t block' : 'Pass',
-      primary: !canBlock,
+      primary: !canBlock && !offers.some((o) => o.primary) && !movingOn.some((o) => o.primary),
       confirm: false,
       steps: [],
       build: () => ({ type: 'Pass' }),
     });
-    return [...offers, ...abstain];
+    if (window.kind === 'would-succeed' && acting) offers.push(CANCEL);
+    return [...offers, ...movingOn, ...abstain];
   }
 
   if (action) {
     const mine = action.seat === seat;
-    if (mine && action.stage === 'resolution') {
-      const steps: OfferStep[] = [];
-      if (action.kind === 'bleed')
-        steps.push({ kind: 'amount', label: 'Bleed amount', min: 0, default: 1 });
-      if (action.kind === 'hunt')
-        steps.push({ kind: 'amount', label: 'Blood gained', min: 0, default: 1 });
-      const leaving = action.kind === 'leave-torpor';
-      if (leaving)
-        steps.push({ kind: 'amount', label: 'Blood paid', min: 0, default: LEAVE_TORPOR_COST });
-      if (action.kind === 'bleed')
-        steps.push({ kind: 'toggle', label: 'Take the Edge', default: !me.hasEdge });
-      // A political action's terms are chosen as it succeeds (M6.5, R1).
-      const political = action.kind === 'political';
-      if (political) steps.push({ kind: 'text', label: 'Terms of the referendum', optional: true });
-      offers.push({
-        id: 'success',
-        label: political
-          ? 'Successful: call the referendum'
-          : leaving
-            ? 'Successful: out of torpor'
-            : 'Successful',
-        primary: true,
-        confirm: true,
-        steps,
-        build: (values) => {
-          const cmd: Extract<ClientCommand, { type: 'ResolveAction' }> = {
-            type: 'ResolveAction',
-            outcome: 'success',
-          };
-          if (political) {
-            const terms = typeof values[0] === 'string' ? values[0].trim() : '';
-            if (terms) cmd.terms = terms;
-            return cmd;
-          }
-          if (typeof values[0] === 'number') cmd.amount = values[0];
-          if (values[1] === true) cmd.edge = true;
-          return cmd;
-        },
-      });
-      offers.push({
-        id: 'failure',
-        label: 'Unsuccessful',
-        confirm: true,
-        steps: [],
-        build: () => ({ type: 'ResolveAction', outcome: 'failure' }),
-      });
-      // An action that enters combat: the acting minion fights a minion of another Methuselah.
-      const opponents = view.seats
-        .filter((x) => x.id !== seat && !x.ousted && !x.withdrawn)
-        .flatMap((x) => zoneCards(view, zoneId(x.id, 'ready')))
-        .filter((m) => view.cards[m]?.attachedTo === undefined);
-      if (opponents.length && !leaving) {
-        offers.push({
-          id: 'enter-combat',
-          label: 'Enter combat…',
-          confirm: true,
-          steps: [{ kind: 'card', label: 'Minion to fight', candidates: opponents }],
-          build: (values) => ({
-            type: 'ResolveAction',
-            outcome: 'combat',
-            opponent: id(values, 0),
-          }),
-        });
-      }
-      // Diablerie is an action of its own ("other"): its blood hunt comes as it resolves (M6.5b).
-      if (action.kind === 'other') {
-        offers.push({
-          id: 'blood-hunt',
-          label: 'Call a blood hunt…',
-          confirm: true,
-          explain: 'A referendum on burning the diablerist.',
-          steps: [{ kind: 'card', label: 'Diablerist', candidates: ready, optional: true }],
-          build: (values) => {
-            const m = v(values, 0);
-            return typeof m === 'string'
-              ? { type: 'CallBloodHunt', minion: m }
-              : { type: 'CallBloodHunt' };
-          },
-        });
-      }
-    }
+    if (mine && action.stage === 'resolution') offers.push(...resolveOffers(action));
     const blockerSeat = action.blocker ? view.cards[action.blocker]?.controller : undefined;
     // A blocked leave-torpor action: the blocking vampire may diablerize (rulebook, "Leave Torpor").
     if (action.stage === 'diablerie' && blockerSeat === seat) {
@@ -340,15 +360,7 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
       });
     }
     if (hand.length) offers.push(playCard('Play a card', hand));
-    if (mine) {
-      offers.push({
-        id: 'cancel',
-        label: 'Cancel action',
-        confirm: true,
-        steps: [],
-        build: () => ({ type: 'CancelAction' }),
-      });
-    }
+    if (mine) offers.push(CANCEL);
     return offers;
   }
 
@@ -486,6 +498,20 @@ export function availableActions(view: GameState, seat: SeatId, catalog: CardCat
     });
   }
   return offers;
+}
+
+const CANCEL: Offer = {
+  id: 'cancel',
+  label: 'Cancel action',
+  confirm: true,
+  steps: [],
+  build: () => ({ type: 'CancelAction' }),
+};
+
+/** The table as it will be once the action's window closes. */
+function withoutAction(view: GameState): GameState {
+  const { action: _, window: __, ...rest } = view;
+  return rest;
 }
 
 /** Without type data (e.g. a minimal catalog), every card qualifies. */

@@ -78,4 +78,5 @@ expect card B:ready:1 blood 6
 expect combat 1 press close
 A> pass round
 B> pass round
+A> pass
 expect action none

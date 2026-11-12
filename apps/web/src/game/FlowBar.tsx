@@ -133,16 +133,28 @@ export function promptFor(
           text:
             view.window?.kind === 'referendum'
               ? `Play a card before votes are cast, or pass (${action})`
-              : view.window?.kind === 'blocks'
-                ? `Play a card or pass (${action})`
-                : `Play a card or pass (end of ${who(turn.seat)}'s ${turn.phase} phase)`,
+              : view.window?.kind === 'would-succeed'
+                ? `Play a card before it succeeds, or pass (${action})`
+                : view.window?.kind === 'after-resolution'
+                  ? view.action?.seat === seat
+                    ? `Play a card after ${action}, or go on`
+                    : `Play a card after it, or pass (${action})`
+                  : view.window?.kind === 'blocks'
+                    ? `Play a card or pass (${action})`
+                    : `Play a card or pass (end of ${who(turn.seat)}'s ${turn.phase} phase)`,
         };
       case 'vote':
         return { mine: true, text: `Cast votes, play a card or pass (${action})` };
       case 'block':
         return { mine: true, text: `Block ${action}?` };
       case 'resolve':
-        return { mine: true, text: `Resolve ${action}: did it succeed?` };
+        return {
+          mine: true,
+          text:
+            view.window?.kind === 'would-succeed'
+              ? `Resolve ${action}: did it succeed? (Or play a card first)`
+              : `Resolve ${action}: did it succeed?`,
+        };
       case 'combat':
         return { mine: true, text: `Combat (${action}): end combat when it's over` };
       case 'diablerie':
@@ -714,7 +726,17 @@ function statusLine(
       return `${what} · ${name(c.acting)} against ${name(c.opposing)}: ${combatStepLabel(c)}, ${c.range} range`;
     }
     if (a.stage === 'combat') return `${what} · blocked by ${name(a.blocker)}: combat`;
-    if (a.stage === 'resolution') return `${what} · not blocked: ${who(a.seat)} resolves it`;
+    if (a.stage === 'resolution') {
+      // The would-be-successful window: cards played before it succeeds (zero-vtes §10.1).
+      const before = view.window?.kind === 'would-succeed' ? ', or plays first' : '';
+      return `${what} · not blocked: ${who(a.seat)} resolves it${before}${holding}`;
+    }
+    if (a.stage === 'after') {
+      const how = { success: 'succeeded', failure: 'failed', blocked: 'was blocked' }[
+        a.outcome ?? 'success'
+      ];
+      return `${what} · ${how}: cards may be played after it${holding}`;
+    }
     if (a.referendum) {
       const step = view.window?.kind === 'polling' ? 'polling' : 'before votes';
       const which = a.referendum.kind === 'blood-hunt' ? 'blood hunt' : 'referendum';

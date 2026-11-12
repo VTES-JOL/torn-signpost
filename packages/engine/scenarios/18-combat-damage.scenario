@@ -51,8 +51,9 @@ expect card A:ready:1 blood 2
 expect combat 1 end-of-round close
 A> pass
 B> pass
-expect action none
 log public Combat is over; the action was blocked
+A> pass
+expect action none
 
 # An ally: Gate Hound blocks a hunt. Round 1: it loses a life, and Vera takes an additional
 # strike, which only she uses. Presses: to continue, answered by a press to end, pressed again.
@@ -113,6 +114,7 @@ expect card A:ready:1 blood 0
 expect combat 2 end-of-round close
 A> pass
 C> pass
+A> pass
 expect action none
 
 # A first strike resolves before the other strike. Then aggravated damage on a vampire with no
@@ -143,4 +145,5 @@ expect card C:ready:1 blood 4
 expect combat 1 end-of-round close
 A> pass
 C> pass
+A> pass
 expect action none

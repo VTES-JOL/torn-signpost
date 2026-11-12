@@ -127,6 +127,7 @@ expect impulse S
 S> vote for S:ready:1
 S> pass
 log public The referendum passes (2 for, 0 against)
+S> pass
 expect action none
 `,
       testCatalog,

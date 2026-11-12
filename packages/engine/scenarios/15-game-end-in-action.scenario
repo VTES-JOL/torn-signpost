@@ -28,6 +28,9 @@ expect timeup yes
 B> pass
 expect status active
 A> resolve failure
+# The action's after-resolution window is part of it: the game ends as that closes.
+expect status active
+A> pass
 expect status finished
 expect ended time-limit
 expect vp A 0.5

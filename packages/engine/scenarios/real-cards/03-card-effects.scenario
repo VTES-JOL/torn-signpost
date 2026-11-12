@@ -49,4 +49,5 @@ A> pass
 D> pass
 expect action bleed A combat
 D> endcombat
+A> pass
 expect action none

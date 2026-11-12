@@ -63,14 +63,28 @@ reject:not-now A> resolve success
 B> pass
 log public B declined to block
 expect action bleed A resolution
-expect window none
+# Not blocked: the would-be-successful window opens, A first, for cards played "if the bleed would
+# be successful" (zero-vtes digest §10.1). Resolving would pass it, but B passes nothing
+# automatically: A passes, then B, and A resolves.
+expect window would-succeed minion
 expect waiting A:resolve
 reject:forbidden B> resolve success
+reject:not-now A> resolve success 2 edge
+A> pass
+expect impulse B
+B> pass
+expect window none
 A> resolve success 2 edge
 expect pool B 24
 expect edge A
-expect action none
 log public The action succeeded
+# Then its after-resolution window, A first (§10.4): the next action or the end of the phase would
+# pass it, but B is still to pass by hand.
+expect window after-resolution minion
+reject:not-now A> next
+A> pass
+B> pass
+expect action none
 
 # Locked minions can't act.
 reject:invalid A> hunt A:ready:1
@@ -99,6 +113,8 @@ expect action hunt A resolution
 A> resolve success 5
 expect card A:ready:1 blood 7
 expect card B:ready:1 locked false
+A> pass
+B> pass
 
 # Equip, blocked by B: the blocker locks, and the card goes to the ash heap after combat.
 A> unlock A:ready:1
@@ -117,6 +133,8 @@ B> endcombat
 # B ended combat, but the card and its replacement are A's.
 log public A played Iron Ward
 log public A drew 1 card from their library
+A> pass
+B> pass
 expect action none
 expect count A:ashHeap 2
 expect count A:hand 7
@@ -129,6 +147,8 @@ C> pass
 A> resolve success
 expect card A:ready:2 attached Vera Nightfall
 expect count A:hand 7
+A> pass
+B> pass
 
 # Cancelling an action (an override) closes its window.
 A> unlock A:ready:1

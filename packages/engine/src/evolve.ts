@@ -456,6 +456,12 @@ export function evolve(state: GameState, ev: GameEvent): GameState {
     }
     case 'CardUsed':
       break;
+    case 'ActionConcluded': {
+      // The fight is over; the table sees the outcome until the window closes.
+      const { combat: _, ...a } = actionOf(d);
+      d.action = { ...a, stage: 'after', outcome: ev.outcome };
+      break;
+    }
     case 'ActionEnded':
       delete d.action;
       delete d.window;

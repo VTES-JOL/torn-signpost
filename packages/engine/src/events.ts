@@ -6,6 +6,7 @@
 import type { BloodHolder } from './commands.ts';
 import type { WaitKind } from './flow.ts';
 import type {
+  ActionOutcome,
   ActionState,
   ActorRef,
   CardId,
@@ -295,6 +296,11 @@ export type EventBody =
   | { type: 'StrikeChosen'; minion: InstanceId; strike: Strike; played?: true }
   | { type: 'PassingUntil'; seat: SeatId; until: PassTarget }
   | { type: 'CardUsed'; card: InstanceId; cardId?: CardId; note?: string }
+  /**
+   * The action resolved, failed or was blocked: its after-resolution window follows, and
+   * `ActionEnded` once that closes (zero-vtes digest §10.4).
+   */
+  | { type: 'ActionConcluded'; outcome: ActionOutcome }
   | {
       type: 'ActionEnded';
       /** `ousted`: the acting Methuselah, the target or the blocker's was ousted (DQ9). */

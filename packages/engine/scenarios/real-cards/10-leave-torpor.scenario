@@ -65,5 +65,6 @@ A> pass
 B> pass
 C> pass
 # Passed, 4 to 2: the diablerist is burned, and the action ends, blocked.
+A> pass
 expect action none
 expect count B:ready 1

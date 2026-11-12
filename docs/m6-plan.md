@@ -534,25 +534,27 @@ Done in this increment:
   hunt following at once) or not, and an ally's block simply fails it. Scenario 24.
 - **Changing blockers** (rules-qa 48.3, 114.1, settled by zero-vtes's owner on 2026-11-11): the
   Methuselah whose attempt is under way may attempt with another minion, which fails the first.
+- **The would-be-successful window** (digest §5.2, §10.1; rules-qa 24.2, 54.1): a bleed or political
+  action nobody blocks opens it, over the action's order, before it resolves; none once it has
+  failed, or for a bleed of 0.
+- **The after-resolution window** (§5.2, §10.4; rules-qa 5.8, 23.3, 24.1): every action that
+  succeeds, fails or is blocked has one (`ActionConcluded`, stage `after`), after a political
+  action's referendum and a diablerie's blood hunt; not a cancelled one. The acting Methuselah's
+  next move (resolving; the next action or the end of the phase) passes each window when nobody
+  else would stop it, so neither costs a click on every action. Scenarios 25 and real-cards 11.
 
 Still to do, in rough order:
 
-1. **The would-be-successful window** (zero-vtes digest §5.2, §10.1; rules-qa 24.2, 54.1): after
-   blocks are declined on a bleed or a political action, a window over the action's order before
-   it resolves (Spying Mission, Major Boon, Yawp Court).
-2. **The after-resolution window** (§5.2, §10.4; rules-qa 5.8, 23.3): every action has one,
-   blocked, failed or ended ones included; after a political action's referendum, after a
-   diablerie's blood hunt.
-3. **Combat for everyone else** (§12.1; rules-qa 98.1, 98.2): after the two combatants, every
+1. **Combat for everyone else** (§12.1; rules-qa 98.1, 98.2): after the two combatants, every
    other Methuselah clockwise from the acting one has the impulse in each step, for cards that
    reach a combat they're not in. Today only the combatants' Methuselahs do.
-4. **The acting minion leaving** (rulebook, "Resolve the Action"; §24.3): an acting minion that
+2. **The acting minion leaving** (rulebook, "Resolve the Action"; §24.3): an acting minion that
    leaves the ready region before block resolution ends the action, the blocker not locked.
-5. **`EndCombat` and the end of round** (rules-qa 19.5): a combat ended early still has its
+3. **`EndCombat` and the end of round** (rules-qa 19.5): a combat ended early still has its
    end-of-round window.
-6. Smaller: withdrawal's short hand read as the turn began (95.3); no polling-step cards in a
+4. Smaller: withdrawal's short hand read as the turn began (95.3); no polling-step cards in a
    blood hunt (PIB 20150105).
-7. **Rescue and diablerie as actions** of their own (rulebook, "Rescue a Vampire from Torpor",
+5. **Rescue and diablerie as actions** of their own (rulebook, "Rescue a Vampire from Torpor",
    "Diablerise a Vampire in Torpor"): today an `other` action with the players' moves, and
    `CallBloodHunt`.
 

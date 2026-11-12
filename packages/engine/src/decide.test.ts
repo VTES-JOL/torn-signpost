@@ -525,7 +525,9 @@ describe('combat steps (docs/m6-plan.md M6.4a)', () => {
     expect(availableActions(s, 'B', catalog).map((o) => o.id)).toContain('endcombat');
     expect(run(s, { type: 'Pass' }, as('A')).ok).toBe(false);
     const ended = apply(s, { type: 'EndCombat' }, as('B'));
-    expect(ended.action).toBeUndefined();
+    // Over, but for its after-resolution window (zero-vtes digest §10.4).
+    expect(ended.action).toMatchObject({ stage: 'after', outcome: 'blocked' });
+    expect(ended.window?.kind).toBe('after-resolution');
   });
 
   /** The old combat, now in the strike step of round 1, with blood on both minions. */
@@ -569,7 +571,7 @@ describe('combat steps (docs/m6-plan.md M6.4a)', () => {
     expect(s.action?.combat?.pending).toBeUndefined();
     s = apply(s, { type: 'Pass' }, as('A'));
     s = apply(s, { type: 'Pass' }, as('B'));
-    expect(s.action).toBeUndefined();
+    expect(s.action).toMatchObject({ stage: 'after', outcome: 'blocked' });
   });
 
   it('moves stolen blood to the thief, up to its capacity, and burns the rest', () => {

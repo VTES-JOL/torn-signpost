@@ -25,6 +25,8 @@ import {
   seatRefs,
 } from './flow.ts';
 import type {
+  ActionOutcome,
+  ActionState,
   Actor,
   ActorRef,
   CardInstance,
@@ -132,7 +134,7 @@ export function decide(state: GameState, cmd: Command, ctx: DecideContext): Deci
           state,
           withOusts(
             state,
-            bodiesFor(state, cmd, ctx, by, ids),
+            withImpliedPass(state, cmd, ctx, by, ids),
             ctx.now,
             by,
             { ids, catalog: ctx.catalog },
@@ -232,6 +234,53 @@ function actorRef(state: GameState, cmd: Command, actor: Actor): ActorRef {
   }
 }
 
+/**
+ * The acting Methuselah moving the action on while holding the impulse in its would-be-successful
+ * or after-resolution window passes that window first, when nobody else would stop it: resolving
+ * the action in the first; declaring the next action or ending the phase in the second. Otherwise
+ * the command is refused, and they pass by hand and wait for the others. A failed action, or a
+ * bleed for nothing, has no "would be successful" (zero-vtes rules-qa 24.2, 24.4): its window just
+ * closes.
+ */
+function withImpliedPass(
+  state: GameState,
+  cmd: Command,
+  ctx: DecideContext,
+  by: ActorRef,
+  ids: () => InstanceId,
+): EventBody[] {
+  const w = state.window;
+  const a = state.action;
+  const movesOn =
+    w?.kind === 'would-succeed'
+      ? cmd.type === 'ResolveAction'
+      : w?.kind === 'after-resolution' &&
+        (cmd.type === 'DeclareAction' || cmd.type === 'AdvancePhase');
+  // Once time is up, the game ends with this action: it's ended by hand, not by the next one.
+  if (
+    !movesOn ||
+    !a ||
+    by.kind !== 'seat' ||
+    by.seat !== a.seat ||
+    impulseHolder(state) !== a.seat ||
+    (w?.kind === 'after-resolution' && state.clock?.endsWith)
+  ) {
+    return bodiesFor(state, cmd, ctx, by, ids);
+  }
+  const fails =
+    cmd.type === 'ResolveAction' &&
+    (cmd.outcome !== 'success' || (a.kind === 'bleed' && (cmd.amount ?? 1) < 1));
+  const passed: EventBody[] = fails
+    ? [{ type: 'WindowClosed' }]
+    : settleWindow(state, [{ type: 'Passed', seat: a.seat }], ctx.now, by, {
+        ids,
+        catalog: ctx.catalog,
+      });
+  const after = applyBodies(state, passed, ctx.now, by);
+  if (after.window) return bodiesFor(state, cmd, ctx, by, ids);
+  return [...passed, ...bodiesFor(after, cmd, ctx, by, ids)];
+}
+
 function bodiesFor(
   state: GameState,
   cmd: Command,
@@ -315,6 +364,7 @@ function bodiesFor(
   const actingAction = () => {
     const a = state.action ?? reject('not-now', 'No action in progress');
     if (mySeat !== undefined && mySeat !== a.seat) reject('forbidden', 'It is not your action');
+    if (a.stage === 'after') reject('not-now', 'The action is over: pass to end it');
     return a;
   };
   /**
@@ -591,6 +641,9 @@ function bodiesFor(
     case 'AdvancePhase': {
       const turn = state.turn ?? reject('wrong-status', 'No turn in progress');
       if (mySeat !== undefined && mySeat !== turn.seat) reject('forbidden', 'It is not your turn');
+      if (state.action?.stage === 'after' && mySeat !== undefined) {
+        reject('not-now', 'The others may still play after the action: pass, and wait');
+      }
       if (state.action) reject('not-now', 'Finish the current action first');
       if (state.window) {
         // Judges can cut a stuck pass round short.
@@ -643,6 +696,9 @@ function bodiesFor(
       const turn = state.turn;
       if (turn?.seat !== s) reject('forbidden', 'It is not your turn');
       if (turn.phase !== 'minion') reject('not-now', 'Actions are taken in the minion phase');
+      if (state.action?.stage === 'after') {
+        reject('not-now', 'The others may still play after the last action: pass, and wait');
+      }
       if (state.action) reject('not-now', 'Another action is in progress');
       if (state.window) reject('not-now', 'Waiting for the other players to pass');
       if (!ACTION_KINDS.includes(cmd.kind)) reject('invalid', `Unknown action ${cmd.kind}`);
@@ -830,6 +886,11 @@ function bodiesFor(
     case 'ResolveAction': {
       const a = actingAction();
       if (a.stage !== 'resolution') reject('not-now', 'The action is not ready to resolve');
+      if (state.window) {
+        // The would-be-successful window: the acting Methuselah's resolve passes it, but only when
+        // nobody else would stop it (impliedPass); otherwise they wait for the others.
+        reject('not-now', 'The others may still play before it resolves: pass, and wait for them');
+      }
       if (a.kind === 'leave-torpor' && cmd.outcome === 'combat') {
         reject('invalid', 'A vampire in torpor cannot enter combat');
       }
@@ -858,11 +919,11 @@ function bodiesFor(
         const m = state.cards[a.minion];
         // A vampire no longer ready calls no referendum; the action still succeeds (rules-qa 5.9).
         if (!m || m.zone !== zoneId(m.controller, 'ready')) {
-          return [
+          return settle(state, [
             { type: 'ReferendumResolved', passed: false, for: 0, against: 0, reason: 'not-ready' },
             ...finishActionCard(a, 'success'),
-            { type: 'ActionEnded', outcome: 'success' },
-          ];
+            ...concluded(state, a, 'success'),
+          ]);
         }
         // The cards played before votes: the caller's left first, the caller last (rules-qa 64.12).
         const order = windowOrder(seatRefs(state), a.seat, { directedAt: a.seat });
@@ -924,9 +985,8 @@ function bodiesFor(
           );
         }
       }
-      bodies.push(...finishActionCard(a, cmd.outcome));
-      bodies.push({ type: 'ActionEnded', outcome: cmd.outcome });
-      return bodies;
+      bodies.push(...finishActionCard(a, cmd.outcome), ...concluded(state, a, cmd.outcome));
+      return settle(state, bodies);
     }
 
     case 'EndCombat': {
@@ -937,7 +997,7 @@ function bodiesFor(
       if (mySeat !== undefined && mySeat !== a.seat && !fighting.includes(mySeat)) {
         reject('forbidden', 'Only the players in combat can end it');
       }
-      return combatEnd(state, ids);
+      return settle(state, combatEnd(state, ids));
     }
 
     case 'Maneuver': {
@@ -1333,7 +1393,7 @@ function bodiesFor(
         // Not diablerized: the action fails, and no cost is paid.
         return settle(state, [
           ...finishedActionCard(state, ids, a, 'blocked'),
-          { type: 'ActionEnded', outcome: 'blocked' },
+          ...concluded(state, a, 'blocked'),
         ]);
       }
       const victim = card(a.minion);
@@ -1366,7 +1426,7 @@ function bodiesFor(
       const note = cmd.note?.trim();
       if (note && note.length > MAX_NOTE) reject('invalid', 'The note is too long');
       const t = tally(a.referendum);
-      return [
+      return settle(state, [
         ...(state.window ? [{ type: 'WindowClosed' } as const] : []),
         ...referendumEnd(
           state,
@@ -1383,7 +1443,7 @@ function bodiesFor(
             { note: note || undefined },
           ),
         ),
-      ];
+      ]);
     }
 
     case 'CancelAction': {
@@ -1797,7 +1857,9 @@ function withOusts(
   const a = after.action;
   const blockerSeat = a?.blocker ? after.cards[a.blocker]?.controller : undefined;
   const inAction = [a?.seat, a?.target, blockerSeat, ...combatSeats(after)];
-  if (a && inAction.some((x) => x !== undefined && ousting.has(x))) {
+  // Past its end, the action stays for its after-resolution window (zero-vtes rules-qa 24.1);
+  // the ousted seat just leaves the window.
+  if (a && a.stage !== 'after' && inAction.some((x) => x !== undefined && ousting.has(x))) {
     // The action (and any combat in it) ends at once: its actor, target or blocker is gone.
     if (after.window) next.push({ type: 'WindowClosed' });
     next.push({ type: 'ActionEnded', outcome: 'ousted' });
@@ -1886,6 +1948,12 @@ function closeWindow(state: GameState, sx: Settling, now: string, by: ActorRef):
   const closed: EventBody = { type: 'WindowClosed' };
   if (state.window?.kind === 'phase') return [closed, ...advancePhase(state)];
   const a = state.action;
+  // Nobody played anything more: the action is over (zero-vtes digest §10.4).
+  if (state.window?.kind === 'after-resolution') {
+    return [closed, { type: 'ActionEnded', outcome: a?.outcome ?? 'success' }];
+  }
+  // Back to the acting Methuselah, to resolve it (§10.1).
+  if (state.window?.kind === 'would-succeed') return [closed];
   if (state.window?.kind === 'combat' && a?.combat)
     return combatStepClosed(state, a.combat, sx, now, by);
   if (state.window?.kind === 'referendum' && a) {
@@ -1913,7 +1981,27 @@ function closeWindow(state: GameState, sx: Settling, now: string, by: ActorRef):
     ];
   }
   const attempt = a?.blockAttempt;
-  if (!a || !attempt) return [closed, { type: 'ActionResolving' }];
+  if (!a || !attempt) {
+    // A bleed or a political action nobody blocked: first the cards played "if it would be
+    // successful" (Spying Mission, Major Boon, Yawp Court), the acting Methuselah first (zero-vtes
+    // digest §5.2, §10.1; rules-qa 24.2, 54.1).
+    const wouldSucceed: EventBody[] =
+      a && (a.kind === 'bleed' || a.kind === 'political')
+        ? [
+            {
+              type: 'WindowOpened',
+              window: {
+                kind: 'would-succeed',
+                phase: state.window?.phase ?? 'minion',
+                order: actionOrder(state, a),
+                cursor: 0,
+                passes: 0,
+              },
+            },
+          ]
+        : [];
+    return [closed, { type: 'ActionResolving' }, ...wouldSucceed];
+  }
   const blocker = state.cards[attempt.minion];
   if (a.kind === 'leave-torpor') {
     // No combat: a vampire in torpor can't enter one. A blocking vampire's Methuselah may
@@ -1929,7 +2017,7 @@ function closeWindow(state: GameState, sx: Settling, now: string, by: ActorRef):
       { type: 'ActionBlocked', blocker: attempt.minion },
       ...lock,
       ...finishedActionCard(state, sx.ids, a, 'blocked'),
-      { type: 'ActionEnded', outcome: 'blocked' },
+      ...concluded(state, a, 'blocked'),
     ];
   }
   return [
@@ -2012,16 +2100,13 @@ function referendumEnd(
     return [
       resolved,
       ...finishedActionCard(state, ids, a, 'success'),
-      { type: 'ActionEnded', outcome: 'success' },
+      ...concluded(state, a, 'success'),
     ];
   }
   // A blood hunt after a blocker's diablerie ends the leave-torpor action it blocked.
   const ends: EventBody[] =
     a.kind === 'leave-torpor' && a.blocker !== undefined
-      ? [
-          ...finishedActionCard(state, ids, a, 'blocked'),
-          { type: 'ActionEnded', outcome: 'blocked' },
-        ]
+      ? [...finishedActionCard(state, ids, a, 'blocked'), ...concluded(state, a, 'blocked')]
       : [];
   const on = r.on === undefined ? undefined : state.cards[r.on];
   if (!resolved.passed || !on || !IN_PLAY_ZONES.has(parseZoneId(on.zone).name)) {
@@ -2267,7 +2352,38 @@ function combatEnd(state: GameState, ids: () => InstanceId): EventBody[] {
   return [
     ...(state.window ? [{ type: 'WindowClosed' } as const] : []),
     ...finishedActionCard(state, ids, a, outcome),
-    { type: 'ActionEnded', outcome },
+    ...concluded(state, a, outcome),
+  ];
+}
+
+/** An action's impulse order: the acting Methuselah, then whom it's directed at, then the rest. */
+function actionOrder(state: GameState, a: ActionState): SeatId[] {
+  return windowOrder(
+    seatRefs(state),
+    a.seat,
+    a.target === undefined ? 'undirected' : { directedAt: a.target },
+  );
+}
+
+/**
+ * An action resolved, failed or was blocked: its after-resolution window opens, the acting
+ * Methuselah first, for the cards played after it (zero-vtes digest §5.2, §10.4; rules-qa 5.8,
+ * 23.3). For a political action it comes after the referendum; after a diablerie, after the blood
+ * hunt. `ActionEnded` follows when it closes.
+ */
+function concluded(state: GameState, a: ActionState, outcome: ActionOutcome): EventBody[] {
+  return [
+    { type: 'ActionConcluded', outcome },
+    {
+      type: 'WindowOpened',
+      window: {
+        kind: 'after-resolution',
+        phase: state.turn?.phase ?? 'minion',
+        order: actionOrder(state, a),
+        cursor: 0,
+        passes: 0,
+      },
+    },
   ];
 }
 

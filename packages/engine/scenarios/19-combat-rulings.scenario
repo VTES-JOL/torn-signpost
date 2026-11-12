@@ -35,6 +35,7 @@ B> strike ends
 expect combat 1 end-of-round close
 A> pass
 B> pass
+A> pass
 expect action none
 expect card A:ready:1 blood 3
 expect count B:torpor 0
@@ -60,6 +61,7 @@ A> pass
 C> pass
 A> pass
 C> pass
+A> pass
 expect action none
 expect card C:ready:1 blood 2
 
@@ -86,6 +88,7 @@ expect count B:torpor 1
 expect combat 1 end-of-round close
 A> pass
 B> pass
+A> pass
 expect action none
 expect card A:ready:1 blood 3
 
@@ -110,6 +113,7 @@ expect card C:torpor:1 blood 1
 expect combat 1 end-of-round close
 A> pass
 C> pass
+A> pass
 expect action none
 
 # Tamoszius: 2 blood, 3 aggravated. Wounded by the first point, he burns a blood for each of the
@@ -133,6 +137,7 @@ expect card C:torpor:2 blood 0
 expect combat 1 end-of-round close
 A> pass
 C> pass
+A> pass
 expect action none
 
 # Rulebook "Steal Blood", Chrysanthemum and the Underbridge Stray: the stolen blood comes before
@@ -161,6 +166,7 @@ expect count C:ashHeap 1
 expect combat 1 end-of-round close
 A> pass
 C> pass
+A> pass
 expect action none
 
 # Rulebook "Additional Strikes", Wauneka and Flávio Gonçalves: a 4-damage strike dodged; Wauneka
@@ -204,6 +210,7 @@ A> pass
 B> pass
 A> pass
 B> pass
+A> pass
 expect action none
 
 # Rulebook "Determine Range" and zero-vtes 4.3: at long range a hand strike is still legal, and does
@@ -237,6 +244,7 @@ B> pass
 expect combat 1 end-of-round long
 A> pass
 B> pass
+A> pass
 expect action none
 
 # Rulebook "Steal Blood": the ally with no life counters left is burned, with no damage done to it.

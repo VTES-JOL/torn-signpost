@@ -39,6 +39,7 @@ X> pass
 S> resolve success 1 edge
 expect pool X 29
 expect edge S
+S> pass
 expect action none
 
 # Only unlocked minions act. You can never bleed yourself: naming your own seat bleeds the prey.
@@ -61,6 +62,7 @@ S> pass
 P> pass
 expect action recruit S combat
 S> endcombat
+S> pass
 expect action none
 
 # A blocker must be ready and unlocked: Ilse, locked by her block, can't block again.

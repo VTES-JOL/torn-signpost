@@ -40,7 +40,7 @@ player. The parser lives in `packages/engine/src/console` and is shared by every
 | `unblock` | Withdraw your block attempt |
 | `pass` | Pass the impulse. With no block attempt pending, an eligible blocker's pass declines to block |
 | `play <card> [ready] [on <host>] [noreplace]` | Play a card from your hand: to the ash heap, into your ready region, or attached to a minion. It is replaced from your library unless `noreplace`. In a window it needs the impulse and returns it to the acting player |
-| `resolve success\|failure [n] [edge]` | Resolve your unblocked action. A successful bleed takes `n` (default 1) pool from the target and, with `edge`, gives you the Edge; a successful hunt adds `n` blood, up to capacity |
+| `resolve success\|failure [n] [edge]` | Resolve your unblocked action. A successful bleed takes `n` (default 1) pool from the target and, with `edge`, gives you the Edge; a successful hunt adds `n` blood, up to capacity. A bleed or political action first has its would-be-successful window: resolving passes it when nobody else would stop it ([flow](flow.md#action-windows)). Every action that resolves, fails or is blocked then has an after-resolution window: `pass`, or your next action or `next` passes it the same way |
 | `resolve success ["terms"]` | Your unblocked political action succeeds and calls its referendum, on the terms you choose (logged, not read by the engine). With the acting vampire no longer ready, no referendum is held |
 | `resolve combat <minion>` | Your unblocked action enters combat: your acting minion fights that minion |
 | `vote for\|against <vampire> [n]` | In a referendum's polling, on your impulse: a ready minion of yours casts its title's votes, or `n` claimed by a card effect. Cast again, it adds `n` on the same side |
@@ -170,9 +170,9 @@ expect occupant B erin
 expect count A:hand 7          # cards in a zone
 expect sees B A:hand 0         # how many cards in a zone the viewer can identify (seat, judge, public)
 expect impulse B               # who holds the impulse, or none
-expect action bleed A blocks   # kind, acting seat, stage (blocks, combat, resolution), or none
+expect action bleed A blocks   # kind, acting seat, stage (blocks, combat, resolution, referendum, diablerie, after), or none
 expect combat 1 range long     # round, step and range of the combat, or none
-expect window phase master     # open window kind and phase, or none
+expect window phase master     # open window kind (phase, blocks, combat, referendum, polling, would-succeed, after-resolution) and phase, or none
 expect votes 3 2               # votes cast for and against in the referendum, or none
 expect autopass B none         # phases a seat auto-passes, comma-separated, or none
 expect holds C                 # seats holding the open window, comma-separated, or none

@@ -86,6 +86,7 @@ X> pass
 # More votes against than for: it fails. The action itself succeeded, and the card is burned (5.8).
 log public The referendum fails (3 for, 4 against)
 log public The action succeeded
+S> pass
 expect action none
 expect count S:ashHeap 1
 expect pool S 30
@@ -114,6 +115,7 @@ expect votes 3 2
 S> pass
 X> pass
 log public The referendum passes (3 for, 2 against)
+S> pass
 expect action none
 # The caller applies what passed by hand.
 S> pool +1
@@ -143,6 +145,7 @@ S> pass
 X> pass
 P> pass
 log public The referendum fails (2 for, 2 against)
+X> pass
 expect action none
 
 # A political action whose vampire is no longer ready when it succeeds calls no referendum, and
@@ -153,4 +156,5 @@ S> pass
 X> move X:ready:2 torpor
 X> resolve success
 log public No referendum: Odile Fen is no longer ready
+X> pass
 expect action none

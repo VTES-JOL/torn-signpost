@@ -63,4 +63,5 @@ expect count A:ready 0
 
 # Back to the action: Alice resolves it.
 A> resolve success
+A> pass
 expect action none

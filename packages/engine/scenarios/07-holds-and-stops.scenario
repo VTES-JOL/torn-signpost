@@ -71,6 +71,7 @@ expect impulse C
 C> pass
 expect action bleed A resolution
 A> resolve failure
+A> pass
 C> stop neighbours
 
 # A late hold voids D's automatic pass: the round waits until the impulse comes round to D.

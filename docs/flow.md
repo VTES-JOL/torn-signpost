@@ -41,6 +41,7 @@ notifications, read only this.
 | Situation | Waits on | Kind |
 |---|---|---|
 | A window is open, the impulse holder is an eligible blocker who hasn't declined, no block attempt pending | The impulse holder | `block` |
+| The would-be-successful window, the acting Methuselah holding the impulse | The acting Methuselah | `resolve` |
 | Any other open window | The impulse holder | `impulse` |
 | An action at `resolution` | The acting Methuselah | `resolve` |
 | A combat step is open | The impulse holder | `combat` |
@@ -68,7 +69,9 @@ whenever no action and no window is open. It's the highlighted offer when nothin
 Checks:
 - A turn is in progress.
 - The sender is the acting player, or a judge.
-- No action is in progress ("Finish the current action first").
+- No action is in progress ("Finish the current action first"). In the last action's
+  after-resolution window, the acting player holding the impulse may still end the phase: see
+  [the acting Methuselah moving on](#the-acting-methuselah-moving-on).
 - No window is open ("Waiting for the other players to pass"). A judge can still advance, which
   closes the window first; use this to unstick a pass round.
 
@@ -130,8 +133,10 @@ acting Methuselah gets **Hold** (`Hold`), unless it is already holding.
 | **Block** (highlighted) | Block window, no block attempt pending, the seat is eligible and hasn't declined, and it has an unlocked ready minion | `Block { minion }` |
 | **Block (card effect)…** | Block window, no block attempt pending, the seat isn't eligible, hasn't declined and isn't acting, and it has an unlocked ready minion. Steps: the card that allows it (a Reaction from the hand or a face-up card in play; optional in casual games), then the blocking minion | `Block { minion, override }` ([Overrides](#overrides)) |
 | **Withdraw block** | The seat made the pending block attempt | `WithdrawBlock` |
+| **Successful**, **Unsuccessful**, **Enter combat…**, **Cancel action** | The would-be-successful window, to the acting Methuselah: the resolution offers of [2](#2-an-action-is-in-progress-no-window-open), which pass the window first | `ResolveAction`, `CancelAction` |
 | **Play a card** | The hand isn't empty | `PlayCard { card }` |
 | **Pass**, or **Don't block** when Block is offered | Always | `Pass` |
+| The next action's offers, and **End minion phase** | The after-resolution window, to the acting Methuselah: as in [3](#3-no-action-no-window), passing the window first | `DeclareAction`, `AdvancePhase` |
 
 ### 2. An action is in progress, no window open
 
@@ -211,6 +216,9 @@ Effect:
    predator (undirected), then the remaining seats clockwise. Declaring counts as the acting
    player's first pass.
 
+In the after-resolution window of the last action, the acting Methuselah holding the impulse may
+declare the next one: see [the acting Methuselah moving on](#the-acting-methuselah-moving-on).
+
 ### `Pass`
 
 Check: a window is open and the sender holds the impulse.
@@ -257,8 +265,10 @@ player and all passes are voided.
 
 ### `ResolveAction { outcome, amount?, edge?, terms? }`
 
-Checks: the sender owns the action (or is a judge), the action is at `resolution`, and the amount
-is a whole number of 0 or more (default 1).
+Checks: the sender owns the action (or is a judge), the action is at `resolution` with no window
+open, and the amount is a whole number of 0 or more (default 1). In the would-be-successful window,
+the acting Methuselah holding the impulse may resolve: see
+[the acting Methuselah moving on](#the-acting-methuselah-moving-on).
 
 Effect:
 - Successful political action: calls the referendum on `terms` ([Referendums](#referendums));
@@ -273,14 +283,16 @@ Effect:
   by default, the rulebook's cost; less for a card that reduces it). It's refused if the vampire
   can't pay. Out of torpor already, nothing happens. `combat` is refused: a vampire in torpor
   can't enter combat.
-- The action card is finished and the action ends.
+- The action card is finished and the action concludes: its after-resolution window opens
+  ([Action windows](#action-windows)).
 
 ### `EndCombat`
 
 Checks: the action is at `combat`, and the sender is the acting player, controls the blocker, or
 is a judge.
 
-Effect: the action card is finished and the action ends as blocked.
+Effect: the action card is finished and the action concludes as blocked; its after-resolution
+window opens.
 
 ### `Diablerize { decline? }`
 
@@ -292,18 +304,19 @@ Checks: the action is at `diablerie`, and the sender controls the blocking vampi
 To diablerize, the vampire must still be in torpor, and both vampires face up and in play.
 
 Effect:
-- `decline`: the action ends as blocked; the vampire stays in torpor and pays nothing.
+- `decline`: the action concludes as blocked; the vampire stays in torpor and pays nothing.
 - Otherwise a diablerie (rulebook, "Diablerie"): the victim's blood moves to the diablerist, up to
   its capacity, the rest draining off; the victim is burned with every card on it. Taking its
   equipment, and a Discipline from an older victim, are left to the players' moves. The blood
   hunt follows at once, as with `CallBloodHunt` (no cards played before votes, polling from the
-  acting Methuselah); when it's over the action ends as blocked.
+  acting Methuselah); when it's over the action concludes as blocked.
 
 ### `CancelAction`
 
-Check: the sender owns the action (or is a judge).
+Check: the sender owns the action (or is a judge), and it hasn't concluded.
 
-Effect: closes any open window and ends the action as cancelled.
+Effect: closes any open window and ends the action as cancelled. A cancelled action has no
+after-resolution window.
 
 ### `SetAutoPass { phases }`
 
@@ -596,11 +609,41 @@ When a window closes:
 | Window | Situation | What happens |
 |---|---|---|
 | `phase` | – | The phase advances (or the next turn starts) |
-| `blocks` | No block attempt pending | The action moves to `resolution` |
+| `blocks` | No block attempt pending | The action moves to `resolution`; for a bleed or a political action, the would-be-successful window opens |
+| `would-succeed` | – | Back to the acting Methuselah, to resolve the action |
+| `after-resolution` | – | The action ends |
 | `blocks` | Block attempt pending | The action is blocked and moves to `combat`; the blocking minion is locked, and the first combat step opens |
 | `combat` | – | The next combat step, or after End of round, the end of the combat and the action |
 | `referendum` | – | The polling opens, from the caller |
-| `polling` | – | The tally; the action ends successful, or after a blood hunt goes back to resolving |
+| `polling` | – | The tally; the action concludes successful, or after a blood hunt goes back to resolving |
+
+## Action windows
+
+Two windows around an action's resolution come from zero-vtes (`docs/rules-digest.md` §5.2,
+§10.1, §10.4, checked at `1f33be5`). Both take the action's order: the acting Methuselah first,
+then the target (directed) or prey and predator (undirected), then the rest clockwise.
+
+- **Would be successful** (`would-succeed`): when every seat passes on a bleed or a political
+  action with no block attempt, before it resolves. It's for cards played "if a bleed would be
+  successful" (Spying Mission), Major Boon, and Yawp Court on a political action (rules-qa 24.2,
+  54.1, 68.13). None once the action has failed: resolving it `failure`, or a bleed for 0, closes
+  the window at once, whoever is holding it.
+- **After resolution** (`after-resolution`): after every action that succeeds, fails or is blocked
+  (rules-qa 5.8, 23.3); for a political action after its referendum, after a diablerie after its
+  blood hunt. `ActionConcluded { outcome }` puts the action at stage `after` and opens it;
+  `ActionEnded` follows when it closes. A cancelled action, or one ended by an oust of its acting
+  Methuselah, has none. A target ousted by the action leaves the window, which stays open
+  (rules-qa 24.1).
+
+### The acting Methuselah moving on
+
+Both windows open on the acting Methuselah, who never passes automatically, so each would cost
+them a pass on every action. Instead, holding the impulse there, their next move passes the window
+for them: `ResolveAction` in the would-be-successful window, `DeclareAction` or `AdvancePhase` in
+the after-resolution window. It's a pass, then the command, when every other seat in the window
+would pass automatically (no hold, no stop, auto-pass on for the phase); otherwise the command is
+refused, and they pass by hand and wait for the others, as before. Once time is up and the game ends
+with this action, the after-resolution window is passed by hand, so the game ends with it.
 
 ### Later: player-defined stops
 
@@ -618,13 +661,15 @@ point. Trigger ideas:
 
 ```
 DeclareAction ──► blocks window
-                   │ every seat passes, no attempt ──► resolution ──► ResolveAction ──► ended (success | failure)
-                   │ every seat passes, attempt ─────► combat steps ─► End of round, or EndCombat ─► ended (blocked)
-                   │ (leave-torpor) attempt by a vampire ──► diablerie ──► Diablerize ──► blood hunt ──► ended (blocked)
-                   │                                                    └─ Diablerize decline, or an ally's block ──► ended (blocked)
-                   resolution ──► ResolveAction combat ──► combat steps ──► … ──────────────────► ended (success)
-                   resolution ──► ResolveAction success (political) ──► before votes ──► polling ──► ended (success)
+                   │ every seat passes, no attempt ──► resolution ──► ResolveAction ──► concluded (success | failure)
+                   │   (bleed, political: would-succeed window first)
+                   │ every seat passes, attempt ─────► combat steps ─► End of round, or EndCombat ─► concluded (blocked)
+                   │ (leave-torpor) attempt by a vampire ──► diablerie ──► Diablerize ──► blood hunt ──► concluded (blocked)
+                   │                                                    └─ Diablerize decline, or an ally's block ──► concluded (blocked)
+                   resolution ──► ResolveAction combat ──► combat steps ──► … ──────────────────► concluded (success)
+                   resolution ──► ResolveAction success (political) ──► before votes ──► polling ──► concluded (success)
                    │ Block ──► impulse back to acting player, passes reset
                    │ WithdrawBlock ──► seat declined
-CancelAction (any stage) ───────────────────────────────────────────────────────────► ended (cancelled)
+concluded ──► after-resolution window ──► every seat passes ──► ended
+CancelAction (before it concludes) ─────────────────────────────────────────────────► ended (cancelled)
 ```

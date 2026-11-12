@@ -65,6 +65,7 @@ expect card B:ready:1 blood 5
 expect combat 1 press long
 A> pass round
 B> pass round
+A> pass
 expect action none
 
 # Next, Theo hunts and Beast blocks again. Before strikes, "Beast plays Immortal Grapple": only
@@ -95,4 +96,5 @@ expect card A:ready:1 blood 6
 expect card B:ready:1 blood 4
 A> pass round
 B> pass round
+A> pass
 expect action none

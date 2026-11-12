@@ -34,7 +34,8 @@ export function tempo(state: GameState): Tempo {
  * - `phase`: the acting Methuselah, to act or end the phase;
  * - `impulse`: the impulse holder in a window, to play a card or pass;
  * - `block`: an eligible blocker holding the impulse in a block window, to block or not;
- * - `resolve`: the acting Methuselah, to resolve an unblocked action;
+ * - `resolve`: the acting Methuselah, to resolve an unblocked action (holding the impulse in its
+ *   would-be-successful window, or after it);
  * - `combat`: in a combat step, the combatant holding the impulse; in a combat from before
  *   combat steps (M6.4), the two Methuselahs in it, to end it;
  * - `vote`: the seat holding the impulse in a referendum's polling step, to cast votes or pass.
@@ -94,6 +95,10 @@ function currentWaits(state: GameState): Omit<Wait, 'since'>[] {
     if (!live(holder)) return [];
     if (state.window.kind === 'combat') return [{ seat: holder, kind: 'combat' }];
     if (state.window.kind === 'polling') return [{ seat: holder, kind: 'vote' }];
+    // Not blocked: the acting Methuselah resolves it, or plays first (zero-vtes digest §10.1).
+    if (state.window.kind === 'would-succeed' && holder === a?.seat) {
+      return [{ seat: holder, kind: 'resolve' }];
+    }
     const blocking =
       state.window.kind === 'blocks' &&
       a !== undefined &&

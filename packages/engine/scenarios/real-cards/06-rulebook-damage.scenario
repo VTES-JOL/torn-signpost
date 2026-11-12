@@ -53,6 +53,7 @@ expect card A:ready:1 blood 4
 expect count B:ashHeap 1
 A> pass round
 B> pass round
+A> pass
 expect action none
 
 # "Nassir is ready and has 1 blood when he receives 1 point of aggravated damage. He cannot mend
@@ -73,6 +74,7 @@ log public Round 1 · Damage: Nassir (G6) takes 1 aggravated and goes to torpor
 expect card B:torpor:1 blood 1
 A> pass
 B> pass
+A> pass
 expect action none
 
 # "Tamoszius is ready and has 2 blood when he receives 3 points of aggravated damage. He becomes
@@ -94,4 +96,5 @@ log public Round 1 · Damage: Tamoszius (G6) takes 3 aggravated (2 blood) and go
 expect card B:torpor:2 blood 0
 A> pass
 B> pass
+A> pass
 expect action none

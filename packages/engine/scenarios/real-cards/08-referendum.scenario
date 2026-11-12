@@ -63,6 +63,7 @@ A> pass
 B> pass
 C> pass
 log public The referendum passes (5 for, 2 against)
+A> pass
 expect action none
 
 # Alice applies what passed.
