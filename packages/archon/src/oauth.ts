@@ -6,7 +6,7 @@
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { ArchonError } from './errors.ts';
-import type { Tokens, UserInfo } from './types.ts';
+import type { TokenClaims, Tokens, UserInfo } from './types.ts';
 
 export interface ArchonConfig {
   /** e.g. https://archon.krcg.org (test) or https://archon.vekn.net. */
@@ -79,6 +79,29 @@ export async function userInfo(config: ArchonConfig, accessToken: string): Promi
   const body = (await res.json()) as Partial<UserInfo>;
   if (!body.sub) throw new ArchonError(502, 'archon.bad_userinfo', 'Archon named no member');
   return { sub: body.sub, vekn_id: body.vekn_id || null, roles: body.roles ?? [] };
+}
+
+/**
+ * The claims of an access token, read without checking its signature: it came straight from
+ * Archon's token endpoint, and Archon checks it whenever it's used. Empty if it isn't a JWT.
+ */
+export function tokenClaims(accessToken: string): TokenClaims {
+  const payload = accessToken.split('.')[1];
+  if (!payload) return {};
+  try {
+    const c = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Record<
+      string,
+      unknown
+    >;
+    return {
+      ...(typeof c.sub === 'string' ? { sub: c.sub } : {}),
+      ...(typeof c.scope === 'string' ? { scope: c.scope } : {}),
+      ...(typeof c.tournament === 'string' ? { tournament: c.tournament } : {}),
+      ...(typeof c.exp === 'number' ? { exp: c.exp } : {}),
+    };
+  } catch {
+    return {};
+  }
 }
 
 /** A request to Archon: its refusals as `ArchonError`, a network failure as status 0. */

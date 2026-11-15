@@ -231,4 +231,24 @@ describe('email', () => {
       Environment: { Variables: Match.objectLike({ EMAIL_ENABLED: 'true' }) },
     });
   });
+
+  it('reads linked tournaments from Archon every minute, with grants sealed by a rotating KMS key', () => {
+    api.resourcePropertiesCountIs(
+      'AWS::Scheduler::Schedule',
+      {
+        ScheduleExpression: 'rate(1 minute)',
+        Target: Match.objectLike({ Input: '{"kind":"tournaments"}' }),
+      },
+      1,
+    );
+    api.hasResourceProperties('AWS::KMS::Key', { EnableKeyRotation: true });
+    api.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: Match.objectLike({
+          ARCHON_URL: 'https://archon.krcg.org',
+          ARCHON_TOKEN_KEY: Match.anyValue(),
+        }),
+      },
+    });
+  });
 });

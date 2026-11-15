@@ -340,7 +340,7 @@ projectEvent(before: GameState, after: GameState, ev: GameEvent, viewer: Viewer)
 | Games | `POST /games` · `GET /games?status=open\|active\|mine` · `GET /games/{id}` (projected view) · `POST /games/{id}/join` · `POST /games/{id}/commands` · `GET /games/{id}/events?after=` · `GET /games/{id}/actions` | View/list public games as a guest; everything else needs a player |
 | Chat | `POST /chat/{channel}` · `GET /chat/{channel}?before=` | Players (guests have no chat) |
 | Decks | `GET/POST/PUT/DELETE /decks` · `GET /decks/public?format=&clan=` · `POST /decks/import` · `GET /decks/{id}/versions` | Public listing open to guests |
-| Tournaments | `POST /tournaments` · `POST /tournaments/{id}/register` · `POST /tournaments/{id}/rounds` (seat) · `PUT /tournaments/{id}/results` · `GET /tournaments/{id}/archon` | Organiser / player |
+| Tournaments (through Archon, §5.7) | `GET /tournaments` · `GET /tournaments/{id}` (players, rounds and standings for players) · `POST /tournaments/link` · `POST /archon/callback` · `POST /tournaments/{id}/refresh` · `DELETE /tournaments/{id}` | List and summaries open to guests; linking needs a player; refresh and unlink its organiser or an admin |
 | Users | `GET/PUT /me` · `GET /users/{handle}` · `GET /users/{handle}/stats` · `GET /leaderboards` · `DELETE /me` · `GET /me/export` | — |
 | Notifications | `GET /me/notifications` · `PUT /me/notification-prefs` · `POST /me/push-subscriptions` | Player |
 | Admin | `GET /admin/reports` · `POST /admin/users/{id}/ban` · `POST /admin/content/ingest` | `admin` group |
@@ -421,11 +421,11 @@ sequenceDiagram
 | Digest queue | `DIGESTQ` | `<sub>#<notificationId>` | TTL 3 days; notifications waiting for the next digest run |
 | Profile | `USER#<sub>` | `PROFILE` | display name, avatar, prefs. Unique handles via `HANDLE#<lower>` items (AUTH-05) |
 | Archon link | `USER#<sub>` | `ARCHON` | the player's Archon member uid and VEKN number (M7.1). Claimed by `ARCHONUSER#<archon uid>` / `CLAIM`, so an Archon account links to one player at a time |
-| Archon sign-in | `OAUTH#<state>` | `OAUTH` | TTL 15 minutes; the PKCE verifier of a link under way, removed as the callback reads it |
+| Archon sign-in | `OAUTH#<state>` | `OAUTH` | TTL 15 minutes; the PKCE verifier of a link under way and what it's for (an account or a tournament), removed as the callback reads it |
 | Stats | `USER#<sub>` | `STATS#<season>`, `STATS#all` | counters (STATS-02), flat attributes per format; the season item on GSI1 `STATS#<season>` / sub for the leaderboards (STATS-03) |
 | Result | `GAME#<id>` | `RESULT` | a counted game's result (STATS-01): casual games of 5 players and tournament games only |
 | Deck | `DECK#<id>` | `META`, `V#<n>` | versions immutable (DECK-07). GSI1 `OWNER#<sub>` for my decks; GSI4 `PUBLIC#<format>` / `<updatedAt>` for public listings |
-| Tournament | `TOURN#<id>` | `META`, `REG#<sub>`, `ROUND#<n>`, `TABLE#<n>#<k>` | GSI1 `TOURN#<status>` |
+| Tournament (M7.2) | `TOURN#<archon uid>` | `META`, `GRANT`, `STATE` | a tournament linked to Archon: `META` the summary, who linked it and how the last read went (GSI1 `TOURNS` / start); `GRANT` the organiser's `event:run` tokens, sealed with KMS, and a lease while one process refreshes them; `STATE` our copy of Archon's state (JSON) |
 | Global chat | `CHAT#<channel>#<yyyymmdd>` | `<ts>#<id>` | partitioned by day; TTL for chat retention (NFR-11) |
 | Push device | `USER#<sub>` | `PUSH#<deviceId>` | APNs token / Web Push subscription |
 | Report / audit | `REPORT#<id>` / `AUDIT#<yyyymm>` | … | GSI1 `REPORT#open` (LOBBY-05) |
@@ -500,7 +500,7 @@ a rendering component per client.
 - **Archon accounts** (M7.1, `docs/m7-plan.md`): tournaments are run with Archon, the VEKN's
   tournament manager, so a player links their Archon account from the Account page: our OAuth
   client (code + PKCE, scope `profile:read`) sends them to Archon's consent page, the web app's
-  `/archon/callback` posts the code to `POST /me/archon/callback`, and the API exchanges it with the
+  `/archon/callback` posts the code to `POST /archon/callback`, and the API exchanges it with the
   client secret (Secrets Manager) and keeps their Archon uid and VEKN number from
   `/oauth/userinfo`, not the tokens. `packages/archon` is the client, with a fake Archon for tests.
 - **Account deletion** (AUTH-04): deletes the Cognito user and profile, decks and chat, and
@@ -521,13 +521,32 @@ under their name. The table and @mentions use these; mentions reach only the sea
 players. Until a name is chosen the user
 shows as "Player 1a2b" and the web app asks for one.
 
-### 5.7 Tournaments & seating (TOURN-*)
+### 5.7 Tournaments, through Archon (TOURN-*)
 
-- The seating solver is ported from `tournament-seating` to TypeScript (`packages/seating`):
-  simulated annealing over the VEKN seating criteria (R1–R9), run in the api Lambda. It should take
-  seconds for 100 players. Cross-check tests compare it with the Java solver's outputs.
-- Rounds create games automatically (TOURN-04). Game end writes results to the tournament, which
-  computes standings and tie-breakers (GW, VP, TP). Archon export is a pure function (TOURN-07).
+Tournaments are run with **Archon**, the VEKN's tournament manager (`docs/m7-plan.md`): the table
+draw, scores, standings, finals and the report to the VEKN are Archon's; Torn Signpost registers
+players and plays the games. There is no seating solver or tournament scoring here.
+
+- **Linking** (M7.2): an organiser gives the tournament's address in Archon; the API sends them to
+  Archon's consent page for `event:run` on that tournament (the same code + PKCE flow and callback
+  as accounts). The tokens are sealed with a KMS key (`archon/sealer.ts`, bound to the tournament)
+  and kept on `TOURN#<uid>` / `GRANT`; reading the tournament with them checks the grant. Whoever
+  linked it is its organiser here; linking it again (by any of its organisers in Archon) renews the
+  grant.
+- **Refreshing the grant**: access tokens last an hour and Archon rotates refresh tokens, so only
+  one process refreshes at a time: it takes a lease on the `GRANT` item, reads it again, refreshes
+  and writes the new tokens; others wait and use them. A refresh Archon refuses marks the grant
+  `lost`, shown to the organiser, who links it again.
+- **Following it** (decision 6): the timers Lambda reads every linked tournament that's under way
+  (Waiting, Playing, Finals) every minute, from an EventBridge Scheduler `rate(1 minute)` schedule,
+  and ones not yet started every 15 minutes; finished ones aren't read again. A read is Archon's
+  stream up to `sync_complete`, keeping the fields we show and members' uid, name and VEKN number.
+  The organiser can also read it at once. A failed read keeps the last copy and says why.
+- **Pages**: `/tournaments` (under way, upcoming, finished) and `/tournaments/{id}`: anyone sees the
+  summary; signed-in players see its players (with who has linked their Archon account here),
+  rounds and tables, and standings. Behind the `archon` flag.
+- Next (M7.3–M7.6): registration sent to Archon, a game per table when a round starts, results
+  sent back with `SetScore`.
 
 ### 5.8 Stats (STATS-*)
 

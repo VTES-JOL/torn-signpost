@@ -15,6 +15,7 @@
   "dependencies": {
     "@aws-sdk/client-apigatewaymanagementapi": "3.1151.0",
     "@aws-sdk/client-dynamodb": "3.1151.0",
+    "@aws-sdk/client-kms": "3.1151.0",
     "@aws-sdk/client-scheduler": "3.1151.0",
     "@aws-sdk/client-secrets-manager": "3.1151.0",
     "@aws-sdk/client-sesv2": "3.1151.0",

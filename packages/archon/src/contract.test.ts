@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { act, readTournament } from './client.ts';
-import type { ArchonConfig } from './oauth.ts';
+import { type ArchonConfig, tokenClaims } from './oauth.ts';
 
 const file = process.env.ARCHON_CONTRACT;
 const live = file
@@ -52,6 +52,18 @@ describe.runIf(live)('the real Archon', () => {
     }
     for (const m of members.values())
       expect(Object.keys(m).sort()).toEqual(['name', 'uid', 'vekn_id']);
+    // Its officials, and their names among the members sent (M7.2's tournament page).
+    expect(t.organizers_uids?.length).toBeGreaterThan(0);
+    for (const uid of t.organizers_uids ?? []) expect(members.get(uid)?.name).toBeTruthy();
+  });
+
+  it('issues event:run tokens that name their tournament and who granted them', () => {
+    expect(tokenClaims(live?.accessToken ?? '')).toMatchObject({
+      scope: 'event:run',
+      tournament: live?.tournament,
+      sub: expect.any(String),
+      exp: expect.any(Number),
+    });
   });
 
   it('refuses an unknown action with its error shape', async () => {

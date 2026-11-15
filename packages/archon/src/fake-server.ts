@@ -2,7 +2,8 @@
  * The fake Archon over HTTP, for the end-to-end tests (and trying the flows locally):
  * `PORT=3103 pnpm --filter @torn-signpost/archon fake`. Besides Archon's routes, tests control it
  * through `/_fake/…`: add a member, sign one in (who then approves every consent), add a
- * tournament, read the actions it received.
+ * tournament, apply an action to one as its organiser, expire every access token, read the actions
+ * it received.
  */
 import http from 'node:http';
 import { FakeArchon } from './fake.ts';
@@ -31,6 +32,14 @@ async function control(req: http.IncomingMessage, path: string): Promise<unknown
   }
   if (path === '/_fake/tournaments')
     return fake.addTournament(body.organizer, body.tournament ?? {});
+  if (path === '/_fake/act') {
+    fake.act(body.tournament, body.action);
+    return { ok: true };
+  }
+  if (path === '/_fake/expire') {
+    fake.expireAccess();
+    return { ok: true };
+  }
   if (path === '/_fake/log') return fake.log;
   return undefined;
 }

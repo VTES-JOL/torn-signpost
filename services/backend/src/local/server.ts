@@ -8,11 +8,12 @@ import { serve } from '@hono/node-server';
 import { WebSocket, WebSocketServer } from 'ws';
 import { createApp } from '../app.ts';
 import { archonConfig } from '../archon/config.ts';
+import { localSealer } from '../archon/sealer.ts';
 import { devAuthenticator } from '../auth.ts';
 import { consoleMailer } from '../email/mailer.ts';
 import { ApiError } from '../errors.ts';
 import type { ConnectionGateway } from '../realtime/gateway.ts';
-import { createServices } from '../services.ts';
+import { createServices, fireTimer } from '../services.ts';
 import { localTimers } from '../timers/timers.ts';
 import { local } from './env.ts';
 
@@ -51,8 +52,16 @@ const services = createServices({
         ? { client: local.archon.client }
         : { secretId: local.archon.secretId }),
     }),
+    // Organisers' grants, sealed under a fixed local key (the beta's use KMS).
+    sealer: localSealer(),
   },
 });
+
+// Linked tournaments are read from Archon every minute, as the beta's schedule does.
+setInterval(
+  () => void fireTimer(services, { kind: 'tournaments' }).catch((e) => console.error(e)),
+  local.archon.pollMs,
+).unref();
 
 const app = createApp({
   stage: 'local',
@@ -66,6 +75,7 @@ const app = createApp({
   results: services.results,
   ...(services.email ? { email: services.email } : {}),
   ...(services.archon ? { archon: services.archon } : {}),
+  ...(services.tournaments ? { tournaments: services.tournaments } : {}),
 });
 
 const server = serve({ fetch: app.fetch, port: local.port }, ({ port }) => {

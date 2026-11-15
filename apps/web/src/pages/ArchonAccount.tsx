@@ -2,7 +2,7 @@
  * The player's Archon account (docs/m7-plan.md M7.1): Archon, the VEKN's tournament manager, runs
  * the tournaments played here, and needs to know who each player is there, and their VEKN number.
  */
-import type { ArchonLink, ArchonLinkStart } from '@torn-signpost/protocol';
+import type { ArchonCallbackResult, ArchonLink, ArchonLinkStart } from '@torn-signpost/protocol';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { ApiError, useApi } from '../api.ts';
@@ -113,7 +113,10 @@ export function ArchonAccount() {
   );
 }
 
-/** Archon sends the player back here, with a code to finish the link (or why it didn't). */
+/**
+ * Archon sends the player back here, with a code to finish what they started (or why it didn't):
+ * linking their own account, or a tournament they run.
+ */
 export function ArchonCallback() {
   const api = useApi();
   const auth = useAuth();
@@ -128,20 +131,30 @@ export function ArchonCallback() {
     const state = params.get('state') ?? '';
     const code = params.get('code');
     const err = params.get('error');
-    api<ArchonLink>('/me/archon/callback', {
+    api<ArchonCallbackResult>('/archon/callback', {
       method: 'POST',
       body: { state, ...(code ? { code } : {}), ...(err ? { error: err } : {}) },
     }).then(
       // Replacing this page leaves the code out of the history.
-      () => navigate('/account?archon=linked', { replace: true }),
+      (done) =>
+        navigate(
+          done.purpose === 'tournament'
+            ? `/tournaments/${done.tournamentId}?linked=1`
+            : '/account?archon=linked',
+          { replace: true },
+        ),
       (e) => setError(message(e)),
     );
   }, [api, auth.user, params, navigate]);
-  if (!auth.user) return <p className="notice">Sign in to link your Archon account.</p>;
+  if (!auth.user) return <p className="notice">Sign in to finish linking with Archon.</p>;
   return (
     <section className="notice">
-      <p role="status">{error ?? 'Linking your Archon account…'}</p>
-      {error && <Link to="/account">Back to your account</Link>}
+      <p role="status">{error ?? 'Finishing the link with Archon…'}</p>
+      {error && (
+        <p>
+          <Link to="/account">Your account</Link> · <Link to="/tournaments">Tournaments</Link>
+        </p>
+      )}
     </section>
   );
 }

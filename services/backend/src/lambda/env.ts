@@ -1,6 +1,7 @@
 /** Lambda configuration from environment variables set by the CDK API stack. */
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
 import { archonConfig } from '../archon/config.ts';
+import { kmsSealer } from '../archon/sealer.ts';
 import { cognitoAuthenticator } from '../auth.ts';
 import { sesMailer } from '../email/mailer.ts';
 import { awsGateway } from '../realtime/gateway.ts';
@@ -27,6 +28,8 @@ const archon = process.env.ARCHON_URL
         redirectUri: env('ARCHON_REDIRECT_URI'),
         secretId: env('ARCHON_SECRET_ID'),
       }),
+      // Organisers' grants are sealed with this key (docs/m7-plan.md, decision 2).
+      sealer: kmsSealer(env('ARCHON_TOKEN_KEY')),
     }
   : undefined;
 

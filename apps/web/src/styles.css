@@ -2535,3 +2535,57 @@ body.dragging {
 ::view-transition {
   pointer-events: none;
 }
+
+/* Tournaments, from Archon (docs/m7-plan.md M7.2). */
+.table-scroll {
+  overflow-x: auto;
+}
+
+.tournament .badge,
+.deck-list .badge,
+.stats-table .badge {
+  margin-left: 0.35rem;
+}
+
+.link-tournament input {
+  flex: 1 1 16rem;
+  min-width: 0;
+  max-width: 36rem;
+}
+
+.tournament-description {
+  white-space: pre-line;
+  max-width: 60rem;
+}
+
+.tournament details {
+  margin-block: 0.5rem;
+}
+
+.tournament summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.tournament-tables {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.tournament-table {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+}
+
+.tournament-table h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.tournament-table ol {
+  margin: 0;
+  padding-left: 1.25rem;
+}

@@ -6,7 +6,15 @@ import { describe, expect, it } from 'vitest';
 import { act, readTournament } from './client.ts';
 import { ArchonError } from './errors.ts';
 import { FakeArchon } from './fake.ts';
-import { type ArchonConfig, consentUrl, exchangeCode, pkce, refresh, userInfo } from './oauth.ts';
+import {
+  type ArchonConfig,
+  consentUrl,
+  exchangeCode,
+  pkce,
+  refresh,
+  tokenClaims,
+  userInfo,
+} from './oauth.ts';
 
 const REDIRECT = 'http://localhost:5173/archon/callback';
 
@@ -159,10 +167,50 @@ describe('a tournament through an event:run grant', () => {
     const { config, t, players, token } = tournament();
     await act(config, t.uid, token, { type: 'OpenRegistration' });
     await act(config, t.uid, token, { type: 'Register', user_uid: players[0]?.uid ?? '' });
-    const { members } = await readTournament(config, t.uid, token);
-    expect([...members.values()]).toEqual([
-      { uid: players[0]?.uid, name: 'P1', vekn_id: '1000001' },
-    ]);
+    const { tournament: read, members } = await readTournament(config, t.uid, token);
+    // Its players and its organisers.
+    expect(new Set(members.values())).toEqual(
+      new Set([
+        { uid: players[0]?.uid, name: 'P1', vekn_id: '1000001' },
+        { uid: read.organizers_uids?.[0], name: 'Org', vekn_id: '1000000' },
+      ]),
+    );
+  });
+
+  it('reads who granted a token, and for which tournament, from its claims', () => {
+    const { t, token } = tournament();
+    expect(tokenClaims(token)).toMatchObject({ scope: 'event:run', tournament: t.uid });
+    expect(tokenClaims('not-a-jwt')).toEqual({});
+  });
+
+  it('refuses a grant once it’s revoked, and an access token once it runs out', async () => {
+    const { fake, config, t, players } = tournament();
+    const org = t.organizers_uids?.[0] ?? '';
+    fake.signedIn = org;
+    const { verifier, challenge } = pkce();
+    const back = await consent(
+      fake,
+      consentUrl(config, { scope: 'event:run', state: 's', challenge, tournament: t.uid }),
+    );
+    const tokens = await exchangeCode(config, back.code ?? '', verifier);
+    fake.expireAccess();
+    await expect(readTournament(config, t.uid, tokens.access_token)).rejects.toMatchObject({
+      status: 401,
+    });
+    const renewed = await refresh(config, tokens.refresh_token ?? '');
+    expect((await readTournament(config, t.uid, renewed.access_token)).tournament.uid).toBe(t.uid);
+    fake.revoke(t.uid);
+    await expect(refresh(config, renewed.refresh_token ?? '')).rejects.toMatchObject({
+      status: 400,
+      code: 'invalid_grant',
+    });
+    // Only the tournament's organisers can grant it.
+    fake.signedIn = players[0]?.uid;
+    const declined = await consent(
+      fake,
+      consentUrl(config, { scope: 'event:run', state: 's', challenge, tournament: t.uid }),
+    );
+    expect(declined.error).toBe('access_denied');
   });
 
   it('turns refusals into ArchonErrors with their codes', async () => {

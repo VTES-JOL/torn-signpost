@@ -28,6 +28,8 @@ what the API or engine would refuse anyway).
 - See a finished game's result (standings, VP, who won): any public game's, and a private
   counted game's, though its table, log and chat stay with its players (docs/m6-plan.md M6.6,
   F2) [API]. The lobby lists recent public results.
+- See linked tournaments (M7.2): the list, and each one's summary (dates, place, format, state,
+  number of players, its officials) [API].
 - Nothing else: every change needs a signed-in user [API].
 
 ## Players (signed in)
@@ -59,6 +61,22 @@ what the API or engine would refuse anyway).
 - **Their own account**: choose a display name once (AUTH-05); notifications; email settings and
   unsubscribing [API].
 - See private games they've joined or sat in [API].
+
+- **Tournaments** (docs/m7-plan.md M7.2): see a linked tournament's players (with their VEKN
+  numbers, and who has linked their Archon account here), rounds and tables, and standings
+  [API].
+- **Link a tournament** they run in Archon: Archon decides, by asking them to grant
+  `event:run` for it, which only its organisers there can [Archon]. Whoever links it is its
+  **organiser** here [API].
+
+## Tournament organisers (who linked the tournament)
+
+- Read it from Archon at once, rather than at the next poll; see why the last read failed, and
+  whether Archon still accepts the grant; link it again; unlink it, which stops it being followed
+  here (the grant itself is withdrawn in Archon) [API]. Admins can do the same.
+- Players without a deck list are flagged to them [web].
+- Everything else about the tournament (its settings, players, rounds, scores) is done in Archon;
+  its officials there are listed on its page. They aren't judges in its games yet (M7.4).
 
 ## Spectators (signed in, not seated)
 
@@ -97,11 +115,13 @@ what the API or engine would refuse anyway).
 - **Rename a player** (AUTH-05): names are otherwise permanent; the old name stays retired
   (`PUT /users/{name}/name`, the Account page) [API].
 - **Notified** of every escalation, if they've connected in the last 30 days [API].
+- **Any linked tournament**, as its organiser can: read it now, unlink it [API].
 - Not: judge powers (rulings, hidden cards, primitives on other seats) unless also a judge.
 
 ## The system (the server itself)
 
 Commands no user can send [engine]: starting a game (`StartGame`), presence (`SetPresence`), and
-the timer checks (`CheckDeadline`, `CheckTimeLimit`, `EndPause`). After every command the engine
+the timer checks (`CheckDeadline`, `CheckTimeLimit`, `EndPause`). Outside games, it reads linked
+tournaments from Archon every minute with their organisers' grants [API]. After every command the engine
 also applies the rules no one asks for: automatic passes, ousts, settling deadline calls, and the
 end of the game.

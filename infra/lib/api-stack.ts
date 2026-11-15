@@ -8,6 +8,7 @@ import {
 import type * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import type * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as kms from 'aws-cdk-lib/aws-kms';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
@@ -245,24 +246,45 @@ export class ApiStack extends Stack {
       unsubscribeSecret.grantRead(f);
     }
 
-    // Archon (M7, docs/m7-plan.md): the API links players' Archon accounts. Our OAuth client's
-    // secret was stored by hand; the functions only read it.
+    // Archon (M7, docs/m7-plan.md): players link their Archon accounts, organisers link
+    // tournaments. Our OAuth client's secret was stored by hand; the functions only read it.
+    // Organisers' grants are kept sealed with a KMS key (decision 2), and linked tournaments are
+    // read from Archon every minute (decision 6).
     if (config.archon) {
       const archonClient = secretsmanager.Secret.fromSecretNameV2(
         this,
         'ArchonClient',
         config.archon.clientSecretName,
       );
+      const grantKey = new kms.Key(this, 'ArchonGrantKey', {
+        description: 'Seals the Archon grants organisers give Torn Signpost',
+        enableKeyRotation: true,
+      });
       const archonEnv = {
         ARCHON_URL: config.archon.url,
         ARCHON_REDIRECT_URI: `https://${h.web}/archon/callback`,
         // The name, not the ARN: a secret looked up by name has only a partial ARN.
         ARCHON_SECRET_ID: config.archon.clientSecretName,
+        ARCHON_TOKEN_KEY: grantKey.keyArn,
       };
       for (const f of [this.wsFunction, this.apiFunction, this.timersFunction]) {
         for (const [k, v] of Object.entries(archonEnv)) f.addEnvironment(k, v);
         archonClient.grantRead(f);
+        grantKey.grantEncryptDecrypt(f);
       }
+      new scheduler.CfnSchedule(this, 'ArchonPoll', {
+        groupName: scheduleGroup.name ?? 'default',
+        scheduleExpression: 'rate(1 minute)',
+        flexibleTimeWindow: { mode: 'OFF' },
+        target: {
+          arn: timersArn,
+          roleArn: schedulerRole.roleArn,
+          input: JSON.stringify({ kind: 'tournaments' }),
+          deadLetterConfig: { arn: this.timersDeadLetters.queueArn },
+          // A missed read is made up by the next one.
+          retryPolicy: { maximumRetryAttempts: 0 },
+        },
+      }).addResourceDependency(scheduleGroup);
     }
     this.timersFunction.addToRolePolicy(
       new iam.PolicyStatement({

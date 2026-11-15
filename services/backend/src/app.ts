@@ -9,6 +9,7 @@ import {
   EmailPrefs,
   type HealthResponse,
   JoinGameRequest,
+  LinkTournamentRequest,
   LobbyStatus,
   MarkReadRequest,
   ResolveEscalationRequest,
@@ -27,6 +28,7 @@ import { ApiError } from './errors.ts';
 import type { GameService } from './games/service.ts';
 import type { NotificationService } from './notifications/service.ts';
 import type { ResultsService } from './stats/service.ts';
+import type { TournamentService } from './tournaments/service.ts';
 import type { ProfileService } from './users/service.ts';
 
 export interface AppConfig {
@@ -44,6 +46,8 @@ export interface AppConfig {
   results?: ResultsService;
   /** Missing where Archon isn't configured. */
   archon?: ArchonService;
+  /** Tournaments linked to Archon; with Archon. */
+  tournaments?: TournamentService;
 }
 
 type Env = { Variables: { identity: Identity } };
@@ -209,10 +213,32 @@ export function createApp(config: AppConfig): Hono<Env> {
   };
   app.get('/me/archon', async (c) => c.json(await archon().status(c.var.identity)));
   app.post('/me/archon/link', async (c) => c.json(await archon().start(c.var.identity)));
-  app.post('/me/archon/callback', async (c) =>
+  // Archon sent the player back (to the web app): finish linking their account or a tournament.
+  app.post('/archon/callback', async (c) =>
     c.json(await archon().complete(c.var.identity, await body(c.req, ArchonCallbackRequest))),
   );
   app.delete('/me/archon', async (c) => c.json(await archon().unlink(c.var.identity)));
+  // Tournaments linked to Archon (docs/m7-plan.md M7.2). Anyone sees the list and summaries;
+  // players, rounds and standings are for signed-in players.
+  const tournaments = () => {
+    if (!config.tournaments)
+      throw new ApiError(503, 'archon_disabled', 'Tournaments aren’t available here');
+    return config.tournaments;
+  };
+  app.get('/tournaments', async (c) => c.json(await tournaments().list()));
+  app.post('/tournaments/link', async (c) =>
+    c.json(await tournaments().startLink(c.var.identity, await body(c.req, LinkTournamentRequest))),
+  );
+  app.get('/tournaments/:id', async (c) =>
+    c.json(await tournaments().get(c.var.identity, c.req.param('id'))),
+  );
+  app.post('/tournaments/:id/refresh', async (c) =>
+    c.json(await tournaments().refreshNow(c.var.identity, c.req.param('id'))),
+  );
+  app.delete('/tournaments/:id', async (c) => {
+    await tournaments().unlink(c.var.identity, c.req.param('id'));
+    return c.body(null, 204);
+  });
   app.put('/me', async (c) => {
     if (c.var.identity.kind !== 'user') throw new ApiError(401, 'sign_in', 'Sign in first');
     return c.json(await profiles().choose(c.var.identity, await body(c.req, UpdateProfileRequest)));

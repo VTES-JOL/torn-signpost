@@ -7,10 +7,12 @@
  * |---|---|---|
  * | Linked account | `USER#<sub>` | `ARCHON` (their Archon uid and VEKN number) |
  * | Claim | `ARCHONUSER#<archon uid>` | `CLAIM` (who it's linked to) |
- * | Sign-in under way | `OAUTH#<state>` | `OAUTH` (the PKCE verifier; TTL 15 minutes) |
+ * | Sign-in under way | `OAUTH#<state>` | `OAUTH` (the PKCE verifier, what it's for; TTL 15 minutes) |
  */
 import { TransactionCanceledException } from '@aws-sdk/client-dynamodb';
 import {
+  BatchGetCommand,
+  type BatchGetCommandOutput,
   DeleteCommand,
   type DynamoDBDocumentClient,
   GetCommand,
@@ -27,7 +29,10 @@ export interface StoredArchonLink {
 export interface PendingSignIn {
   sub: string;
   verifier: string;
-  purpose: 'profile';
+  /** Linking their own account (`profile:read`), or a tournament they run (`event:run`). */
+  purpose: 'profile' | 'tournament';
+  /** The Archon tournament, for `tournament`. */
+  tournament?: string;
   /** Epoch seconds; expired ones are refused before DynamoDB gets round to removing them. */
   expires: number;
 }
@@ -61,7 +66,8 @@ export class ArchonStore {
     return {
       sub: Attributes.sub as string,
       verifier: Attributes.verifier as string,
-      purpose: Attributes.purpose as 'profile',
+      purpose: Attributes.purpose as PendingSignIn['purpose'],
+      ...(typeof Attributes.tournament === 'string' ? { tournament: Attributes.tournament } : {}),
       expires: Attributes.expires as number,
     };
   }
@@ -123,6 +129,25 @@ export class ArchonStore {
       if (e instanceof TransactionCanceledException) return 'taken';
       throw e;
     }
+  }
+
+  /** Who each of these Archon accounts is linked to here, where they are. */
+  async owners(archonUids: string[]): Promise<Map<string, string>> {
+    const owners = new Map<string, string>();
+    const unique = [...new Set(archonUids)];
+    for (let i = 0; i < unique.length; i += 100) {
+      let keys: Record<string, unknown>[] | undefined = unique.slice(i, i + 100).map(claimKey);
+      while (keys?.length) {
+        const out: BatchGetCommandOutput = await this.db.send(
+          new BatchGetCommand({ RequestItems: { [this.table]: { Keys: keys } } }),
+        );
+        for (const item of out.Responses?.[this.table] ?? []) {
+          owners.set(String(item.PK).slice('ARCHONUSER#'.length), item.owner as string);
+        }
+        keys = out.UnprocessedKeys?.[this.table]?.Keys;
+      }
+    }
+    return owners;
   }
 
   async deleteLink(sub: string, archonUid: string): Promise<void> {

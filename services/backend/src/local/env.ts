@@ -11,6 +11,8 @@ export const local = {
   archon: {
     url: process.env.ARCHON_URL ?? 'https://archon.krcg.org',
     secretId: process.env.ARCHON_SECRET_ID ?? 'torn-signpost/beta/archon-client',
+    /** How often linked tournaments are read (the end-to-end tests read more often). */
+    pollMs: Number(process.env.ARCHON_POLL_MS ?? 60_000),
     client: process.env.ARCHON_CLIENT_SECRET
       ? { id: process.env.ARCHON_CLIENT_ID ?? '', secret: process.env.ARCHON_CLIENT_SECRET }
       : undefined,

@@ -24,7 +24,7 @@ const secret = () => randomBytes(24).toString('base64url');
 
 export class FakeArchon {
   readonly members = new Map<string, Member>();
-  readonly tournaments = new Map<string, Tournament & { organizers: string[] }>();
+  readonly tournaments = new Map<string, Tournament & { organizers_uids: string[] }>();
   readonly decks = new Map<string, Record<string, unknown>>();
   /** The member who approves at /consent, as if signed in to Archon. None: they decline. */
   signedIn: string | undefined;
@@ -67,7 +67,7 @@ export class FakeArchon {
       finals: null,
       modified: nowIso(),
       ...t,
-      organizers: [organizer],
+      organizers_uids: [organizer],
     };
     this.tournaments.set(tournament.uid, tournament);
     return tournament;
@@ -75,9 +75,31 @@ export class FakeArchon {
 
   /** Make an access token directly (tests that skip the consent dance). */
   grant(sub: string, scope: string, tournament?: string): string {
-    const token = secret();
-    this.access.set(token, { sub, scope, ...(tournament ? { tournament } : {}) });
+    const kept = { sub, scope, ...(tournament ? { tournament } : {}) };
+    const token = jwt(kept);
+    this.access.set(token, kept);
     return token;
+  }
+
+  /** Every access token runs out, as after an hour: the next call has to refresh. */
+  expireAccess(): void {
+    this.access.clear();
+  }
+
+  /** The organiser revokes our grants for a tournament (in Archon's consents). */
+  revoke(tournament: string): void {
+    for (const store of [this.access, this.refreshes]) {
+      for (const [k, g] of store) if (g.tournament === tournament) store.delete(k);
+    }
+  }
+
+  /** Apply an action as the tournament's organiser would in Archon. */
+  act(tournament: string, action: Action): void {
+    const t = this.tournaments.get(tournament);
+    if (!t) throw new Error(`No tournament ${tournament}`);
+    apply(t, action, this.members);
+    t.modified = nowIso();
+    this.log.push({ tournament, action });
   }
 
   readonly fetch: typeof fetch = async (input, init) =>
@@ -115,7 +137,7 @@ export class FakeArchon {
     } else {
       if (q.scope === 'event:run') {
         const t = this.tournaments.get(q.tournament ?? '');
-        if (!t?.organizers.includes(this.signedIn)) {
+        if (!t?.organizers_uids.includes(this.signedIn)) {
           back.searchParams.set('error', 'access_denied');
           return redirect(back);
         }
@@ -167,7 +189,7 @@ export class FakeArchon {
       return json(400, { error: 'unsupported_grant_type' });
     }
     const { challenge: _c, redirect: _r, ...kept } = grant;
-    const access = secret();
+    const access = jwt(kept);
     const refresh = secret();
     this.access.set(access, kept);
     this.refreshes.set(refresh, kept);
@@ -216,8 +238,8 @@ export class FakeArchon {
           : 'Invalid token',
       });
     }
-    const { organizers: _o, ...t } = this.forTournament(req, uid);
-    const uids = new Set(t.players.map((p) => p.user_uid));
+    const t = this.forTournament(req, uid);
+    const uids = new Set([...t.players.map((p) => p.user_uid), ...t.organizers_uids]);
     const users = [...uids]
       .map((u) => this.members.get(u))
       .filter(Boolean)
@@ -240,7 +262,7 @@ export class FakeArchon {
     if (a.type === 'UpsertDeck') this.decks.set(`${uid}/${a.player_uid}`, a.deck);
     t.modified = nowIso();
     this.log.push({ tournament: uid, action: a });
-    const { players: _p, rounds: _r, standings: _s, organizers: _o, ...summary } = t;
+    const { players: _p, rounds: _r, standings: _s, ...summary } = t;
     return json(201, summary);
   }
 }
@@ -414,6 +436,13 @@ function standings(t: Tournament): Standing[] {
       disqualified: false,
     }))
     .sort((a, b) => b.gw - a.gw || b.vp - a.vp || b.tp - a.tp);
+}
+
+/** A JWT-shaped token, unsigned: callers read its claims, as they do Archon's. */
+function jwt(claims: Omit<Grant, 'challenge' | 'redirect'>): string {
+  const part = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const exp = Math.floor(Date.now() / 1000) + 3600;
+  return `${part({ alg: 'none' })}.${part({ ...claims, exp, jti: secret() })}.${secret()}`;
 }
 
 const json = (status: number, body: unknown) =>

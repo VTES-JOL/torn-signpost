@@ -68,6 +68,10 @@ Checked with our registered client against a test tournament (`Torn Signpost Tes
     and the table marked `Invalid`; a valid one marks it `Finished`, with GW and TP computed to
     3.7 (a 4-player table: 60, 48, then 18 each for two tied last). So after sending a score we
     read the table's state back, and show `Invalid` to the tournament's officials.
+  - **Tokens** (checked 2026-11-16): access tokens are JWTs whose claims name the member who
+    granted them (`sub`), the `scope`, the `tournament` and `exp`. **Refreshing** an `event:run`
+    grant a day later worked and returned a new refresh token. The tournament frame lists its
+    officials in `organizers_uids`, and the stream's `users` include them.
   - **`FinishRound`** is refused while a table isn't finished (`tournament.tables_not_finished`,
     with the tables); once done, the tournament is back in Waiting with `standings` (`gw`, `vp`,
     `tp`, `toss`, `finalist`, `withdrawn`, `disqualified`).
@@ -142,7 +146,16 @@ dark on the beta.
 - Profiles: **Link your Archon account** (`profile:read`): Archon uid and VEKN number on the
   profile; unlink.
 
-### M7.2 Linking a tournament
+### M7.2 Linking a tournament: done
+
+Built: linking a tournament from `/tournaments` (`POST /tournaments/link`, Archon's consent for
+`event:run` on it, `POST /archon/callback`, which now serves both kinds of link); the grant sealed
+with KMS (a key per stage) and refreshed under a lease, since Archon rotates refresh tokens; a
+grant Archon stops accepting shown to the organiser, who links it again; polling every minute
+(an EventBridge schedule to the timers Lambda; quiet tournaments every 15 minutes); the
+tournaments pages (under way, upcoming, finished; a tournament's summary for anyone, its players,
+rounds and standings for players, with who has linked their account here); the organiser's (and
+admins') read-now and unlink. `docs/roles.md` has the organiser. Behind the `archon` flag.
 
 - An organiser links an Archon tournament they run: the `event:run` grant names it; we store the
   link and fetch its state.
@@ -150,7 +163,8 @@ dark on the beta.
   Archon's details, players, rounds and standings (from the cached state), and a link to it in
   Archon.
 - Polling while it's under way (decision 6).
-- `docs/roles.md`: what an organiser can do here, and the tournament's officials as judges.
+- `docs/roles.md`: what an organiser can do here. (The tournament's officials as judges in its
+  games come with the games, M7.4.)
 
 ### M7.3 Registration
 

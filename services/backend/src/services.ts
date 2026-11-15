@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { ArchonConfig } from '@torn-signpost/archon';
+import type { Sealer } from './archon/sealer.ts';
 import { ArchonService } from './archon/service.ts';
 import { type Content, cdnContent } from './content/catalog.ts';
 import { ArchonStore } from './db/archon.ts';
@@ -10,6 +11,7 @@ import { NotificationStore } from './db/notifications.ts';
 import { ProfileStore } from './db/profiles.ts';
 import { StatsStore } from './db/stats.ts';
 import { GameStore } from './db/store.ts';
+import { TournamentStore } from './db/tournaments.ts';
 import { DeckService } from './decks/service.ts';
 import type { Mailer } from './email/mailer.ts';
 import { EmailService } from './email/service.ts';
@@ -20,6 +22,7 @@ import type { ConnectionGateway } from './realtime/gateway.ts';
 import { Fanout, Realtime } from './realtime/realtime.ts';
 import { ResultsService } from './stats/service.ts';
 import type { TimerHandler, TimerPayload, Timers } from './timers/timers.ts';
+import { TournamentService } from './tournaments/service.ts';
 import { ProfileService } from './users/service.ts';
 
 export interface Services {
@@ -33,6 +36,8 @@ export interface Services {
   email?: EmailService;
   /** Missing where Archon isn't configured (docs/m7-plan.md). */
   archon?: ArchonService;
+  /** Tournaments linked to Archon (M7.2); with Archon. */
+  tournaments?: TournamentService;
   realtime: Realtime;
 }
 
@@ -60,7 +65,7 @@ export function createServices(opts: {
     apiUrl: string;
   };
   /** Archon, the VEKN's tournament manager (M7); off without it. */
-  archon?: { config: () => Promise<ArchonConfig> };
+  archon?: { config: () => Promise<ArchonConfig>; sealer: Sealer };
 }): Services {
   const db = documentClient(
     opts.endpoint
@@ -117,9 +122,26 @@ export function createServices(opts: {
     presence: !!opts.presence,
     ...(timers ? { timers } : {}),
   });
-  const archon = opts.archon
-    ? new ArchonService({ store: new ArchonStore(db, opts.tableName), config: opts.archon.config })
-    : undefined;
+  let tournaments: TournamentService | undefined;
+  let archon: ArchonService | undefined;
+  if (opts.archon) {
+    const archonStore = new ArchonStore(db, opts.tableName);
+    archon = new ArchonService({
+      store: archonStore,
+      config: opts.archon.config,
+      tournamentGranted: (sub, uid, tokens) =>
+        (tournaments as TournamentService).granted(sub, uid, tokens),
+    });
+    const begin = archon.begin.bind(archon);
+    tournaments = new TournamentService({
+      store: new TournamentStore(db, opts.tableName),
+      archonStore,
+      config: opts.archon.config,
+      sealer: opts.archon.sealer,
+      begin,
+      nameOf: (sub) => profiles.nameOf(sub),
+    });
+  }
   const services: Services = {
     store,
     games,
@@ -130,6 +152,7 @@ export function createServices(opts: {
     realtime,
     ...(email ? { email } : {}),
     ...(archon ? { archon } : {}),
+    ...(tournaments ? { tournaments } : {}),
   };
   return services;
 }
@@ -146,6 +169,11 @@ export async function fireTimer(services: Services, payload: TimerPayload): Prom
     case 'email':
       await services.email?.sendNow(payload.user, payload.id);
       return;
+    case 'tournaments': {
+      const result = await services.tournaments?.poll();
+      if (result && result.read + result.failed > 0) console.log('tournaments polled', result);
+      return;
+    }
     case 'digest': {
       const result = await services.email?.digest();
       console.log('digest run', { ...result });

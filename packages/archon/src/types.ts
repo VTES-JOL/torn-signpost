@@ -67,6 +67,16 @@ export interface Tournament {
   standings: Standing[];
   finals: unknown;
   modified: string;
+  /** Its organisers and judges (Archon members). */
+  organizers_uids?: string[];
+  timezone?: string;
+  country?: string | null;
+  city?: string | null;
+  venue?: string | null;
+  description?: string | null;
+  decklist_required?: boolean;
+  /** The winner's member uid, once finished. */
+  winner?: string | null;
   [key: string]: unknown;
 }
 
@@ -90,6 +100,17 @@ export interface Tokens {
   refresh_token?: string;
   expires_in: number;
   scope: string;
+}
+
+/** What an access token says about itself (Archon's are JWTs; we read them, Archon checks them). */
+export interface TokenClaims {
+  /** The member who granted it. */
+  sub?: string;
+  scope?: string;
+  /** The tournament an `event:run` grant is for. */
+  tournament?: string;
+  /** Epoch seconds. */
+  exp?: number;
 }
 
 export interface Score {
