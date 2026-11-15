@@ -132,8 +132,8 @@ refresh, `userinfo`, reading a tournament from its stream, actions with typed er
 scoring; a fake Archon and contract tests against the real one), linking a player's Archon
 account (`/me/archon`, the Account page's "Archon account", `/archon/callback`; the Archon uid and
 VEKN number kept, not the tokens), and the beta's settings (Archon's test server, the client
-secret in Secrets Manager). The Account page's link is behind the `archon` flag, on locally and
-dark on the beta.
+secret in Secrets Manager). The Account page's link is behind the `archon` flag, on locally and,
+since 2026-11-16, on the beta.
 
 
 - A spike against archon.krcg.org with a registered client (A1): the PKCE flow and scopes, reading
@@ -156,7 +156,7 @@ grant Archon stops accepting shown to the organiser, who links it again; polling
 tournaments pages (under way, upcoming, finished; a tournament's summary for anyone, its players,
 rounds and standings for players, with who has linked their account here); read-now and unlink.
 Linking and managing tournaments is for the `tournament_admin` Cognito group only, and managing
-one for those of them who organise it in Archon (decided 2026-11-16; `docs/roles.md`). Behind the `archon` flag.
+one for those of them who organise it in Archon (decided 2026-11-16; `docs/roles.md`). Behind the `archon` flag, on the beta since 2026-11-16.
 
 - A tournament admin links an Archon tournament they organise: the `event:run` grant names it; we store the
   link and fetch its state.

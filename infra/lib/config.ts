@@ -59,6 +59,8 @@ export const beta: StageConfig = {
     notifications: true,
     email: true,
     stats: true,
+    // M7 so far: players link their Archon accounts, tournament admins link tournaments.
+    archon: true,
   },
   // On for the internal alpha (M4).
   gamesEnabled: true,
@@ -66,7 +68,7 @@ export const beta: StageConfig = {
   presenceEnabled: true,
   // On: players who are away get email (deadlines and judge matters at once, the rest daily).
   emailEnabled: true,
-  // Archon's test server while M7 is built; the Account page's link stays dark (no `archon` flag).
+  // Archon's test server while M7 is built.
   archon: { url: 'https://archon.krcg.org', clientSecretName: 'torn-signpost/beta/archon-client' },
 };
 
