@@ -560,6 +560,12 @@ the plan as each need grows:
 - **Animation:** other players' changes animate through the View Transitions API. Each card has a
   `view-transition-name`. This is skipped under `prefers-reduced-motion`.
 - **Menus and dialogs:** native `<dialog>` and a small positioned menu, instead of Radix.
+- **Table cues:** the table shows what the flow bar says. The acting minion gets an amber ring
+  and an "Acting" label; a blocker, and both fighters in a combat, get a red ring; a rescue's or
+  diablerie's vampire is marked "Target" (`minionRoles` in `Table.tsx`; the labels are in the
+  cards' accessible names too). Counters and labels stay upright on turned cards. Attached cards
+  fan out to the right of their host, behind it, so rows stay one card tall. Empty zones are slim
+  labelled strips that grow back while they can take a dragged card.
 - **Phone layout** (below 760px; `apps/web/src/narrow.ts`): the game fits the window under a
   one-line header, with the site menu behind a button. The decision bar stays at the top. Each
   opponent is a one-line strip (pool, VP, ready, torpor, hand and library counts), opened with a

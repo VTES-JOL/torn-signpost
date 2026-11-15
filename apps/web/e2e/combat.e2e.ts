@@ -6,6 +6,11 @@ import { send, signedIn, startGame, toMinionPhase, users, view } from './helpers
 
 const flow = (page: Page) => page.getByRole('region', { name: 'Game flow' });
 const log = (page: Page) => page.getByLabel('Game log and chat');
+/** A seat's minions with what they're doing in the action or combat, as the table marks them. */
+const marked = (page: Page, user: string, role: string) =>
+  page
+    .getByRole('region', { name: new RegExp(`Seat .*: ${user}$`) })
+    .getByRole('button', { name: new RegExp(`^Vera Nightfall, .*(?:${role})$`) });
 
 test('a blocked bleed is fought step by step, and everyone reads each step in the log', async ({
   browser,
@@ -25,6 +30,8 @@ test('a blocked bleed is fought step by step, and everyone reads each step in th
   await flow(a).getByRole('button', { name: 'Bleed', exact: true }).click();
   await flow(a).getByRole('button', { name: 'Vera Nightfall' }).click();
   await flow(a).getByRole('button', { name: 'Confirm' }).click();
+  // The table marks the acting minion, for everyone.
+  await expect(marked(w, actor, 'acting')).toHaveCount(1);
   await flow(p).getByRole('button', { name: 'Block', exact: true }).click();
   await flow(p).getByRole('button', { name: 'Vera Nightfall' }).click();
   await flow(p).getByRole('button', { name: 'Confirm' }).click();
@@ -35,6 +42,8 @@ test('a blocked bleed is fought step by step, and everyone reads each step in th
   // Combat: both pass straight to the strikes.
   const panel = (page: Page) => flow(page).getByRole('region', { name: 'Combat' });
   await expect(panel(w)).toContainText('Combat · round 1');
+  await expect(marked(w, actor, 'in combat')).toHaveCount(1);
+  await expect(marked(w, prey, 'in combat')).toHaveCount(1);
   await expect(flow(a)).toContainText('Your decision: Combat, Round 1 · Before range');
   await flow(a).getByRole('button', { name: 'Pass to strikes' }).click();
   await expect(flow(p)).toContainText('Your decision: Combat, Round 1 · Before range');
@@ -68,6 +77,7 @@ test('a blocked bleed is fought step by step, and everyone reads each step in th
   await expect(flow(a)).toContainText('Your decision: Your minion phase');
   await expect(log(w)).toContainText('Combat is over; the action was blocked');
   await expect(panel(w)).toHaveCount(0);
+  await expect(marked(w, actor, 'acting|in combat')).toHaveCount(0);
   expect((await view(actor, game.id)).action).toBeUndefined();
 });
 

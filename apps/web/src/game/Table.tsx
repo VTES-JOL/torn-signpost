@@ -55,6 +55,37 @@ interface TableContextValue {
   /** Cards that answer the current toolbar step, if it asks for a card. */
   candidates: ReadonlySet<string> | undefined;
   choose(id: string): void;
+  /** The minions in the current action or combat, and what they're doing in it. */
+  roles: ReadonlyMap<string, Role>;
+}
+
+type Role = 'acting' | 'blocking' | 'combat' | 'target';
+
+const ROLE_LABELS: Record<Role, string> = {
+  acting: 'Acting',
+  blocking: 'Blocking',
+  combat: 'In combat',
+  target: 'Target',
+};
+
+/**
+ * Who's doing what, so the table shows it as well as the flow bar: the acting minion, a blocker
+ * trying or blocking, both fighters in a combat, and the vampire a rescue or diablerie is aimed at.
+ */
+function minionRoles(view: GameState): Map<string, Role> {
+  const roles = new Map<string, Role>();
+  const a = view.action;
+  if (!a) return roles;
+  if (a.vampire) roles.set(a.vampire, 'target');
+  if (a.combat) {
+    roles.set(a.combat.acting, 'combat');
+    roles.set(a.combat.opposing, 'combat');
+    return roles;
+  }
+  if (a.blocker) roles.set(a.blocker, 'blocking');
+  else if (a.blockAttempt) roles.set(a.blockAttempt.minion, 'blocking');
+  roles.set(a.minion, 'acting');
+  return roles;
 }
 
 const TableContext = createContext<TableContextValue | undefined>(undefined);
@@ -103,6 +134,7 @@ export function Table(props: {
   useEffect(() => {
     setChoosing((c) => (c && offerIds.split(',').includes(c.offer.id) ? c : undefined));
   }, [offerIds]);
+  const roles = useMemo(() => minionRoles(view), [view]);
   const step = currentStep(choosing);
   const candidates = step?.kind === 'card' ? new Set(step.candidates) : undefined;
 
@@ -139,6 +171,7 @@ export function Table(props: {
     },
     showZone: setZoneDialog,
     candidates,
+    roles,
     choose: (id) => {
       if (!choosing || !candidates?.has(id)) return;
       const values = [...choosing.values, id];
@@ -325,7 +358,7 @@ function SeatArea({
   /** Grid cell among the opponents. */
   place?: { gridRow: number; gridColumn: number };
 }) {
-  const { snapshot, client, send, judge, live, showZone, candidates } = useTable();
+  const { snapshot, client, send, judge, live, showZone, candidates, roles } = useTable();
   const { begin } = useDrag();
   const presence = !!useConfig().flags.presence && live;
   // On a phone an opponent's seat folds to one line until you open it; it opens by itself when
@@ -337,11 +370,10 @@ function SeatArea({
   const count = (z: ZoneName) => view.zones[zoneId(seat, z)]?.length ?? 0;
   const turn = view.turn?.seat === seat;
   const canAct = own || judge;
-  const wanted =
-    !!candidates &&
-    (['ready', 'torpor', 'uncontrolled'] as const).some((z) =>
-      view.zones[zoneId(seat, z)]?.some((id) => candidates.has(id)),
-    );
+  // Open too while one of its minions is in the action or the combat.
+  const wanted = (['ready', 'torpor', 'uncontrolled'] as const).some((z) =>
+    view.zones[zoneId(seat, z)]?.some((id) => candidates?.has(id) || roles.has(id)),
+  );
   const folded = !own && !opened && !wanted;
   const name = client.seatName(seat);
   return (
@@ -523,10 +555,11 @@ function CardStack({ id }: { id: string }) {
   };
   collect(id);
   return (
-    // Attached cards come first, so the host is drawn over them and their names show above it.
+    // The host comes first on screen (CSS order), with its attached cards fanned out to its right.
     <div className="card-stack">
-      {children.map((c) => (
-        <div key={c.id} className="attached">
+      {children.map((c, i) => (
+        // Behind the host, the first attachment over the next, each showing its right side.
+        <div key={c.id} className="attached" style={{ zIndex: -1 - i }}>
           <CardView id={c.id} />
         </div>
       ))}
@@ -538,7 +571,7 @@ function CardStack({ id }: { id: string }) {
 }
 
 function CardView({ id }: { id: string }) {
-  const { snapshot, openMenu, inspect, picking, pick, seat, judge, candidates, choose } =
+  const { snapshot, openMenu, inspect, picking, pick, seat, judge, candidates, choose, roles } =
     useTable();
   const cards = useCards();
   const { begin } = useDrag();
@@ -553,6 +586,7 @@ function CardView({ id }: { id: string }) {
     record?.kind ?? (zone.name === 'crypt' || zone.name === 'uncontrolled' ? 'crypt' : 'library');
   const src = record ? cards.image(record.id, 'thumb') : cards.back(kind, 'thumb');
   const canDrag = judge || zone.seat === seat || card.controller === seat;
+  const role = roles.get(card.id);
   const clear = () => {
     clearTimeout(hold.current);
     inspect(undefined);
@@ -567,10 +601,18 @@ function CardView({ id }: { id: string }) {
         card.contested ? 'contested' : '',
         candidates?.has(card.id) ? 'candidate' : '',
         unknown ? 'unknown' : '',
+        role ? `role-${role}` : '',
       ].join(' ')}
       style={{ viewTransitionName: `c-${card.id}` }}
       data-drop={`card:${card.id}`}
-      aria-label={`${cardLabel(card.cardId, record)}${card.locked ? ', locked' : ''}`}
+      data-role={role && ROLE_LABELS[role]}
+      aria-label={[
+        cardLabel(card.cardId, record),
+        card.locked && 'locked',
+        role && ROLE_LABELS[role].toLowerCase(),
+      ]
+        .filter(Boolean)
+        .join(', ')}
       onClick={(e) => {
         if (candidates) choose(card.id);
         else if (picking) pick(card);

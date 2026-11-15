@@ -1074,6 +1074,13 @@ dialog::backdrop {
   min-width: 4rem;
 }
 
+/* An empty zone is a slim labelled strip, back to full size while it can take a dragged card. */
+.zone:not(:has(.card, .pile, .stack)):not([data-accepts], .hand) {
+  min-height: 1.4rem;
+  align-self: flex-start;
+  padding-bottom: 0;
+}
+
 /* Wide enough for its label. */
 .zone-pile {
   min-width: 6.6rem;
@@ -1144,12 +1151,29 @@ dialog::backdrop {
 }
 
 /*
- * Attached cards sit behind their host, each sticking out above the next by enough to read its
- * name (cards are about 1.4 widths tall; the name bar is the top ~0.25 of a width).
+ * Attached cards fan out to the right of their host, tucked behind it, each showing its right side
+ * (the host's counters stay in view). The stack is one card tall, so rows stay even.
  */
-.card-stack .attached + .attached,
-.card-stack .attached + .host {
-  margin-top: calc(var(--card-w) * -1.12);
+.card-stack:has(.attached) {
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+.card-stack .host {
+  order: -1;
+  position: relative;
+  z-index: 0;
+}
+
+.card-stack .attached {
+  position: relative;
+  margin-left: calc(var(--card-w) * -0.55);
+  margin-top: calc(var(--card-w) * 0.12);
+}
+
+/* A turned host is wider: its attachments start further out. */
+.card-stack:has(> .host > .card.locked) .attached {
+  margin-left: calc(var(--card-w) * -0.35);
 }
 
 .card,
@@ -1500,6 +1524,58 @@ body.dragging {
 
 .card.contested img {
   outline: 2px dashed var(--warning);
+}
+
+/* A turned card's counters stay upright, at its bottom right as you see it. */
+.card.locked .counters {
+  top: 2px;
+  bottom: auto;
+  transform: rotate(-90deg);
+}
+
+/* In the action or the combat: a ring, and what it's doing (minionRoles in Table.tsx). */
+.card[data-role] {
+  z-index: 1;
+}
+
+.card[data-role] img {
+  outline: 3px solid var(--attention);
+  outline-offset: 1px;
+}
+
+.card.role-combat img,
+.card.role-blocking img {
+  outline-color: var(--danger);
+}
+
+.card[data-role]::after {
+  content: attr(data-role);
+  position: absolute;
+  left: 50%;
+  top: -0.55rem;
+  transform: translateX(-50%);
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--attention);
+  color: var(--on-attention);
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1.1rem;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.card.role-combat::after,
+.card.role-blocking::after {
+  background: var(--danger);
+  color: var(--bg);
+}
+
+/* Turned, the label turns back upright and stays on top as you see it (the card's left edge). */
+.card.locked[data-role]::after {
+  left: 0;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(-90deg);
 }
 
 /* Account (AUTH-05) */
@@ -2257,6 +2333,11 @@ body.dragging {
   .seat-header .seat-toggle {
     width: 2rem;
     min-height: 2rem;
+  }
+
+  /* Held open while one of its cards is wanted: nothing to toggle. */
+  .seat-header .seat-toggle:disabled {
+    display: none;
   }
 
   .seat.folded .seat-summary {
