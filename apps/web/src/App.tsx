@@ -1,5 +1,5 @@
 import type { ClientConfig, HealthResponse } from '@torn-signpost/protocol';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Link, NavLink, Outlet, Route, Routes, useLocation } from 'react-router';
 import { AuthProvider, useAuth } from './auth.tsx';
 import { DarkPackFooter } from './components/DarkPackFooter.tsx';
@@ -116,12 +116,38 @@ function Header() {
   const { flags } = useConfig();
   const { profile } = useProfile();
   const [devName, setDevName] = useState('');
+  // On a phone the nav and account fold behind a menu button (styles.css, max-width 760px).
+  const [open, setOpen] = useState(false);
+  const { pathname } = useLocation();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: close the menu on every navigation
+  useEffect(() => setOpen(false), [pathname]);
+  // The game screen fits the window under the header, so it needs the header's height.
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() =>
+      root.style.setProperty('--header-h', `${el.offsetHeight}px`),
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   return (
-    <header className="header">
+    <header ref={ref} className={open ? 'header open' : 'header'}>
       <Link to="/" className="brand">
         Torn Signpost
       </Link>
-      <nav className="nav" aria-label="Main">
+      <button
+        type="button"
+        className="menu-toggle"
+        aria-expanded={open}
+        aria-controls="main-menu"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? 'Close' : 'Menu'}
+      </button>
+      <nav id="main-menu" className="nav" aria-label="Main">
         <NavLink to="/games">Games</NavLink>
         <NavLink to="/cards">Cards</NavLink>
         <NavLink to="/decks">Decks</NavLink>

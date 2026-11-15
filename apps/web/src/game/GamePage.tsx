@@ -65,6 +65,8 @@ function GameView({
   const [error, setError] = useState<string>();
   const [panel, setPanel] = useState<'log' | 'console'>('log');
   const [showConsole, setShowConsole] = useState(false);
+  // On a phone, the log, chat and console are a sheet over the table, opened from the title row.
+  const [sideOpen, setSideOpen] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -75,7 +77,9 @@ function GameView({
         e.preventDefault();
         setShowConsole((v) => !v);
         setPanel('console');
+        setSideOpen(true);
       }
+      if (e.key === 'Escape') setSideOpen(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -114,6 +118,16 @@ function GameView({
         </span>
         <button
           type="button"
+          className="side-toggle"
+          aria-expanded={sideOpen}
+          aria-controls="game-side"
+          onClick={() => setSideOpen((v) => !v)}
+        >
+          Log & chat
+        </button>
+        <button
+          type="button"
+          className="console-toggle"
           aria-pressed={showConsole}
           onClick={() => {
             setShowConsole((v) => !v);
@@ -138,7 +152,19 @@ function GameView({
             onError={setError}
           />
         </div>
-        <aside className="game-side">
+        {sideOpen && (
+          <button
+            type="button"
+            className="side-backdrop"
+            aria-label="Close the log"
+            onClick={() => setSideOpen(false)}
+          />
+        )}
+        <aside
+          id="game-side"
+          className={sideOpen ? 'game-side open' : 'game-side'}
+          aria-label="Log, chat and console"
+        >
           <div className="tabs" role="tablist">
             <button
               type="button"
@@ -158,6 +184,9 @@ function GameView({
                 Console
               </button>
             )}
+            <button type="button" className="side-close" onClick={() => setSideOpen(false)}>
+              Close
+            </button>
           </div>
           {panel === 'console' && showConsole ? (
             <ConsolePanel client={client} snapshot={snapshot} catalog={catalog} />

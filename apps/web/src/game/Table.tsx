@@ -30,6 +30,7 @@ import {
 import { ApiError } from '../api.ts';
 import { useAuth } from '../auth.tsx';
 import { useCards, useConfig } from '../content.tsx';
+import { useNarrow } from '../narrow.ts';
 import { cardActions, type MenuItem } from './actions.ts';
 import type { GameSnapshot, TableClient } from './client.ts';
 import { DragProvider, type DragSource, type DropTarget, useDrag } from './drag.tsx';
@@ -91,6 +92,8 @@ export function Table(props: {
   const [zoneDialog, setZoneDialog] = useState<ZoneId>();
   const [zoom, setZoom] = useState(1);
   const [choosing, setChoosing] = useState<Choosing>();
+  // On a phone the table's tools fold behind one button (styles.css, max-width 760px).
+  const [toolsOpen, setToolsOpen] = useState(false);
   const offers = useMemo(
     () => (seat ? availableActions(view, seat, catalog) : []),
     [view, seat, catalog],
@@ -205,7 +208,15 @@ export function Table(props: {
           live={live}
         />
         {/* One row: the table tools, then judge calls and ending the game, then zoom. */}
-        <div className="table-controls">
+        <div className={toolsOpen ? 'table-controls open' : 'table-controls'}>
+          <button
+            type="button"
+            className="tools-toggle"
+            aria-expanded={toolsOpen}
+            onClick={() => setToolsOpen((v) => !v)}
+          >
+            {toolsOpen ? 'Hide table tools' : 'Table tools'}
+          </button>
           <TurnBar zoom={zoom} setZoom={setZoom} />
           {live && judgeCalls && (
             <JudgeCalls
@@ -314,24 +325,40 @@ function SeatArea({
   /** Grid cell among the opponents. */
   place?: { gridRow: number; gridColumn: number };
 }) {
-  const { snapshot, client, send, judge, live, showZone } = useTable();
+  const { snapshot, client, send, judge, live, showZone, candidates } = useTable();
   const { begin } = useDrag();
   const presence = !!useConfig().flags.presence && live;
+  // On a phone an opponent's seat folds to one line until you open it; it opens by itself when
+  // the step you're on asks for one of its cards.
+  const [opened, setOpened] = useState(false);
   const view = snapshot.view;
   const s = view.seats.find((x) => x.id === seat);
   if (!s) return null;
   const count = (z: ZoneName) => view.zones[zoneId(seat, z)]?.length ?? 0;
   const turn = view.turn?.seat === seat;
   const canAct = own || judge;
+  const wanted =
+    !!candidates &&
+    (['ready', 'torpor', 'uncontrolled'] as const).some((z) =>
+      view.zones[zoneId(seat, z)]?.some((id) => candidates.has(id)),
+    );
+  const folded = !own && !opened && !wanted;
+  const name = client.seatName(seat);
   return (
     <section
-      className={['seat', own ? 'own' : '', turn ? 'turn' : '', s.ousted ? 'ousted' : ''].join(' ')}
+      className={[
+        'seat',
+        own ? 'own' : '',
+        turn ? 'turn' : '',
+        s.ousted ? 'ousted' : '',
+        folded ? 'folded' : '',
+      ].join(' ')}
       aria-label={`Seat ${seat}: ${client.seatName(seat)}`}
       style={place}
     >
       <header className="seat-header">
         {presence && !s.ousted && <PresenceDot present={!!s.present} />}
-        <strong>{client.seatName(seat)}</strong>
+        <strong>{name}</strong>
         {label && <span className="muted small">{label}</span>}
         {turn && <span className="badge attention">{view.turn?.phase}</span>}
         {s.hasEdge && <span className="badge ok">Edge</span>}
@@ -370,7 +397,25 @@ function SeatArea({
           </>
         )}
         <span>VP {s.vp}</span>
+        {!own && (
+          <button
+            type="button"
+            className="seat-toggle"
+            aria-expanded={!folded}
+            aria-label={folded ? `Show ${name}'s cards` : `Hide ${name}'s cards`}
+            disabled={wanted}
+            onClick={() => setOpened((v) => !v)}
+          >
+            {folded ? '▸' : '▾'}
+          </button>
+        )}
       </header>
+      {!own && (
+        <p className="seat-summary">
+          {count('ready')} ready · {count('torpor')} in torpor · {count('hand')} in hand ·{' '}
+          {count('library')} in library
+        </p>
+      )}
       <div className="seat-zones">
         <Zone seat={seat} name="ready" label="Ready" />
         <Zone seat={seat} name="torpor" label="Torpor" />
@@ -640,10 +685,20 @@ function Stack(props: {
 
 function Hand({ seat }: { seat: string }) {
   const { snapshot } = useTable();
+  // On a phone the hand is a sheet: one row of cards, or opened up, larger and wrapped.
+  const [open, setOpen] = useState(false);
   const ids = snapshot.view.zones[zoneId(seat, 'hand')] ?? [];
   return (
-    <div className="hand zone" data-drop={`zone:${seat}:hand`}>
+    <div className={open ? 'hand zone open' : 'hand zone'} data-drop={`zone:${seat}:hand`}>
       <span className="zone-label">Hand ({ids.length})</span>
+      <button
+        type="button"
+        className="hand-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? 'Hand ▾ smaller' : 'Hand ▴ larger'}
+      </button>
       <div className="zone-cards">
         {ids.map((id) => (
           <CardView key={id} id={id} />
@@ -665,6 +720,8 @@ function CardMenu(props: {
   const items: MenuItem[] = cardActions(props.card, seat, judge);
   const cardId = props.card.cardId;
   const name = cardLabel(cardId, cardId && cards.state === 'ready' ? cards.get(cardId) : undefined);
+  // On a phone it's a sheet at the bottom with the card large: there's no hover to inspect it.
+  const sheet = useNarrow();
   useEffect(() => {
     // Focus without scrolling: the menu is fixed, the page shouldn't move under it.
     ref.current?.querySelector('button')?.focus({ preventScroll: true });
@@ -679,14 +736,14 @@ function CardMenu(props: {
   return (
     <div
       ref={ref}
-      className="card-menu"
+      className={sheet ? 'card-menu sheet' : 'card-menu'}
       role="menu"
-      style={{ top: Math.max(8, top), left: Math.max(8, left) }}
+      style={sheet ? undefined : { top: Math.max(8, top), left: Math.max(8, left) }}
     >
       {/* Which card this is: a small image as well as the name, before you play it. */}
       <div className="card-menu-head">
         {cards.state === 'ready' && cardId && cards.get(cardId) && (
-          <img src={cards.image(cardId, 'thumb')} alt="" />
+          <img src={cards.image(cardId, sheet ? 'full' : 'thumb')} alt="" />
         )}
         <p className="muted small">{name}</p>
       </div>

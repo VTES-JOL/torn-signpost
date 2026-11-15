@@ -560,8 +560,13 @@ the plan as each need grows:
 - **Animation:** other players' changes animate through the View Transitions API. Each card has a
   `view-transition-name`. This is skipped under `prefers-reduced-motion`.
 - **Menus and dialogs:** native `<dialog>` and a small positioned menu, instead of Radix.
-- **Phone layout:** the phone gets a scrolling single-row hand; dedicated opponent strips and
-  swiping between seats come later.
+- **Phone layout** (below 760px; `apps/web/src/narrow.ts`): the game fits the window under a
+  one-line header, with the site menu behind a button. The decision bar stays at the top. Each
+  opponent is a one-line strip (pool, VP, ready, torpor, hand and library counts), opened with a
+  tap; a strip opens by itself while the current step asks for one of its cards. Your seat follows,
+  then your hand as a sheet: one scrolling row, or opened up larger. The table tools fold behind
+  one button, the log, chat and console open as a sheet from the bottom, and the card menu is a
+  bottom sheet showing the card large. Swiping between seats and a table minimap come later.
 
 Implementation notes (M5a, structured flow). The engine records the flow (`GameState.action`,
 `GameState.window`) but doesn't enforce card rules: players can always fall back on the
@@ -795,7 +800,7 @@ to SNS email. Log retention is 30 days, to keep costs down.
 | Engine property | **no hidden-information leakage**, `evolve` determinism, replay equals live state, conservation (blood/pool), the clock, pauses, timers and judge calls; coverage floor enforced ([testing.md](testing.md)) | fast-check, v8 coverage |
 | Scenario ("golden games") | scripted games in console syntax with expected state/log; shared across TS **and Swift (via JSC)** as contract tests | Vitest + XCTest |
 | Backend integration | command pipeline, concurrency/retry, idempotency, projections over WebSocket | Vitest + DynamoDB Local |
-| End-to-end | multi-browser game (a context per player): block decisions, pauses, judge calls so far; mobile viewport and accessibility checks later | Playwright (+ axe later) |
+| End-to-end | multi-browser game (a context per player): block decisions, pauses, judge calls, the phone layout; accessibility checks later | Playwright (+ axe later) |
 | Mac | view models, bridge, UI smoke | XCTest / XCUITest |
 | Load (pre-launch) | 50 concurrent live games | Artillery against the beta, before it's announced publicly |
 
