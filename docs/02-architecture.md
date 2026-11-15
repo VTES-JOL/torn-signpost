@@ -340,7 +340,7 @@ projectEvent(before: GameState, after: GameState, ev: GameEvent, viewer: Viewer)
 | Games | `POST /games` · `GET /games?status=open\|active\|mine` · `GET /games/{id}` (projected view) · `POST /games/{id}/join` · `POST /games/{id}/commands` · `GET /games/{id}/events?after=` · `GET /games/{id}/actions` | View/list public games as a guest; everything else needs a player |
 | Chat | `POST /chat/{channel}` · `GET /chat/{channel}?before=` | Players (guests have no chat) |
 | Decks | `GET/POST/PUT/DELETE /decks` · `GET /decks/public?format=&clan=` · `POST /decks/import` · `GET /decks/{id}/versions` | Public listing open to guests |
-| Tournaments (through Archon, §5.7) | `GET /tournaments` · `GET /tournaments/{id}` (players, rounds and standings for players) · `POST /tournaments/link` · `POST /archon/callback` · `POST /tournaments/{id}/refresh` · `DELETE /tournaments/{id}` | List and summaries open to guests; linking needs a player; refresh and unlink its organiser or an admin |
+| Tournaments (through Archon, §5.7) | `GET /tournaments` · `GET /tournaments/{id}` (players, rounds and standings for players) · `POST /tournaments/link` · `POST /archon/callback` · `POST /tournaments/{id}/refresh` · `DELETE /tournaments/{id}` | List and summaries open to guests, details to players; linking, refresh and unlink `tournament_admin`, refresh and unlink only for its organisers in Archon |
 | Users | `GET/PUT /me` · `GET /users/{handle}` · `GET /users/{handle}/stats` · `GET /leaderboards` · `DELETE /me` · `GET /me/export` | — |
 | Notifications | `GET /me/notifications` · `PUT /me/notification-prefs` · `POST /me/push-subscriptions` | Player |
 | Admin | `GET /admin/reports` · `POST /admin/users/{id}/ban` · `POST /admin/content/ingest` | `admin` group |
@@ -495,8 +495,8 @@ a rendering component per client.
   `auth.tornsignpost.org`, plus Google and Apple IdPs. Email is held only in Cognito (NFR-06).
 - **Web**: `oidc-client-ts` with code + PKCE. **Mac**: `ASWebAuthenticationSession` with code + PKCE,
   and tokens in the Keychain.
-- **Roles**: the Cognito group `admin` (D14). `judge` and `organiser` are app-level roles granted by
-  admins and stored on the profile. Per-tournament judges and organisers are stored on the tournament.
+- **Roles**: Cognito groups, granted by hand (`docs/roles.md`): `admin` (D14), `judge`, and
+  `tournament_admin`, who link and manage tournaments (M7). Per-tournament officials are Archon's.
 - **Archon accounts** (M7.1, `docs/m7-plan.md`): tournaments are run with Archon, the VEKN's
   tournament manager, so a player links their Archon account from the Account page: our OAuth
   client (code + PKCE, scope `profile:read`) sends them to Archon's consent page, the web app's
@@ -527,21 +527,23 @@ Tournaments are run with **Archon**, the VEKN's tournament manager (`docs/m7-pla
 draw, scores, standings, finals and the report to the VEKN are Archon's; Torn Signpost registers
 players and plays the games. There is no seating solver or tournament scoring here.
 
-- **Linking** (M7.2): an organiser gives the tournament's address in Archon; the API sends them to
+- **Linking** (M7.2): a tournament admin (the `tournament_admin` group, and only they) gives the
+  address in Archon of a tournament they organise there; the API sends them to
   Archon's consent page for `event:run` on that tournament (the same code + PKCE flow and callback
   as accounts). The tokens are sealed with a KMS key (`archon/sealer.ts`, bound to the tournament)
-  and kept on `TOURN#<uid>` / `GRANT`; reading the tournament with them checks the grant. Whoever
-  linked it is its organiser here; linking it again (by any of its organisers in Archon) renews the
-  grant.
+  and kept on `TOURN#<uid>` / `GRANT`; reading the tournament with them checks the grant. The page
+  shows who linked it; linking it again renews the grant. A tournament admin manages (reads it
+  now, unlinks it) only a tournament they organise in Archon: their Archon account (linked here,
+  or the grant's member if they linked it) is in its `organizers_uids` as last read.
 - **Refreshing the grant**: access tokens last an hour and Archon rotates refresh tokens, so only
   one process refreshes at a time: it takes a lease on the `GRANT` item, reads it again, refreshes
   and writes the new tokens; others wait and use them. A refresh Archon refuses marks the grant
-  `lost`, shown to the organiser, who links it again.
+  `lost`, shown to tournament admins, who link it again.
 - **Following it** (decision 6): the timers Lambda reads every linked tournament that's under way
   (Waiting, Playing, Finals) every minute, from an EventBridge Scheduler `rate(1 minute)` schedule,
   and ones not yet started every 15 minutes; finished ones aren't read again. A read is Archon's
   stream up to `sync_complete`, keeping the fields we show and members' uid, name and VEKN number.
-  The organiser can also read it at once. A failed read keeps the last copy and says why.
+  A tournament admin can also read it at once. A failed read keeps the last copy and says why.
 - **Pages**: `/tournaments` (under way, upcoming, finished) and `/tournaments/{id}`: anyone sees the
   summary; signed-in players see its players (with who has linked their Archon account here),
   rounds and tables, and standings. Behind the `archon` flag.

@@ -251,4 +251,10 @@ describe('email', () => {
       },
     });
   });
+
+  it('has the judge, admin and tournament admin groups', () => {
+    for (const GroupName of ['judge', 'admin', 'tournament_admin']) {
+      auth.hasResourceProperties('AWS::Cognito::UserPoolGroup', { GroupName });
+    }
+  });
 });

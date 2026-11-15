@@ -94,18 +94,17 @@ export function TournamentsPage() {
       {section('Under way', running, 'None right now.')}
       {section('Upcoming', upcoming, 'None announced yet.')}
       {section('Finished', finished, 'None yet.')}
-      {user ? (
-        <LinkTournament />
-      ) : (
-        <p className="muted">
-          Sign in to see players, rounds and standings, or to link a tournament.
-        </p>
-      )}
+      {/* Linking and managing tournaments is for tournament admins (docs/roles.md). */}
+      {user?.groups.includes('tournament_admin') && <LinkTournament />}
+      {!user && <p className="muted">Sign in to see players, rounds and standings.</p>}
     </section>
   );
 }
 
-/** An organiser links a tournament they run in Archon, by granting us `event:run` for it. */
+/**
+ * A tournament admin links a tournament they organise in Archon, by granting us `event:run` for
+ * it there.
+ */
 function LinkTournament() {
   const api = useApi();
   const [archon, setArchon] = useState('');

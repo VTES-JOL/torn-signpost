@@ -50,6 +50,11 @@ export class AuthStack extends Stack {
       groupName: 'admin',
       description: 'Platform administrators and moderators (D14)',
     });
+    new cognito.CfnUserPoolGroup(this, 'TournamentAdminGroup', {
+      userPoolId: this.userPool.userPoolId,
+      groupName: 'tournament_admin',
+      description: 'Tournament administrators: link Archon tournaments and manage them here (M7)',
+    });
 
     this.webClient = this.userPool.addClient('WebClient', {
       userPoolClientName: 'web',

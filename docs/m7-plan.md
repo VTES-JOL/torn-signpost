@@ -154,10 +154,11 @@ with KMS (a key per stage) and refreshed under a lease, since Archon rotates ref
 grant Archon stops accepting shown to the organiser, who links it again; polling every minute
 (an EventBridge schedule to the timers Lambda; quiet tournaments every 15 minutes); the
 tournaments pages (under way, upcoming, finished; a tournament's summary for anyone, its players,
-rounds and standings for players, with who has linked their account here); the organiser's (and
-admins') read-now and unlink. `docs/roles.md` has the organiser. Behind the `archon` flag.
+rounds and standings for players, with who has linked their account here); read-now and unlink.
+Linking and managing tournaments is for the `tournament_admin` Cognito group only, and managing
+one for those of them who organise it in Archon (decided 2026-11-16; `docs/roles.md`). Behind the `archon` flag.
 
-- An organiser links an Archon tournament they run: the `event:run` grant names it; we store the
+- A tournament admin links an Archon tournament they organise: the `event:run` grant names it; we store the
   link and fetch its state.
 - Tournaments pages: upcoming, running and finished linked tournaments; a tournament's page with
   Archon's details, players, rounds and standings (from the cached state), and a link to it in

@@ -58,7 +58,7 @@ test('declining in Archon links nothing, and says so', async ({ browser }) => {
   await expect(page.getByRole('link', { name: 'Your account' })).toBeVisible();
 });
 
-test('an organiser links a tournament they run in Archon, and follows its rounds', async ({
+test('a tournament admin links a tournament they run in Archon, and follows its rounds', async ({
   browser,
 }) => {
   const [olga, zed] = users('olga', 'zed');
@@ -77,7 +77,8 @@ test('an organiser links a tournament they run in Archon, and follows its rounds
   for (const p of players) await act({ type: 'Register', user_uid: p.uid });
   await fake('sign-in', { uid: org.uid });
 
-  const page = await signedIn(browser, olga);
+  // Linking tournaments is for tournament admins.
+  const page = await signedIn(browser, `${olga}:tournament_admin`);
   await page.goto('/tournaments');
   await page.getByLabel('The tournament in Archon').fill(`${ARCHON}/tournaments/${t.uid}`);
   await page.getByRole('button', { name: 'Link in Archon…' }).click();
@@ -103,4 +104,6 @@ test('an organiser links a tournament they run in Archon, and follows its rounds
   await other.getByRole('link', { name: `Cup ${olga}` }).click();
   await expect(other.getByRole('region', { name: 'Round 1, table 1' })).toBeVisible();
   await expect(other.getByRole('button', { name: 'Read from Archon now' })).toHaveCount(0);
+  await other.goto('/tournaments');
+  await expect(other.getByRole('region', { name: 'Link a tournament' })).toHaveCount(0);
 });

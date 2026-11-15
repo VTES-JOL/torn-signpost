@@ -23,6 +23,9 @@ import { TournamentService } from './service.ts';
 
 const available = await dynamoAvailable();
 const REDIRECT = 'http://localhost:5173/archon/callback';
+/** Dev tokens: managing tournaments needs the `tournament_admin` group. */
+const OLGA = 'olga:tournament_admin';
+const SLY = 'sly:tournament_admin';
 
 describe.skipIf(!available)('tournaments linked to Archon (DynamoDB Local)', () => {
   let cleanup: () => Promise<void>;
@@ -124,7 +127,7 @@ describe.skipIf(!available)('tournaments linked to Archon (DynamoDB Local)', () 
 
   it('links a tournament its organiser runs, and shows it', async () => {
     const { org, players, t } = setUp('Lyon Open');
-    const done = await link('olga', org.uid, `${fake.baseUrl}/tournaments/${t.uid}`);
+    const done = await link(OLGA, org.uid, `${fake.baseUrl}/tournaments/${t.uid}`);
     expect(done).toMatchObject({
       status: 200,
       body: { purpose: 'tournament', tournamentId: t.uid },
@@ -167,13 +170,13 @@ describe.skipIf(!available)('tournaments linked to Archon (DynamoDB Local)', () 
     });
     expect(seen.body.detail?.players[1]?.account).toBeNull();
     expect(seen.body.manage).toBeUndefined();
-    const own = await call<TournamentDetails>('GET', `/tournaments/${t.uid}`, 'olga');
+    const own = await call<TournamentDetails>('GET', `/tournaments/${t.uid}`, OLGA);
     expect(own.body.manage).toEqual({ grant: 'ok', lastError: null });
   });
 
   it('keeps the grant sealed', async () => {
     const { org, t } = setUp('Sealed');
-    await link('olga', org.uid, t.uid);
+    await link(OLGA, org.uid, t.uid);
     const { Item } = await raw.db.send(
       new GetCommand({ TableName: raw.tableName, Key: { PK: `TOURN#${t.uid}`, SK: 'GRANT' } }),
     );
@@ -192,27 +195,34 @@ describe.skipIf(!available)('tournaments linked to Archon (DynamoDB Local)', () 
   it('refuses a tournament the player doesn’t run in Archon, or an address elsewhere', async () => {
     const { t } = setUp('Not yours');
     const stranger = fake.addMember({ name: 'Stranger', vekn_id: '3000099' });
-    expect(await link('sly', stranger.uid, t.uid)).toMatchObject({
+    expect(await link(SLY, stranger.uid, t.uid)).toMatchObject({
       status: 400,
       body: { error: 'archon_declined' },
     });
     expect(
-      await call('POST', '/tournaments/link', 'sly', {
+      await call('POST', '/tournaments/link', SLY, {
         archon: `https://elsewhere.example/tournaments/${t.uid}`,
       }),
     ).toMatchObject({ status: 400, body: { error: 'archon_tournament' } });
-    expect(
-      await call('POST', '/tournaments/link', 'sly', { archon: 'my tournament' }),
-    ).toMatchObject({ status: 400, body: { error: 'archon_tournament' } });
+    expect(await call('POST', '/tournaments/link', SLY, { archon: 'my tournament' })).toMatchObject(
+      { status: 400, body: { error: 'archon_tournament' } },
+    );
     expect((await call('POST', '/tournaments/link', undefined, { archon: t.uid })).status).toBe(
       401,
     );
+    // Only tournament admins link tournaments: not players, not admins.
+    for (const user of ['pat', 'ada:admin', 'jo:judge']) {
+      expect(await call('POST', '/tournaments/link', user, { archon: t.uid })).toMatchObject({
+        status: 403,
+        body: { error: 'tournament_admin_only' },
+      });
+    }
     expect((await call('GET', `/tournaments/${t.uid}`)).status).toBe(404);
   });
 
   it('follows the tournament by polling: rounds, tables and standings', async () => {
     const { org, players, t } = setUp('Polled');
-    await link('olga', org.uid, t.uid);
+    await link(OLGA, org.uid, t.uid);
     fake.act(t.uid, { type: 'CloseRegistration' });
     // Registration and Waiting differ in how often they're read; it was read at link time.
     later(1);
@@ -274,13 +284,13 @@ describe.skipIf(!available)('tournaments linked to Archon (DynamoDB Local)', () 
 
   it('refreshes the grant when its access token runs out, keeping the rotated refresh token', async () => {
     const { org, t } = setUp('Refreshed');
-    await link('olga', org.uid, t.uid);
+    await link(OLGA, org.uid, t.uid);
     fake.act(t.uid, { type: 'CloseRegistration' });
     for (const _ of [1, 2]) {
       fake.expireAccess();
       later(61);
       await tournaments.poll();
-      const page = await call<TournamentDetails>('GET', `/tournaments/${t.uid}`, 'olga');
+      const page = await call<TournamentDetails>('GET', `/tournaments/${t.uid}`, OLGA);
       expect(page.body.manage).toEqual({ grant: 'ok', lastError: null });
       expect(page.body.state).toBe('Waiting');
     }
@@ -289,43 +299,67 @@ describe.skipIf(!available)('tournaments linked to Archon (DynamoDB Local)', () 
     fake.expireAccess();
     later(61);
     const both = await Promise.all([
-      call('POST', `/tournaments/${t.uid}/refresh`, 'olga'),
-      call('POST', `/tournaments/${t.uid}/refresh`, 'olga'),
+      call('POST', `/tournaments/${t.uid}/refresh`, OLGA),
+      call('POST', `/tournaments/${t.uid}/refresh`, OLGA),
     ]);
     expect(both.map((r) => r.status)).toEqual([200, 200]);
     fake.expireAccess();
     later(61);
-    const after = await call<TournamentDetails>('POST', `/tournaments/${t.uid}/refresh`, 'olga');
+    const after = await call<TournamentDetails>('POST', `/tournaments/${t.uid}/refresh`, OLGA);
     expect(after.body.manage).toEqual({ grant: 'ok', lastError: null });
   });
 
   it('says so when Archon stops honouring the grant, until it’s linked again', async () => {
     const { org, t } = setUp('Revoked');
-    await link('olga', org.uid, t.uid);
+    await link(OLGA, org.uid, t.uid);
     fake.revoke(t.uid);
     later(61);
-    const page = await call<TournamentDetails>('POST', `/tournaments/${t.uid}/refresh`, 'olga');
+    const page = await call<TournamentDetails>('POST', `/tournaments/${t.uid}/refresh`, OLGA);
     expect(page.body.manage).toEqual({
       grant: 'lost',
       lastError: 'Archon no longer accepts our grant',
     });
     // The copy we had is still shown.
     expect(page.body.name).toBe('Revoked');
-    expect((await link('olga', org.uid, t.uid)).status).toBe(200);
-    const again = await call<TournamentDetails>('GET', `/tournaments/${t.uid}`, 'olga');
+    expect((await link(OLGA, org.uid, t.uid)).status).toBe(200);
+    const again = await call<TournamentDetails>('GET', `/tournaments/${t.uid}`, OLGA);
     expect(again.body.manage).toEqual({ grant: 'ok', lastError: null });
   });
 
-  it('lets only its organiser or an admin refresh or unlink it', async () => {
+  it('lets only tournament admins who organise it in Archon refresh or unlink it', async () => {
     const { org, t } = setUp('Guarded');
-    await link('olga', org.uid, t.uid);
-    expect(await call('POST', `/tournaments/${t.uid}/refresh`, 'mallory')).toMatchObject({
-      status: 403,
-      body: { error: 'not_organiser' },
-    });
-    expect((await call('DELETE', `/tournaments/${t.uid}`, 'mallory')).status).toBe(403);
-    expect((await call('POST', `/tournaments/${t.uid}/refresh`, 'ada:admin')).status).toBe(200);
-    expect((await call('DELETE', `/tournaments/${t.uid}`, 'olga')).status).toBe(204);
+    await link(OLGA, org.uid, t.uid);
+    const refreshAs = (user: string) =>
+      call<TournamentDetails>('POST', `/tournaments/${t.uid}/refresh`, user);
+    // Not tournament admins: refused, whatever else they are.
+    for (const user of ['mallory', 'ada:admin', 'jo:judge']) {
+      expect(await refreshAs(user)).toMatchObject({
+        status: 403,
+        body: { error: 'tournament_admin_only' },
+      });
+      expect((await call('DELETE', `/tournaments/${t.uid}`, user)).status).toBe(403);
+      const page = await call<TournamentDetails>('GET', `/tournaments/${t.uid}`, user);
+      expect(page.body.manage).toBeUndefined();
+    }
+    // A tournament admin who doesn't organise it in Archon: refused too.
+    const TIA = 'tia:tournament_admin';
+    const tia = fake.addMember({ name: 'Tia', vekn_id: '3000077' });
+    await archonStore.putLink(
+      'tia',
+      { archonUid: tia.uid, veknId: tia.vekn_id, linkedAt: now.toISOString() },
+      undefined,
+    );
+    expect(await refreshAs(TIA)).toMatchObject({ status: 403, body: { error: 'not_organiser' } });
+    expect(
+      (await call<TournamentDetails>('GET', `/tournaments/${t.uid}`, TIA)).body.manage,
+    ).toBeUndefined();
+    // Made an organiser in Archon, she can, once we've read that (her linked Archon account
+    // shows it's her), though she didn't link it here.
+    fake.tournaments.get(t.uid)?.organizers_uids.push(tia.uid);
+    expect((await refreshAs(OLGA)).status).toBe(200);
+    expect(await refreshAs(TIA)).toMatchObject({ status: 200, body: { manage: { grant: 'ok' } } });
+    // The one who linked it is known to Archon by the grant, linked account or not.
+    expect((await call('DELETE', `/tournaments/${t.uid}`, OLGA)).status).toBe(204);
     expect((await call('GET', `/tournaments/${t.uid}`)).status).toBe(404);
     const list = await call<TournamentList>('GET', '/tournaments');
     expect(list.body.tournaments.map((x) => x.id)).not.toContain(t.uid);

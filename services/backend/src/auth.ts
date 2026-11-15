@@ -53,12 +53,13 @@ export function cognitoAuthenticator(userPoolId: string, clientId: string): Auth
 }
 
 /**
- * Local development only: `dev:<user>[:<group>,...]`, e.g. `dev:alice` or `dev:jo:judge,admin`.
+ * Local development only: `dev:<user>[:<group>,...]`, e.g. `dev:alice`, `dev:jo:judge,admin` or
+ * `dev:tia:tournament_admin`.
  * Never wired up outside the local server and tests.
  */
 export const devAuthenticator: Authenticator = async (token) => {
   if (!token) return GUEST;
-  const m = /^dev:([a-z0-9-]{1,32})(?::([a-z,]+))?$/i.exec(token);
+  const m = /^dev:([a-z0-9-]{1,32})(?::([a-z_,]+))?$/i.exec(token);
   if (!m?.[1]) throw new ApiError(401, 'invalid_token', 'Use a dev:<user> token locally');
   const user = m[1].toLowerCase();
   // A reserved domain, so local email (which is only logged) can never reach anyone.

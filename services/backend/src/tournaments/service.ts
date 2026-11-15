@@ -47,6 +47,12 @@ const READ_TIMEOUT_MS = 8 * 1000;
 /** How long one process may hold the grant to refresh it. */
 const LEASE_MS = 20 * 1000;
 
+/**
+ * The Cognito group that manages tournaments: links them, reads them now, unlinks them. A
+ * tournament admin manages only tournaments they organise in Archon (docs/roles.md).
+ */
+export const TOURNAMENT_ADMIN = 'tournament_admin';
+
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 /** The tournament fields we keep and show; the rest (check-in code, offline device…) aren't ours. */
@@ -103,7 +109,7 @@ export class TournamentService {
 
   /** Where to send the organiser to grant us `event:run` for the tournament. */
   async startLink(identity: Identity, req: LinkTournamentRequest): Promise<ArchonLinkStart> {
-    const user = requireUser(identity);
+    const user = requireTournamentAdmin(identity);
     const config = await this.deps.config();
     const uid = req.archon.match(UUID)?.[0]?.toLowerCase();
     if (!uid) {
@@ -143,6 +149,7 @@ export class TournamentService {
     const meta: TournamentMeta = {
       ...summaryOf(view.tournament, config),
       organiser: sub,
+      organiserArchonUid: claims.sub ?? null,
       linkedAt: previous?.linkedAt ?? now.toISOString(),
       updatedAt: now.toISOString(),
       polledAt: now.toISOString(),
@@ -174,14 +181,15 @@ export class TournamentService {
     return this.details(identity, meta, state);
   }
 
-  /** Read it from Archon now (its organiser, or an admin). */
+  /** Read it from Archon now (tournament admins who organise it in Archon). */
   async refreshNow(identity: Identity, id: string): Promise<TournamentDetails> {
     const meta = await this.managed(identity, id);
     await this.read(meta);
     return this.get(identity, id);
   }
 
-  /** Stop following it here (its organiser, or an admin). Archon's grant is revoked there. */
+  /** Stop following it here (tournament admins who organise it in Archon). Archon's grant is
+   * withdrawn there. */
   async unlink(identity: Identity, id: string): Promise<void> {
     await this.managed(identity, id);
     await this.deps.store.deleteLink(id);
@@ -281,13 +289,37 @@ export class TournamentService {
   }
 
   private async managed(identity: Identity, id: string): Promise<TournamentMeta> {
-    const user = requireUser(identity);
+    requireTournamentAdmin(identity);
     const meta = await this.deps.store.getMeta(id);
-    if (!meta) throw new ApiError(404, 'not_found', 'No such tournament here');
-    if (meta.organiser !== user.sub && !user.groups.includes('admin')) {
-      throw new ApiError(403, 'not_organiser', 'Only the tournament’s organiser can do that');
+    const state = meta && (await this.deps.store.getState(id));
+    if (!meta || !state) throw new ApiError(404, 'not_found', 'No such tournament here');
+    if (!(await this.organises(identity, meta, state))) {
+      throw new ApiError(
+        403,
+        'not_organiser',
+        'Only its organisers in Archon can do that: link your Archon account if you are one',
+      );
     }
     return meta;
+  }
+
+  /**
+   * Whether a tournament admin organises the tournament in Archon: they are in its organisers
+   * there (as last read), as the Archon account they linked here, or as the member who granted
+   * the link, if they linked it.
+   */
+  private async organises(
+    identity: Identity,
+    meta: TournamentMeta,
+    state: CachedTournament,
+  ): Promise<boolean> {
+    if (identity.kind !== 'user' || !identity.groups.includes(TOURNAMENT_ADMIN)) return false;
+    const organisers = new Set(state.tournament.organizers_uids ?? []);
+    if (meta.organiser === identity.sub && meta.organiserArchonUid) {
+      if (organisers.has(meta.organiserArchonUid)) return true;
+    }
+    const link = await this.deps.archonStore.getLink(identity.sub);
+    return !!link && organisers.has(link.archonUid);
   }
 
   private async summary(meta: TournamentMeta): Promise<TournamentSummary> {
@@ -379,8 +411,7 @@ export class TournamentService {
     }));
     // Tied players share a rank (GW, then VP, then TP: VEKN tournament rules 3.1).
     for (const s of standings) s.rank = 1 + standings.filter((o) => better(o, s)).length;
-    const user = requireUser(identity);
-    const manages = meta.organiser === user.sub || user.groups.includes('admin');
+    const manages = await this.organises(identity, meta, state);
     return {
       ...base,
       detail: { players, rounds, standings },
@@ -410,4 +441,13 @@ function cached(view: TournamentView): CachedTournament {
   const kept: Record<string, unknown> = {};
   for (const k of KEPT) if (k in view.tournament) kept[k] = view.tournament[k];
   return { tournament: kept as Tournament, members: [...view.members.values()] };
+}
+
+/** Managing tournaments is for the `tournament_admin` group only (docs/roles.md). */
+function requireTournamentAdmin(identity: Identity) {
+  const user = requireUser(identity);
+  if (!user.groups.includes(TOURNAMENT_ADMIN)) {
+    throw new ApiError(403, 'tournament_admin_only', 'Only tournament admins can do that');
+  }
+  return user;
 }

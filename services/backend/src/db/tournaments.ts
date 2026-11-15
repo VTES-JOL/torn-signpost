@@ -37,6 +37,8 @@ export interface TournamentMeta {
   archonUrl: string;
   /** The Torn Signpost user who linked it (its organiser here). */
   organiser: string;
+  /** The Archon member who granted it (from the grant's token), if Archon said. */
+  organiserArchonUid?: string | null;
   linkedAt: string;
   /** When we last read it from Archon successfully. */
   updatedAt: string;

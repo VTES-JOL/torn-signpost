@@ -10,12 +10,15 @@ what the API or engine would refuse anyway).
 
 ## How roles are given
 
-- **Judge** and **admin** are Cognito user-pool groups (`judge`, `admin`; `infra/lib/auth-stack.ts`).
+- **Judge**, **admin** and **tournament admin** are Cognito user-pool groups (`judge`, `admin`,
+  `tournament_admin`; `infra/lib/auth-stack.ts`).
   They're granted by hand, in the Cognito console or with
   `aws cognito-idp admin-add-user-to-group`; there is no in-app screen for it yet. A user's groups
   arrive in their ID token, so a change takes effect when they next sign in.
-- The two are independent: an admin has no judge powers unless also in `judge`, and the reverse.
-- Locally, dev tokens carry groups: `dev:jo:judge`, `dev:ada:admin`, `dev:sam:judge,admin`.
+- They're independent: an admin has no judge powers unless also in `judge`, and no tournament
+  powers unless also in `tournament_admin`, and the reverse.
+- Locally, dev tokens carry groups: `dev:jo:judge`, `dev:ada:admin`, `dev:sam:judge,admin`,
+  `dev:tia:tournament_admin`.
 - A judge or admin who **holds a seat** in a game acts in it as that player, with a player's
   powers only [API].
 
@@ -65,15 +68,23 @@ what the API or engine would refuse anyway).
 - **Tournaments** (docs/m7-plan.md M7.2): see a linked tournament's players (with their VEKN
   numbers, and who has linked their Archon account here), rounds and tables, and standings
   [API].
-- **Link a tournament** they run in Archon: Archon decides, by asking them to grant
-  `event:run` for it, which only its organisers there can [Archon]. Whoever links it is its
-  **organiser** here [API].
+- Not: linking or managing tournaments, which is for tournament admins.
 
-## Tournament organisers (who linked the tournament)
+## Tournament admins (`tournament_admin` group)
 
-- Read it from Archon at once, rather than at the next poll; see why the last read failed, and
-  whether Archon still accepts the grant; link it again; unlink it, which stops it being followed
-  here (the grant itself is withdrawn in Archon) [API]. Admins can do the same.
+Managing tournaments here is theirs alone; admins have none of it unless also in the group.
+
+- **Link a tournament** they organise in Archon (docs/m7-plan.md M7.2) [API]. Archon also has a
+  say: it asks them to grant `event:run` for it, which only the tournament's organisers there
+  can [Archon]. The page shows who linked it.
+- **Tournaments they organise in Archon** (decided 2026-11-16), whoever linked them [API]: read
+  one from Archon at once, rather than at the next poll; see why the last read failed, and
+  whether Archon still accepts the grant; link it again; unlink it, which stops it being
+  followed here (the grant itself is withdrawn in Archon). "Organise" is Archon's list of the
+  tournament's organisers (`organizers_uids`, which includes whoever created it), as last read;
+  we know who they are there by the Archon account they linked here, or, for whoever linked the
+  tournament, by the Archon member who granted it. Other tournaments they only see as players
+  do.
 - Players without a deck list are flagged to them [web].
 - Everything else about the tournament (its settings, players, rounds, scores) is done in Archon;
   its officials there are listed on its page. They aren't judges in its games yet (M7.4).
@@ -115,13 +126,12 @@ what the API or engine would refuse anyway).
 - **Rename a player** (AUTH-05): names are otherwise permanent; the old name stays retired
   (`PUT /users/{name}/name`, the Account page) [API].
 - **Notified** of every escalation, if they've connected in the last 30 days [API].
-- **Any linked tournament**, as its organiser can: read it now, unlink it [API].
 - Not: judge powers (rulings, hidden cards, primitives on other seats) unless also a judge.
 
 ## The system (the server itself)
 
 Commands no user can send [engine]: starting a game (`StartGame`), presence (`SetPresence`), and
 the timer checks (`CheckDeadline`, `CheckTimeLimit`, `EndPause`). Outside games, it reads linked
-tournaments from Archon every minute with their organisers' grants [API]. After every command the engine
+tournaments from Archon every minute with the grants tournament admins gave [API]. After every command the engine
 also applies the rules no one asks for: automatic passes, ousts, settling deadline calls, and the
 end of the game.
