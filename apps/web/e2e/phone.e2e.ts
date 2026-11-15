@@ -13,8 +13,10 @@ test('the game fits a phone screen, with the rest a tap away', async ({ browser 
   const page = await signedIn(browser, actor);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/games/${game.id}`);
-  // A new player is asked for a display name first; put it off.
-  await page.getByRole('button', { name: 'Later' }).click();
+  // A new player is asked for a display name: a slim line that leaves the game on screen.
+  const banner = page.getByRole('region', { name: 'Choose a display name' });
+  await expect(banner).toBeVisible();
+  expect((await banner.boundingBox())?.height ?? 0).toBeLessThan(90);
 
   // What you act on is on screen without scrolling: the decision, your seat, your hand.
   const flow = page.getByRole('region', { name: 'Game flow' });
@@ -23,7 +25,8 @@ test('the game fits a phone screen, with the rest a tap away', async ({ browser 
   await expect(
     page.getByRole('region', { name: new RegExp(`Seat .*: ${actor}`) }),
   ).toBeInViewport();
-  await expect(page.locator('.hand')).toBeInViewport();
+  // All of the hand, with the name banner above the game.
+  await expect(page.locator('.hand')).toBeInViewport({ ratio: 1 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 
   // An opponent is one line, then all their cards on a tap.
@@ -55,6 +58,12 @@ test('the game fits a phone screen, with the rest a tap away', async ({ browser 
   // The sheet covers its middle: tap near the top.
   await page.getByRole('button', { name: 'Close the log' }).click({ position: { x: 195, y: 20 } });
   await expect(side).toBeHidden();
+
+  // Choosing a name opens the form; putting it off hides the banner.
+  await banner.getByRole('button', { name: 'Choose…' }).click();
+  await expect(banner.getByLabel('Display name')).toBeVisible();
+  await banner.getByRole('button', { name: 'Later' }).click();
+  await expect(banner).toBeHidden();
 
   // The site's menu folds behind one button.
   const nav = page.getByRole('navigation', { name: 'Main' });

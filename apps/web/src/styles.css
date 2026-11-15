@@ -1580,12 +1580,36 @@ body.dragging {
 
 /* Account (AUTH-05) */
 
+/* A slim line (App.tsx ChooseName), the form only once you choose to pick a name. */
 .choose-name {
-  margin-bottom: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  padding-block: 0.35rem;
+  font-size: 0.9rem;
 }
 
 .choose-name p {
-  margin-top: 0;
+  margin: 0;
+  flex: 1 1 14rem;
+}
+
+.choose-name.open {
+  display: block;
+  padding-block: 0.75rem;
+  font-size: 1rem;
+}
+
+.choose-name-actions {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+.choose-name-actions button {
+  min-height: 1.9rem;
+  padding-block: 0.1rem;
 }
 
 .name-form {
@@ -1604,6 +1628,10 @@ body.dragging {
 .name-form p {
   flex-basis: 100%;
   margin: 0;
+}
+
+.choose-name.open .name-form {
+  margin-top: 0.5rem;
 }
 
 /* Action toolbar and prompts (UX-03, UX-09) */
@@ -2196,14 +2224,25 @@ body.dragging {
   }
 
   /* The game: exactly the window under the header. */
+  /* The game: the window under the header, less the name banner while it shows. */
   .main:has(> .game) {
+    display: flex;
+    flex-direction: column;
+    flex: none;
+    height: calc(100dvh - var(--header-h, 3rem));
     padding-block: 0;
+  }
+
+  .main:has(> .game) > .choose-name {
+    flex: none;
+    margin-block: 0.35rem 0;
   }
 
   .game {
     display: flex;
     flex-direction: column;
-    height: calc(100dvh - var(--header-h, 3rem));
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   .game-title {

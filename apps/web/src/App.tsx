@@ -95,18 +95,33 @@ function ChooseName() {
   const { profile } = useProfile();
   const { pathname } = useLocation();
   const [later, setLater] = useState(false);
+  // A slim line until you choose to pick one, so it doesn't push the page (a game, say) down.
+  const [open, setOpen] = useState(false);
   if (!profile || profile.chosen || later || pathname === '/account') return null;
   return (
-    <section className="notice choose-name" aria-label="Choose a display name">
+    <section
+      className={open ? 'notice choose-name open' : 'notice choose-name'}
+      aria-label="Choose a display name"
+    >
       <p>
-        <strong>Choose a display name.</strong> Other players see you as “{profile.name}” until you
-        do.
+        <strong>Choose a display name:</strong> others see you as “{profile.name}”.
       </p>
-      <NameForm submitLabel="Use this name">
-        <button type="button" onClick={() => setLater(true)}>
-          Later
-        </button>
-      </NameForm>
+      {open ? (
+        <NameForm submitLabel="Use this name">
+          <button type="button" onClick={() => setLater(true)}>
+            Later
+          </button>
+        </NameForm>
+      ) : (
+        <span className="choose-name-actions">
+          <button type="button" className="primary" onClick={() => setOpen(true)}>
+            Choose…
+          </button>
+          <button type="button" onClick={() => setLater(true)}>
+            Later
+          </button>
+        </span>
+      )}
     </section>
   );
 }
