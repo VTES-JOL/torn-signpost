@@ -259,6 +259,18 @@ importers:
         specifier: 4.1.12
         version: 4.1.12(@types/node@26.6.5)(@vitest/coverage-v8@4.1.12)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(tsx@4.23.15))
 
+  packages/archon:
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.5
+        version: 26.6.5
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 4.1.12
+        version: 4.1.12(@types/node@26.6.5)(@vitest/coverage-v8@4.1.12)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(tsx@4.23.15))
+
   packages/cards:
     dependencies:
       '@torn-signpost/engine':
@@ -326,6 +338,9 @@ importers:
       '@aws-sdk/lib-dynamodb':
         specifier: 3.1151.0
         version: 3.1151.0(@aws-sdk/client-dynamodb@3.1151.0)
+      '@torn-signpost/archon':
+        specifier: workspace:*
+        version: link:../../packages/archon
       '@torn-signpost/cards':
         specifier: workspace:*
         version: link:../../packages/cards

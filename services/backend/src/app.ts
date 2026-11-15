@@ -1,6 +1,7 @@
 import { ENGINE_VERSION } from '@torn-signpost/engine';
 import {
   type ApiError as ApiErrorBody,
+  ArchonCallbackRequest,
   ChatRequest,
   CommandRequest,
   CreateGameRequest,
@@ -18,6 +19,7 @@ import {
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
+import type { ArchonService } from './archon/service.ts';
 import { type Authenticator, bearer, GUEST, type Identity } from './auth.ts';
 import type { DeckService } from './decks/service.ts';
 import type { EmailService } from './email/service.ts';
@@ -40,6 +42,8 @@ export interface AppConfig {
   /** Missing while email is switched off for the stage. */
   email?: EmailService;
   results?: ResultsService;
+  /** Missing where Archon isn't configured. */
+  archon?: ArchonService;
 }
 
 type Env = { Variables: { identity: Identity } };
@@ -197,6 +201,18 @@ export function createApp(config: AppConfig): Hono<Env> {
     return config.profiles;
   };
   app.get('/me', async (c) => c.json(await profiles().me(c.var.identity)));
+
+  // Linking an Archon account (docs/m7-plan.md M7.1).
+  const archon = () => {
+    if (!config.archon) throw new ApiError(503, 'archon_disabled', 'Archon isn’t available here');
+    return config.archon;
+  };
+  app.get('/me/archon', async (c) => c.json(await archon().status(c.var.identity)));
+  app.post('/me/archon/link', async (c) => c.json(await archon().start(c.var.identity)));
+  app.post('/me/archon/callback', async (c) =>
+    c.json(await archon().complete(c.var.identity, await body(c.req, ArchonCallbackRequest))),
+  );
+  app.delete('/me/archon', async (c) => c.json(await archon().unlink(c.var.identity)));
   app.put('/me', async (c) => {
     if (c.var.identity.kind !== 'user') throw new ApiError(401, 'sign_in', 'Sign in first');
     return c.json(await profiles().choose(c.var.identity, await body(c.req, UpdateProfileRequest)));

@@ -1,5 +1,6 @@
 /** Lambda configuration from environment variables set by the CDK API stack. */
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
+import { archonConfig } from '../archon/config.ts';
 import { cognitoAuthenticator } from '../auth.ts';
 import { sesMailer } from '../email/mailer.ts';
 import { awsGateway } from '../realtime/gateway.ts';
@@ -18,6 +19,16 @@ export const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '').split(',').fil
 export const gamesEnabled = process.env.GAMES_ENABLED === 'true';
 export const presenceEnabled = process.env.PRESENCE_ENABLED === 'true';
 export const emailEnabled = process.env.EMAIL_ENABLED === 'true';
+/** Archon (M7): on where the stack gives its address. */
+const archon = process.env.ARCHON_URL
+  ? {
+      config: archonConfig({
+        baseUrl: process.env.ARCHON_URL,
+        redirectUri: env('ARCHON_REDIRECT_URI'),
+        secretId: env('ARCHON_SECRET_ID'),
+      }),
+    }
+  : undefined;
 
 /** The unsubscribe-link key, read once per cold start. */
 let secret: Promise<string> | undefined;
@@ -58,6 +69,7 @@ export function servicesFor(callbackUrl: string): Services {
       gateway: awsGateway(callbackUrl),
       presence: presenceEnabled,
       ...(emailEnabled ? { email: email() } : {}),
+      ...(archon ? { archon } : {}),
       // Firings go to the timers Lambda, not back to this process.
       ...(process.env.SCHEDULER_GROUP
         ? {

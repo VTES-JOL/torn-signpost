@@ -28,6 +28,7 @@ function localConfig(): Plugin {
         notifications: true,
         email: true,
         stats: true,
+        archon: true,
       },
     };
     server.middlewares.use('/config.json', (_req, res) => {

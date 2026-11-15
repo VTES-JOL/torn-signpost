@@ -4,6 +4,7 @@ import { ApiError, useApi } from '../api.ts';
 import { useAuth } from '../auth.tsx';
 import { useConfig } from '../content.tsx';
 import { NameForm, useProfile } from '../profile.tsx';
+import { ArchonAccount } from './ArchonAccount.tsx';
 import { EmailSettings } from './EmailSettings.tsx';
 
 export function AccountPage() {
@@ -29,6 +30,7 @@ export function AccountPage() {
       ) : (
         <NameForm submitLabel="Save" />
       )}
+      {flags.archon && <ArchonAccount />}
       {flags.email && <EmailSettings />}
       {profile.groups.includes('admin') && <AdminRename />}
     </section>

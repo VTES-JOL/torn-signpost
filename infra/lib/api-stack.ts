@@ -244,6 +244,26 @@ export class ApiStack extends Stack {
       for (const [k, v] of Object.entries(emailEnv)) f.addEnvironment(k, v);
       unsubscribeSecret.grantRead(f);
     }
+
+    // Archon (M7, docs/m7-plan.md): the API links players' Archon accounts. Our OAuth client's
+    // secret was stored by hand; the functions only read it.
+    if (config.archon) {
+      const archonClient = secretsmanager.Secret.fromSecretNameV2(
+        this,
+        'ArchonClient',
+        config.archon.clientSecretName,
+      );
+      const archonEnv = {
+        ARCHON_URL: config.archon.url,
+        ARCHON_REDIRECT_URI: `https://${h.web}/archon/callback`,
+        // The name, not the ARN: a secret looked up by name has only a partial ARN.
+        ARCHON_SECRET_ID: config.archon.clientSecretName,
+      };
+      for (const f of [this.wsFunction, this.apiFunction, this.timersFunction]) {
+        for (const [k, v] of Object.entries(archonEnv)) f.addEnvironment(k, v);
+        archonClient.grantRead(f);
+      }
+    }
     this.timersFunction.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['ses:SendEmail'],

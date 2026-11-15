@@ -59,6 +59,13 @@ the measured numbers.
 - **Protocol**: the command schemas, with a compile-time check that they match the engine's types.
 - **Web**: unit tests for layout, prompts, the clock and the game and replay clients.
 - **Infra**: assertions on the synthesized CDK templates.
+- **Archon** (`packages/archon`): the client against a fake Archon built from what the M7 spike
+  found the real one does (`docs/m7-plan.md`), and VEKN table scoring from the Tournament Rules'
+  worked examples (3.7.4). The fake is a fetch handler for unit and backend tests, and a server
+  (`pnpm --filter @torn-signpost/archon fake`) for the browser tests. **Contract tests**
+  (`contract.test.ts`) check the fake against the real Archon: skipped unless `ARCHON_CONTRACT`
+  names a file `{baseUrl, tournament, accessToken}` with an `event:run` token for a test
+  tournament on archon.krcg.org (an hour's worth); run them when Archon changes or the fake does.
 - **Deploy smoke test**: after each deploy, against the beta.
 - **Browser** (`apps/web/e2e`, Playwright): the main table flows in real browsers, one per
   player, against the built web app, the local API and WebSocket server and DynamoDB Local, with
@@ -66,7 +73,7 @@ the measured numbers.
   the part under test is driven through the UI. Covered so far: a bleed with a block decision and
   its resolution, pausing and resuming, and a judge call from the table through the judge queue to
   a ruling, a notification reaching a player elsewhere on the site, and email settings and
-  unsubscribe links, game end, withdrawal, results on players' pages and the leaderboard, and the finished game (a
+  unsubscribe links, linking an Archon account (against the fake Archon), game end, withdrawal, results on players' pages and the leaderboard, and the finished game (a
   guest seeing it end live, recent results, a read-only finished table, a private game's result). Run with `pnpm build` and `pnpm db:up`, then `pnpm --filter @torn-signpost/web
   test:e2e`; it uses its own ports and table, so a running `pnpm dev` is left alone. CI keeps
   traces of failures (`npx playwright show-trace`). Add a test when a change touches one of these

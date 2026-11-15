@@ -121,7 +121,16 @@ Checked with our registered client against a test tournament (`Torn Signpost Tes
 
 ## Increments
 
-### M7.1 Connecting to Archon
+### M7.1 Connecting to Archon: done
+
+The spike's findings are above. Built: `packages/archon` (the client: PKCE, token exchange and
+refresh, `userinfo`, reading a tournament from its stream, actions with typed errors; VEKN table
+scoring; a fake Archon and contract tests against the real one), linking a player's Archon
+account (`/me/archon`, the Account page's "Archon account", `/archon/callback`; the Archon uid and
+VEKN number kept, not the tokens), and the beta's settings (Archon's test server, the client
+secret in Secrets Manager). The Account page's link is behind the `archon` flag, on locally and
+dark on the beta.
+
 
 - A spike against archon.krcg.org with a registered client (A1): the PKCE flow and scopes, reading
   a tournament, `StartRound` without a seating, `SetScore` with an `event:run` grant, error shapes.

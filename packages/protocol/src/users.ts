@@ -22,3 +22,26 @@ export interface Profile {
   chosen: boolean;
   groups: string[];
 }
+
+/** A player's link to their Archon account (docs/m7-plan.md M7.1): tournaments need it. */
+export interface ArchonLink {
+  linked: boolean;
+  /** Their Archon member uid. */
+  archonUid?: string;
+  /** Archon refuses tournament players without one; a Prince issues it. */
+  veknId?: string | null;
+  linkedAt?: string;
+}
+
+/** Where to send the player to approve the link in Archon. */
+export interface ArchonLinkStart {
+  url: string;
+}
+
+/** What Archon sent back to /archon/callback. */
+export const ArchonCallbackRequest = z.strictObject({
+  state: z.string().min(1).max(200),
+  code: z.string().min(1).max(2000).optional(),
+  error: z.string().max(200).optional(),
+});
+export type ArchonCallbackRequest = z.infer<typeof ArchonCallbackRequest>;

@@ -7,6 +7,7 @@ import type { Server } from 'node:http';
 import { serve } from '@hono/node-server';
 import { WebSocket, WebSocketServer } from 'ws';
 import { createApp } from '../app.ts';
+import { archonConfig } from '../archon/config.ts';
 import { devAuthenticator } from '../auth.ts';
 import { consoleMailer } from '../email/mailer.ts';
 import { ApiError } from '../errors.ts';
@@ -40,6 +41,17 @@ const services = createServices({
     webUrl: local.webOrigin,
     apiUrl: `http://localhost:${local.port}`,
   },
+  // Archon's test server, with the beta's client (its secret read with your AWS credentials), or
+  // the fake Archon the end-to-end tests run (ARCHON_URL, ARCHON_CLIENT_ID, ARCHON_CLIENT_SECRET).
+  archon: {
+    config: archonConfig({
+      baseUrl: local.archon.url,
+      redirectUri: `${local.webOrigin}/archon/callback`,
+      ...(local.archon.client
+        ? { client: local.archon.client }
+        : { secretId: local.archon.secretId }),
+    }),
+  },
 });
 
 const app = createApp({
@@ -53,6 +65,7 @@ const app = createApp({
   notifications: services.notifications,
   results: services.results,
   ...(services.email ? { email: services.email } : {}),
+  ...(services.archon ? { archon: services.archon } : {}),
 });
 
 const server = serve({ fetch: app.fetch, port: local.port }, ({ port }) => {

@@ -33,6 +33,12 @@ export interface StageConfig {
    * settings on the Account page have their own flag.
    */
   emailEnabled: boolean;
+  /**
+   * Archon, the VEKN's tournament manager (M7, docs/m7-plan.md): its address, and the Secrets
+   * Manager secret holding our OAuth client (`{"clientId", "clientSecret"}`, stored by hand, never
+   * in the repo). Linking accounts has the `archon` flag on the Account page.
+   */
+  archon?: { url: string; clientSecretName: string };
 }
 
 export const beta: StageConfig = {
@@ -60,6 +66,8 @@ export const beta: StageConfig = {
   presenceEnabled: true,
   // On: players who are away get email (deadlines and judge matters at once, the rest daily).
   emailEnabled: true,
+  // Archon's test server while M7 is built; the Account page's link stays dark (no `archon` flag).
+  archon: { url: 'https://archon.krcg.org', clientSecretName: 'torn-signpost/beta/archon-client' },
 };
 
 export const hosts = (c: StageConfig) => ({

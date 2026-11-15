@@ -1,5 +1,8 @@
 import { randomBytes } from 'node:crypto';
+import type { ArchonConfig } from '@torn-signpost/archon';
+import { ArchonService } from './archon/service.ts';
 import { type Content, cdnContent } from './content/catalog.ts';
+import { ArchonStore } from './db/archon.ts';
 import { documentClient } from './db/client.ts';
 import { DeckStore } from './db/decks.ts';
 import { EmailStore } from './db/email.ts';
@@ -28,6 +31,8 @@ export interface Services {
   results: ResultsService;
   /** Missing while email is switched off for the stage. */
   email?: EmailService;
+  /** Missing where Archon isn't configured (docs/m7-plan.md). */
+  archon?: ArchonService;
   realtime: Realtime;
 }
 
@@ -54,6 +59,8 @@ export function createServices(opts: {
     webUrl: string;
     apiUrl: string;
   };
+  /** Archon, the VEKN's tournament manager (M7); off without it. */
+  archon?: { config: () => Promise<ArchonConfig> };
 }): Services {
   const db = documentClient(
     opts.endpoint
@@ -110,6 +117,9 @@ export function createServices(opts: {
     presence: !!opts.presence,
     ...(timers ? { timers } : {}),
   });
+  const archon = opts.archon
+    ? new ArchonService({ store: new ArchonStore(db, opts.tableName), config: opts.archon.config })
+    : undefined;
   const services: Services = {
     store,
     games,
@@ -119,6 +129,7 @@ export function createServices(opts: {
     results,
     realtime,
     ...(email ? { email } : {}),
+    ...(archon ? { archon } : {}),
   };
   return services;
 }

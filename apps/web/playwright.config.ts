@@ -8,6 +8,9 @@ import { defineConfig, devices } from '@playwright/test';
 const CONTENT = 'http://localhost:3102';
 const API = 'http://localhost:3101';
 const WEB = 'http://localhost:5174';
+/** The fake Archon (packages/archon), standing in for the VEKN's tournament manager. */
+const ARCHON = 'http://localhost:3103';
+const ARCHON_CLIENT = { ARCHON_CLIENT_ID: 'fake-client', ARCHON_CLIENT_SECRET: 'fake-secret' };
 const reuse = !process.env.CI;
 
 export default defineConfig({
@@ -30,6 +33,12 @@ export default defineConfig({
       reuseExistingServer: reuse,
     },
     {
+      command: 'pnpm --filter @torn-signpost/archon fake',
+      url: `${ARCHON}/health`,
+      env: { PORT: '3103', ...ARCHON_CLIENT, ARCHON_REDIRECT_URIS: `${WEB}/archon/callback` },
+      reuseExistingServer: reuse,
+    },
+    {
       command: 'pnpm exec tsx src/local/init-db.ts && pnpm exec tsx src/local/server.ts',
       cwd: '../../services/backend',
       url: `${API}/health`,
@@ -38,6 +47,8 @@ export default defineConfig({
         TABLE_NAME: 'ts-e2e',
         CONTENT_URL: CONTENT,
         WEB_ORIGIN: WEB,
+        ARCHON_URL: ARCHON,
+        ...ARCHON_CLIENT,
       },
       reuseExistingServer: reuse,
     },

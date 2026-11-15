@@ -19,6 +19,7 @@
     "@aws-sdk/client-secrets-manager": "3.1151.0",
     "@aws-sdk/client-sesv2": "3.1151.0",
     "@aws-sdk/lib-dynamodb": "3.1151.0",
+    "@torn-signpost/archon": "workspace:*",
     "@torn-signpost/cards": "workspace:*",
     "@torn-signpost/engine": "workspace:*",
     "@torn-signpost/protocol": "workspace:*",

@@ -14,6 +14,7 @@ const app = createApp({
   notifications: services.notifications,
   results: services.results,
   ...(services.email ? { email: services.email } : {}),
+  ...(services.archon ? { archon: services.archon } : {}),
   ...(gamesEnabled ? { games: services.games } : {}),
 });
 

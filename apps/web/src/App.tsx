@@ -9,6 +9,7 @@ import { GamePage } from './game/GamePage.tsx';
 import { NotificationBell, NotificationsProvider } from './notifications.tsx';
 import { AccountPage } from './pages/AccountPage.tsx';
 import { AdminPage } from './pages/AdminPage.tsx';
+import { ArchonCallback } from './pages/ArchonAccount.tsx';
 import { AuthCallback } from './pages/AuthCallback.tsx';
 import { CardsPage } from './pages/CardsPage.tsx';
 import { DeckEditor } from './pages/DeckEditor.tsx';
@@ -64,6 +65,7 @@ export function App() {
                     <Route path="account" element={<AccountPage />} />
                     <Route path="unsubscribe" element={<UnsubscribePage />} />
                     <Route path="auth/callback" element={<AuthCallback />} />
+                    <Route path="archon/callback" element={<ArchonCallback />} />
                     <Route path="*" element={<p className="notice">Page not found.</p>} />
                   </Route>
                 </Routes>
