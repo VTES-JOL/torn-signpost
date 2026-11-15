@@ -4,7 +4,6 @@
  */
 import type { GameState } from '@torn-signpost/engine';
 import type { Finish, GameEnding, PlayerCommand } from '@torn-signpost/protocol';
-import { useState } from 'react';
 import { Link } from 'react-router';
 import { useConfig } from '../content.tsx';
 import { counted, vp } from '../stats/format.ts';
@@ -134,20 +133,23 @@ export function EndGameControls({
   admin,
   seatName,
   send,
+  confirming,
+  setConfirming,
 }: {
   view: GameState;
   seat: string | undefined;
   admin: boolean;
   seatName: (seat: string) => string;
   send: (command: PlayerCommand) => void;
+  /** An admin is confirming ending the game; it's started from the table's ⋯ menu. */
+  confirming: boolean;
+  setConfirming: (confirming: boolean) => void;
 }) {
-  const [confirming, setConfirming] = useState(false);
   if (view.status !== 'active') return null;
   const p = view.endProposal;
   const live = view.seats.filter((s) => !s.ousted && !s.withdrawn);
   const inGame = seat !== undefined && live.some((s) => s.id === seat);
-  const casual = !view.settings.tournament;
-  if (!p && !admin && !(inGame && casual)) return null;
+  if (!p && !(admin && confirming)) return null;
   return (
     <section className="end-game toolbar" aria-label="End the game">
       {p && (
@@ -171,34 +173,34 @@ export function EndGameControls({
           </button>
         </>
       )}
-      {!p && inGame && casual && (
-        <button type="button" onClick={() => send({ type: 'ProposeEnd' })}>
-          Propose ending the game
-        </button>
-      )}
-      {admin &&
-        (confirming ? (
-          <>
-            <span>End the game now? Everyone still in it gains ½ VP.</span>
-            <button
-              type="button"
-              className="primary"
-              onClick={() => {
-                send({ type: 'EndGame' });
-                setConfirming(false);
-              }}
-            >
-              End the game
-            </button>
-            <button type="button" onClick={() => setConfirming(false)}>
-              Cancel
-            </button>
-          </>
-        ) : (
-          <button type="button" onClick={() => setConfirming(true)}>
-            End the game…
+      {admin && confirming && (
+        <>
+          <span>End the game now? Everyone still in it gains ½ VP.</span>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => {
+              send({ type: 'EndGame' });
+              setConfirming(false);
+            }}
+          >
+            End the game
           </button>
-        ))}
+          <button type="button" onClick={() => setConfirming(false)}>
+            Cancel
+          </button>
+        </>
+      )}
     </section>
+  );
+}
+
+/** A player still in a casual game may propose ending it, while no proposal is open. */
+export function canProposeEnd(view: GameState, seat: string | undefined): boolean {
+  return (
+    view.status === 'active' &&
+    !view.endProposal &&
+    !view.settings.tournament &&
+    view.seats.some((s) => s.id === seat && !s.ousted && !s.withdrawn)
   );
 }

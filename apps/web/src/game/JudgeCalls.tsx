@@ -37,13 +37,14 @@ export function JudgeCalls(props: {
   user: string | undefined;
   seatName: (seat: string) => string;
   send: (command: PlayerCommand) => void;
+  /** The "Call a judge" form is open; it's opened from the table's ⋯ menu (canCallJudge). */
+  calling: boolean;
+  setCalling: (calling: boolean) => void;
 }) {
-  const { view, seat, judge, user, seatName, send } = props;
-  const [calling, setCalling] = useState(false);
+  const { view, seat, judge, user, seatName, send, calling, setCalling } = props;
   if (view.status !== 'active') return null;
   const calls = view.judgeCalls ?? [];
-  const mineOpen = !!seat && calls.some((c) => c.by === seat);
-  if (!calls.length && !seat) return null;
+  if (!calls.length && !(calling && seat)) return null;
   return (
     <section className="judge-calls" aria-label="Judge calls">
       {calls.map((c) => (
@@ -64,11 +65,6 @@ export function JudgeCalls(props: {
           {judge && <JudgeTools call={c} view={view} user={user} seatName={seatName} send={send} />}
         </div>
       ))}
-      {seat && !mineOpen && !calling && (
-        <button type="button" className="judge-call-button" onClick={() => setCalling(true)}>
-          Call a judge
-        </button>
-      )}
       {calling && seat && (
         <CallForm
           view={view}
@@ -82,6 +78,11 @@ export function JudgeCalls(props: {
       )}
     </section>
   );
+}
+
+/** A player may call a judge while the game is on and no call of theirs is open. */
+export function canCallJudge(view: GameState, seat: string | undefined): boolean {
+  return view.status === 'active' && !!seat && !(view.judgeCalls ?? []).some((c) => c.by === seat);
 }
 
 function CallForm(props: {

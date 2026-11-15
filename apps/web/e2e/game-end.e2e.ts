@@ -4,6 +4,11 @@ import { signedIn, startGame, users, view } from './helpers.ts';
 
 const ending = (page: Page) => page.getByRole('region', { name: 'End the game' });
 const over = (page: Page) => page.getByRole('region', { name: 'Game over' });
+/** Proposing or forcing the end is in the table's ⋯ menu. */
+const fromMenu = async (page: Page, item: string) => {
+  await page.getByRole('button', { name: 'More table tools' }).click();
+  await page.getByRole('menuitem', { name: item }).click();
+};
 
 test('the players of a casual game agree to end it; everyone sees the result', async ({
   browser,
@@ -15,7 +20,7 @@ test('the players of a casual game agree to end it; everyone sees the result', a
   for (const p of [...pages, watcher]) await p.goto(`/games/${game.id}`);
   const [a, b, c] = pages as [Page, Page, Page];
 
-  await ending(a).getByRole('button', { name: 'Propose ending the game' }).click();
+  await fromMenu(a, 'Propose ending the game');
   await expect(ending(b)).toContainText('proposes ending the game');
   await ending(b).getByRole('button', { name: 'Agree' }).click();
   await expect(ending(c)).toContainText(`waiting for ${carol}`);
@@ -37,7 +42,8 @@ test('an admin ends a game from the table; judges cannot', async ({ browser }) =
   const a = await signedIn(browser, alice);
   for (const p of [j, ad, a]) await p.goto(`/games/${game.id}`);
   await expect(ending(j)).toHaveCount(0);
-  await ending(ad).getByRole('button', { name: 'End the game…' }).click();
+  await expect(j.getByRole('button', { name: 'More table tools' })).toHaveCount(0);
+  await fromMenu(ad, 'End the game…');
   await ending(ad).getByRole('button', { name: 'End the game', exact: true }).click();
   await expect(over(a)).toContainText('Ended by an admin');
   await expect(ending(a)).toHaveCount(0);

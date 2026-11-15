@@ -35,8 +35,8 @@ import { cardActions, type MenuItem } from './actions.ts';
 import type { GameSnapshot, TableClient } from './client.ts';
 import { DragProvider, type DragSource, type DropTarget, useDrag } from './drag.tsx';
 import { type Choosing, currentStep, FlowBar } from './FlowBar.tsx';
-import { EndGameControls, GameOver } from './GameEnd.tsx';
-import { JudgeCalls } from './JudgeCalls.tsx';
+import { canProposeEnd, EndGameControls, GameOver } from './GameEnd.tsx';
+import { canCallJudge, JudgeCalls } from './JudgeCalls.tsx';
 import { seatLayout } from './seatLayout.ts';
 
 interface TableContextValue {
@@ -48,7 +48,8 @@ interface TableContextValue {
   live: boolean;
   send(command: PlayerCommand): void;
   openMenu(card: CardInstance, anchor: DOMRect): void;
-  inspect(card: CardInstance | undefined): void;
+  /** Show a card large, beside where it is on screen (`anchor`). */
+  inspect(card: CardInstance | undefined, anchor?: DOMRect): void;
   picking: CardInstance | undefined;
   pick(host: CardInstance): void;
   showZone(zone: ZoneId): void;
@@ -118,13 +119,17 @@ export function Table(props: {
   const outOfGame = !!snapshot.seat && isOut(view, snapshot.seat);
   const seat = outOfGame || view.status === 'finished' ? undefined : snapshot.seat;
   const [menu, setMenu] = useState<{ card: CardInstance; anchor: DOMRect }>();
-  const [inspected, setInspected] = useState<CardInstance>();
+  const [inspected, setInspected] = useState<{ card: CardInstance; anchor?: DOMRect }>();
   const [picking, setPicking] = useState<CardInstance>();
   const [zoneDialog, setZoneDialog] = useState<ZoneId>();
   const [zoom, setZoom] = useState(1);
   const [choosing, setChoosing] = useState<Choosing>();
   // On a phone the table's tools fold behind one button (styles.css, max-width 760px).
   const [toolsOpen, setToolsOpen] = useState(false);
+  // Opened from the ⋯ menu: the "Call a judge" form, and an admin confirming the end.
+  const [calling, setCalling] = useState(false);
+  const [confirmingEnd, setConfirmingEnd] = useState(false);
+  const admin = !!user?.groups.includes('admin');
   const offers = useMemo(
     () => (seat ? availableActions(view, seat, catalog) : []),
     [view, seat, catalog],
@@ -162,7 +167,8 @@ export function Table(props: {
     live,
     send,
     openMenu: (card, anchor) => setMenu({ card, anchor }),
-    inspect: setInspected,
+    inspect: (card, anchor) =>
+      setInspected(card ? { card, ...(anchor ? { anchor } : {}) } : undefined),
     picking,
     pick: (host) => {
       if (picking && host.id !== picking.id)
@@ -251,6 +257,32 @@ export function Table(props: {
             {toolsOpen ? 'Hide table tools' : 'Table tools'}
           </button>
           <TurnBar zoom={zoom} setZoom={setZoom} />
+          <MoreMenu
+            items={[
+              seat &&
+                !view.pause && {
+                  label: 'Reverse play',
+                  run: () =>
+                    send({
+                      type: 'SetTurnDirection',
+                      direction: view.turnDirection === 'toPrey' ? 'toPredator' : 'toPrey',
+                    }),
+                },
+              live &&
+                judgeCalls &&
+                canCallJudge(view, seat) &&
+                !calling && { label: 'Call a judge', run: () => setCalling(true) },
+              live &&
+                canProposeEnd(view, seat) && {
+                  label: 'Propose ending the game',
+                  run: () => send({ type: 'ProposeEnd' }),
+                },
+              live &&
+                admin &&
+                view.status === 'active' &&
+                !confirmingEnd && { label: 'End the game…', run: () => setConfirmingEnd(true) },
+            ]}
+          />
           {live && judgeCalls && (
             <JudgeCalls
               view={view}
@@ -259,15 +291,19 @@ export function Table(props: {
               user={user?.sub}
               seatName={client.seatName}
               send={send}
+              calling={calling}
+              setCalling={setCalling}
             />
           )}
           {live && (
             <EndGameControls
               view={view}
               seat={seat}
-              admin={!!user?.groups.includes('admin')}
+              admin={admin}
               seatName={client.seatName}
               send={send}
+              confirming={confirmingEnd}
+              setConfirming={setConfirmingEnd}
             />
           )}
         </div>
@@ -298,7 +334,7 @@ export function Table(props: {
             onPick={(card) => setPicking(card)}
           />
         )}
-        <Inspector card={inspected} />
+        <Inspector card={inspected?.card} anchor={inspected?.anchor} />
         {zoneDialog && <ZoneDialog zone={zoneDialog} onClose={() => setZoneDialog(undefined)} />}
       </DragProvider>
     </TableContext.Provider>
@@ -414,6 +450,7 @@ function SeatArea({
           <>
             <button
               type="button"
+              className="pool-step"
               aria-label={`Lower ${client.seatName(seat)}'s pool`}
               onClick={() => send({ type: 'AdjustPool', seat, delta: -1 })}
             >
@@ -421,6 +458,7 @@ function SeatArea({
             </button>
             <button
               type="button"
+              className="pool-step"
               aria-label={`Raise ${client.seatName(seat)}'s pool`}
               onClick={() => send({ type: 'AdjustPool', seat, delta: 1 })}
             >
@@ -624,7 +662,10 @@ function CardView({ id }: { id: string }) {
       }}
       onPointerUp={() => clearTimeout(hold.current)}
       onPointerEnter={(e) => {
-        if (e.pointerType === 'mouse') hold.current = setTimeout(() => inspect(card), 350);
+        if (e.pointerType === 'mouse') {
+          const anchor = e.currentTarget.getBoundingClientRect();
+          hold.current = setTimeout(() => inspect(card, anchor), 350);
+        }
       }}
       onPointerLeave={clear}
       onContextMenu={(e) => {
@@ -809,13 +850,39 @@ function CardMenu(props: {
   );
 }
 
-function Inspector({ card }: { card: CardInstance | undefined }) {
+/** The preview's size (styles.css, .inspector): 15rem wide, the card plus a line or two. */
+const PREVIEW = { width: 240, height: 390, gap: 12 };
+
+/**
+ * Beside the card: to its right, or to its left if there's no room, level with it as far as the
+ * window allows. Without an anchor (a phone's press and hold), where styles.css puts it.
+ */
+function previewPlace(anchor: DOMRect | undefined, narrow: boolean) {
+  if (!anchor || narrow) return undefined;
+  const right = anchor.right + PREVIEW.gap;
+  const left =
+    right + PREVIEW.width <= window.innerWidth
+      ? right
+      : Math.max(8, anchor.left - PREVIEW.gap - PREVIEW.width);
+  const middle = anchor.top + anchor.height / 2 - PREVIEW.height / 2;
+  const top = Math.max(8, Math.min(middle, window.innerHeight - PREVIEW.height - 8));
+  return { left, top, right: 'auto' };
+}
+
+function Inspector({
+  card,
+  anchor,
+}: {
+  card: CardInstance | undefined;
+  anchor?: DOMRect | undefined;
+}) {
   const cards = useCards();
+  const style = previewPlace(anchor, useNarrow());
   if (!card || cards.state !== 'ready' || !card.cardId) return null;
   const record: CardRecord | undefined = cards.get(card.cardId);
   if (!record) {
     return (
-      <aside className="inspector" aria-live="polite">
+      <aside className="inspector" aria-live="polite" style={style}>
         <div>
           <strong>{cardLabel(card.cardId, record)}</strong>
           <p className="small muted">This card isn't in the card data, so it can't be shown.</p>
@@ -835,7 +902,7 @@ function Inspector({ card }: { card: CardInstance | undefined }) {
     .filter(Boolean)
     .join(' · ');
   return (
-    <aside className="inspector" aria-live="polite">
+    <aside className="inspector" aria-live="polite" style={style}>
       <img src={cards.image(record.id, 'full')} alt={record.name} />
       <div>
         <strong>{record.name}</strong>
@@ -895,17 +962,6 @@ function TurnBar({ zoom, setZoom }: { zoom: number; setZoom: (z: number) => void
           <button type="button" onClick={() => send({ type: 'SetEdge', seat })}>
             Take the Edge
           </button>
-          <button
-            type="button"
-            onClick={() =>
-              send({
-                type: 'SetTurnDirection',
-                direction: view.turnDirection === 'toPrey' ? 'toPredator' : 'toPrey',
-              })
-            }
-          >
-            Reverse play
-          </button>
         </>
       )}
       {presence && <PresenceStatus />}
@@ -926,6 +982,66 @@ function TurnBar({ zoom, setZoom }: { zoom: number; setZoom: (z: number) => void
           +
         </button>
       </span>
+    </div>
+  );
+}
+
+/**
+ * The table's rarer and weightier tools behind one ⋯ button, out of the way of the everyday ones:
+ * reversing play, calling a judge, proposing to end the game, an admin ending it.
+ */
+function MoreMenu({
+  items,
+}: {
+  items: (false | '' | undefined | { label: string; run: () => void })[];
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const shown = items.filter((i): i is { label: string; run: () => void } => !!i);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('keydown', key);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('keydown', key);
+    };
+  }, [open]);
+  if (shown.length === 0) return null;
+  return (
+    <div ref={ref} className="more-menu">
+      <button
+        type="button"
+        aria-label="More table tools"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((v) => !v)}
+      >
+        ⋯
+      </button>
+      {open && (
+        <div className="more-menu-panel" role="menu">
+          {shown.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                item.run();
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

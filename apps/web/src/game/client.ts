@@ -33,6 +33,51 @@ export interface LogLine {
   text: string;
   /** The first line of a turn, shown as a divider in the log. */
   turn?: boolean;
+  /**
+   * A change by an amount (a pool, VP or a counter): the same change made again and again in a
+   * row reads as one line with the total (mergeRuns). `key` names what changed and who changed it.
+   */
+  change?: { key: string; delta: number; before: string; after: string };
+}
+
+const CHANGES = new Set<GameEvent['type']>(['PoolAdjusted', 'VpAdjusted', 'CounterAdjusted']);
+
+export const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `${n}` : '±0');
+
+/** The log line for an event described as `text`. */
+export function logLine(ev: GameEvent, text: string): LogLine {
+  const line: LogLine = { seq: ev.seq, at: ev.at, text, ...(startsTurn(ev) ? { turn: true } : {}) };
+  if (!CHANGES.has(ev.type) || !('delta' in ev)) return line;
+  // The amount is the last signed number in the text: "Bob: Bob's pool -1", "… +2 blood".
+  const amount = signed(ev.delta);
+  const i = text.lastIndexOf(amount);
+  if (i < 0) return line;
+  const before = text.slice(0, i);
+  const after = text.slice(i + amount.length);
+  return { ...line, change: { key: `${before}#${after}`, delta: ev.delta, before, after } };
+}
+
+/**
+ * Runs of the same change, one after another, as one line with the total: "Bob: Bob's pool -25"
+ * rather than 25 lines of -1. Anything else in between (a chat message, another change) ends
+ * the run.
+ */
+export function mergeRuns<T extends { text: string; change?: LogLine['change'] }>(
+  entries: readonly T[],
+): T[] {
+  const out: T[] = [];
+  for (const e of entries) {
+    const last = out.at(-1);
+    if (e.change && last?.change && last.change.key === e.change.key) {
+      const delta = last.change.delta + e.change.delta;
+      out[out.length - 1] = {
+        ...last,
+        text: `${e.change.before}${signed(delta)}${e.change.after}`,
+        change: { ...last.change, delta },
+      };
+    } else out.push(e);
+  }
+  return out;
 }
 
 export interface GameSnapshot {
@@ -207,8 +252,7 @@ export class GameClient implements TableClient {
       const seatName = (seat: string) => this.nameIn(next, seat);
       const text = describeEvent(ev, view, { catalog: this.opts.catalog, seatName });
       // Bookkeeping events (automatic passes, for one) have nothing to show.
-      if (text)
-        added.push({ seq: ev.seq, at: ev.at, text, ...(startsTurn(ev) ? { turn: true } : {}) });
+      if (text) added.push(logLine(ev, text));
       viewer = this.viewerFor(next);
       view = project(next, viewer);
     }

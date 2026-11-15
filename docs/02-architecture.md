@@ -566,6 +566,15 @@ the plan as each need grows:
   cards' accessible names too). Counters and labels stay upright on turned cards. Attached cards
   fan out to the right of their host, behind it, so rows stay one card tall. Empty zones are slim
   labelled strips that grow back while they can take a dragged card.
+- **Table tools:** the everyday tools (draw, shuffle, the Edge) are in one row; the rarer and
+  weightier ones (reversing play, calling a judge, proposing to end the game, an admin ending it)
+  are behind a ⋯ menu. Other seats' pool steppers show on hover or focus only, where there's
+  hover. The card preview opens beside the card you point at.
+- **Log:** the same change by an amount made again and again in a row (a pool, VP, a counter)
+  reads as one line with the total (`mergeRuns` in `client.ts`).
+- **Animation:** only the cards are captured in a view transition, not the page, so the page
+  stays clickable while they slide; a new step skips the running slide (the replay's quick
+  stepping).
 - **Phone layout** (below 760px; `apps/web/src/narrow.ts`): the game fits the window under a
   one-line header, with the site menu behind a button. The decision bar stays at the top. Each
   opponent is a one-line strip (pool, VP, ready, torpor, hand and library counts), opened with a

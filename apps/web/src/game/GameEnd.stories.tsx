@@ -51,17 +51,6 @@ export const NobodyWon: Story = {
   ),
 };
 
-/** A casual game: a player still in it may propose ending it, scored as a timeout. */
-export const ProposeEnding: Story = {
-  render: () => (
-    <Scenario name="14-game-end" line={23} viewer={alice}>
-      {({ view, seat, seatName, send }) => (
-        <EndGameControls view={view} seat={seat} admin={false} seatName={seatName} send={send} />
-      )}
-    </Scenario>
-  ),
-};
-
 /** Bob proposed ending it: the others agree or play on. */
 export const ProposalOpen: Story = {
   render: () => (
@@ -72,18 +61,34 @@ export const ProposalOpen: Story = {
       adjust={(v) => ({ ...v, endProposal: { by: 'B', agreed: ['B'] } })}
     >
       {({ view, seat, seatName, send }) => (
-        <EndGameControls view={view} seat={seat} admin={false} seatName={seatName} send={send} />
+        <EndGameControls
+          view={view}
+          seat={seat}
+          admin={false}
+          seatName={seatName}
+          send={send}
+          confirming={false}
+          setConfirming={() => {}}
+        />
       )}
     </Scenario>
   ),
 };
 
-/** A server admin may end any game. */
+/** A server admin ending a game, as started from the table's ⋯ menu: confirm or cancel. */
 export const AdminEnds: Story = {
   render: () => (
     <Scenario name="14-game-end" line={23} viewer={{ kind: 'spectator' }}>
       {({ view, seat, seatName, send }) => (
-        <EndGameControls view={view} seat={seat} admin seatName={seatName} send={send} />
+        <EndGameControls
+          view={view}
+          seat={seat}
+          admin
+          seatName={seatName}
+          send={send}
+          confirming
+          setConfirming={() => {}}
+        />
       )}
     </Scenario>
   ),

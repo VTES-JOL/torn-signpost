@@ -68,7 +68,9 @@ test('a player calls a judge; a judge claims it from the queue and rules', async
   const a = await signedIn(browser, alice);
   await a.goto(`/games/${game.id}`);
 
-  await calls(a).getByRole('button', { name: 'Call a judge' }).click();
+  // Calling a judge is in the table's ⋯ menu.
+  await a.getByRole('button', { name: 'More table tools' }).click();
+  await a.getByRole('menuitem', { name: 'Call a judge' }).click();
   await calls(a).getByLabel('Reason').selectOption('rules');
   await calls(a).getByLabel('What happened').fill('Can I play this now?');
   await calls(a).getByRole('button', { name: 'Call', exact: true }).click();

@@ -1,7 +1,7 @@
 /** Game log with chat interleaved (GAME-12); spectators read but cannot chat (GAME-16). */
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api.ts';
-import type { GameSnapshot, TableClient } from './client.ts';
+import { type GameSnapshot, type LogLine, mergeRuns, type TableClient } from './client.ts';
 
 type Entry = {
   key: string;
@@ -11,6 +11,7 @@ type Entry = {
   who?: string;
   mention?: boolean;
   turn?: boolean;
+  change?: LogLine['change'];
 };
 
 export function LogPanel(props: {
@@ -23,23 +24,26 @@ export function LogPanel(props: {
   const [text, setText] = useState('');
   const [error, setError] = useState<string>();
   const list = useRef<HTMLOListElement>(null);
-  const entries: Entry[] = [
-    ...props.snapshot.log.map((l) => ({
-      key: `e${l.seq}`,
-      seq: l.seq,
-      order: 0,
-      text: l.text,
-      turn: !!l.turn,
-    })),
-    ...props.snapshot.chat.map((m, i) => ({
-      key: m.id,
-      seq: m.seq,
-      order: 1 + i,
-      text: m.text,
-      who: m.name,
-      mention: !!props.me && m.text.toLowerCase().includes(`@${props.me.toLowerCase()}`),
-    })),
-  ].sort((a, b) => a.seq - b.seq || a.order - b.order);
+  const entries: Entry[] = mergeRuns(
+    [
+      ...props.snapshot.log.map((l) => ({
+        key: `e${l.seq}`,
+        seq: l.seq,
+        order: 0,
+        text: l.text,
+        turn: !!l.turn,
+        ...(l.change ? { change: l.change } : {}),
+      })),
+      ...props.snapshot.chat.map((m, i) => ({
+        key: m.id,
+        seq: m.seq,
+        order: 1 + i,
+        text: m.text,
+        who: m.name,
+        mention: !!props.me && m.text.toLowerCase().includes(`@${props.me.toLowerCase()}`),
+      })),
+    ].sort((a, b) => a.seq - b.seq || a.order - b.order),
+  );
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll when new entries arrive
   useEffect(() => {
     // Scroll the log itself, not the page: on a narrow screen it sits below the table.

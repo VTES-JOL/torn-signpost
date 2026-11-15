@@ -7,7 +7,7 @@ import { type CardCatalog, createCatalog, runScenario, type Viewer } from '@torn
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, useParams } from 'react-router';
 import { useCards } from '../content.tsx';
-import { animate } from '../game/animate.ts';
+import { animate, type Transition } from '../game/animate.ts';
 import { ConsolePanel } from '../game/ConsolePanel.tsx';
 import { LogPanel } from '../game/LogPanel.tsx';
 import { Table } from '../game/Table.tsx';
@@ -75,8 +75,39 @@ function ScenarioPlayer({ scenario, catalog }: { scenario: ScenarioFile; catalog
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1200);
 
-  /** Move to a step, with the cards sliding to their new places. */
-  const go = useCallback((n: number) => animate(() => client.goto(n)), [client]);
+  /**
+   * Where the table is going: steps clicked while the cards are still sliding count on from here,
+   * not from where the table was when the slide began, so no click is lost.
+   */
+  const target = useRef<number | undefined>(undefined);
+  /** The last step asked for, never cleared: a slide's update, however late, goes there. */
+  const latest = useRef(0);
+  const sliding = useRef<Transition | undefined>(undefined);
+  /** Move to a step, with the cards sliding to their new places; a new move cuts a slide short. */
+  const go = useCallback(
+    (n: number) => {
+      const to = Math.max(0, Math.min(n, client.getPosition().steps.length));
+      target.current = to;
+      latest.current = to;
+      if (sliding.current) {
+        // The skipped slide's own update goes to the latest step too, whenever it runs.
+        sliding.current.skipTransition();
+        client.goto(to);
+        return;
+      }
+      const t = animate(() => client.goto(latest.current));
+      if (!t) {
+        target.current = undefined;
+        return;
+      }
+      sliding.current = t;
+      void t.finished.finally(() => {
+        sliding.current = undefined;
+        target.current = undefined;
+      });
+    },
+    [client],
+  );
   /** Stepping by hand stops the playback. */
   const step = useCallback(
     (n: number) => {
@@ -84,6 +115,11 @@ function ScenarioPlayer({ scenario, catalog }: { scenario: ScenarioFile; catalog
       go(n);
     },
     [go],
+  );
+  /** A step forward or back from where the table is going. */
+  const stepBy = useCallback(
+    (delta: number) => step((target.current ?? client.getPosition().cursor) + delta),
+    [client, step],
   );
   const togglePlay = useCallback(() => {
     if (playing) return setPlaying(false);
@@ -116,15 +152,15 @@ function ScenarioPlayer({ scenario, catalog }: { scenario: ScenarioFile; catalog
       if (e.target instanceof HTMLSelectElement || e.target instanceof HTMLButtonElement) {
         if (e.key === ' ') return;
       }
-      if (e.key === 'ArrowRight') step(client.getPosition().cursor + 1);
-      else if (e.key === 'ArrowLeft') step(client.getPosition().cursor - 1);
+      if (e.key === 'ArrowRight') stepBy(1);
+      else if (e.key === 'ArrowLeft') stepBy(-1);
       else if (e.key === ' ') togglePlay();
       else return;
       e.preventDefault();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [client, step, togglePlay]);
+  }, [stepBy, togglePlay]);
   useEffect(() => {
     if (!error) return;
     const t = setTimeout(() => setError(undefined), 5000);
@@ -177,13 +213,13 @@ function ScenarioPlayer({ scenario, catalog }: { scenario: ScenarioFile; catalog
           <button type="button" onClick={() => step(0)} disabled={cursor === 0}>
             ⏮<span className="sr-only">First step</span>
           </button>
-          <button type="button" onClick={() => step(cursor - 1)} disabled={cursor === 0}>
+          <button type="button" onClick={() => stepBy(-1)} disabled={cursor === 0}>
             ◀<span className="sr-only">Previous step</span>
           </button>
           <span className="small">
             Step {cursor} of {steps.length}
           </span>
-          <button type="button" onClick={() => step(cursor + 1)} disabled={cursor === steps.length}>
+          <button type="button" onClick={() => stepBy(1)} disabled={cursor === steps.length}>
             ▶<span className="sr-only">Next step</span>
           </button>
           <button

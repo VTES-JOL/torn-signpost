@@ -1346,7 +1346,7 @@ body.dragging {
   min-height: 2rem;
 }
 
-/* At the top right, over the oldest log lines: not over the chat box or your hand. */
+/* Beside the card you're pointing at (previewPlace in Table.tsx); top right without one. */
 .inspector {
   position: fixed;
   right: 1rem;
@@ -2315,6 +2315,7 @@ body.dragging {
   }
 
   .table-controls:not(.open) > .turn-bar,
+  .table-controls:not(.open) > .more-menu,
   .table-controls:not(.open) > .judge-calls:not(:has(.judge-call, form)),
   .table-controls:not(.open) > .end-game:not(:has([role="status"], .primary)) {
     display: none;
@@ -2438,4 +2439,60 @@ body.dragging {
     width: min(18rem, 80vw);
     transform: translateX(-50%);
   }
+}
+
+/* The table's rarer tools, behind ⋯ (MoreMenu in Table.tsx). */
+.more-menu {
+  position: relative;
+  order: 1;
+}
+
+.table-controls .more-menu > button {
+  min-width: 2.4rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.more-menu-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 14rem;
+  padding: 0.35rem;
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 35%);
+}
+
+.more-menu .more-menu-panel button {
+  justify-content: flex-start;
+  border: none;
+  min-height: 2.25rem;
+}
+
+/* Others' pool steppers only on hover or focus, where there's hover: fewer buttons, fewer slips. */
+@media (hover: hover) {
+  .seat:not(.own) .pool-step {
+    visibility: hidden;
+  }
+
+  .seat:not(.own) .seat-header:is(:hover, :focus-within) .pool-step {
+    visibility: visible;
+  }
+}
+
+/*
+ * Only the cards slide (animate.ts): the rest of the page isn't captured, so it stays live, and
+ * clicks while the cards slide reach it (the replay's step buttons, for one).
+ */
+:root {
+  view-transition-name: none;
+}
+
+::view-transition {
+  pointer-events: none;
 }
