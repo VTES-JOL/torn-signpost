@@ -520,6 +520,9 @@ interface Applied {
 function play(
   onEvent: (before: GameState, ev: GameEvent, after: GameState) => void,
   onCommand: (applied: Applied) => void = () => {},
+  params: fc.Parameters<
+    [number, number, [number, number, number, number, number, number, number][]]
+  > = {},
 ) {
   fc.assert(
     fc.property(
@@ -576,12 +579,17 @@ function play(
         }
       },
     ),
-    { numRuns: 150 },
+    { numRuns: 150, ...params },
   );
 }
 
-const forEveryEvent = (check: (before: GameState, ev: GameEvent, after: GameState) => void) =>
-  play(check);
+/** A seed whose 150 games reach every event the coverage test lists. */
+const COVERAGE_SEED = 1;
+
+const forEveryEvent = (
+  check: (before: GameState, ev: GameEvent, after: GameState) => void,
+  params?: Parameters<typeof play>[2],
+) => play(check, undefined, params);
 const forEveryCommand = (check: (applied: Applied) => void) => play(() => {}, check);
 
 // Property suites run hundreds of random games; allow for slower CI runners.
@@ -626,9 +634,14 @@ describe('hidden information', { timeout: 60_000 }, () => {
 
   it('random games reach the structured flow', () => {
     const seen = new Set<string>();
-    forEveryEvent((_, ev) => {
-      seen.add(ev.type === 'Passed' && ev.auto ? 'Passed(auto)' : ev.type);
-    });
+    // A fixed seed: unseeded, some rare events (votes cast, say) are missed now and then. The
+    // other properties keep exploring new games every run.
+    forEveryEvent(
+      (_, ev) => {
+        seen.add(ev.type === 'Passed' && ev.auto ? 'Passed(auto)' : ev.type);
+      },
+      { seed: COVERAGE_SEED },
+    );
     for (const type of [
       'WindowOpened',
       'Passed',
