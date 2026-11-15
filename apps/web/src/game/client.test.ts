@@ -174,4 +174,39 @@ describe('GameClient', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(c.getSnapshot().view).toEqual(project(s.state, viewer));
   });
+
+  it('never goes back to an older state when an animated push lands after a newer one', async () => {
+    const s = server();
+    const viewer: Viewer = { kind: 'player', seat: '1' };
+    // The browser runs a view transition's update later, after other work: hold them.
+    const pending: (() => void)[] = [];
+    const c = new GameClient({
+      gameId: 'g',
+      api: s.api(viewer, 'a'),
+      wsUrl: 'ws://localhost:1',
+      token: async () => undefined,
+      catalog,
+      user: { sub: 'a', name: 'a', groups: [] },
+      animate: (change) => {
+        pending.push(change);
+      },
+    });
+    (c as unknown as { connect: () => void }).connect = () => {};
+    await c.start();
+    const internals = c as unknown as { apply(e: GameEvent[], animate: boolean): void };
+
+    // One push, animated: its update waits for the transition.
+    let before = s.state.seq;
+    s.run({ type: 'AdjustPool', seat: '2', delta: -1 }, { kind: 'player', user: 'b' });
+    internals.apply(s.as(viewer, before), true);
+    // The next push arrives before it runs.
+    before = s.state.seq;
+    s.run({ type: 'AdjustPool', seat: '3', delta: -1 }, { kind: 'player', user: 'c' });
+    internals.apply(s.as(viewer, before), true);
+    await new Promise((r) => setTimeout(r, 0));
+    // The transitions run, in order, late.
+    for (const change of pending) change();
+    expect(c.getSnapshot().view).toEqual(project(s.state, viewer));
+    expect(c.getSnapshot().log.at(-1)?.text).toContain('-1');
+  });
 });

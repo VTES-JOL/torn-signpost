@@ -28,11 +28,13 @@ test('a player with an empty library withdraws, and leaves at the start of their
       const s = await view(alice, game.id);
       if (i > 0 && done(s)) return;
       const wait = waitingOn(s)[0];
-      if (!wait) return;
+      if (!wait) throw new Error('Nobody to wait on');
       await send(occupant(s, wait.seat), game.id, {
         type: wait.kind === 'phase' ? 'AdvancePhase' : 'Pass',
       });
     }
+    // Say so here, not as a button that never shows up 90 seconds later.
+    throw new Error('Did not get round the table in 40 steps');
   };
   await expect(flow(p)).toContainText('Your decision: Your unlock phase');
   // A full library: no sign of it.

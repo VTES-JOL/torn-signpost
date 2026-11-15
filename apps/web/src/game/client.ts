@@ -260,9 +260,12 @@ export class GameClient implements TableClient {
       log = [...log, ...added];
       const seat = viewer.kind === 'player' ? viewer.seat : undefined;
       const patch: Partial<GameSnapshot> = { view, viewer, log };
-      const change = () => this.update(seat ? { ...patch, seat } : patch, seat === undefined);
-      if (animate && this.opts.animate) this.opts.animate(change);
-      else change();
+      // The state moves on now; only the redraw waits for the animation. A browser runs a view
+      // transition's update later, after other work: had the state waited too, a newer push
+      // (or catch-up) applied meanwhile would be undone by it, and the table left behind.
+      const animated = animate && !!this.opts.animate;
+      this.update(seat ? { ...patch, seat } : patch, seat === undefined, !animated);
+      if (animated) this.opts.animate?.(() => this.notify());
     }
     if (gap) void this.catchUp();
   }
@@ -324,10 +327,14 @@ export class GameClient implements TableClient {
     };
   }
 
-  private update(patch: Partial<GameSnapshot>, clearSeat = false) {
+  private update(patch: Partial<GameSnapshot>, clearSeat = false, notify = true) {
     const next = { ...this.snapshot, ...patch };
     if (clearSeat) delete next.seat;
     this.snapshot = next;
+    if (notify) this.notify();
+  }
+
+  private notify() {
     for (const l of this.listeners) l();
   }
 }
