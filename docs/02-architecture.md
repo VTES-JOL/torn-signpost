@@ -590,7 +590,11 @@ the plan as each need grows:
 - **Routing and state:** React Router, and a small `GameClient` store read with
   `useSyncExternalStore`, instead of TanStack Router/Query and Zustand. The client replays its
   projected event history through `evolve` and `project`, and fills `seq` gaps over HTTP.
-  Optimistic prediction (UX-11) isn't done yet; responses arrive in tens of milliseconds.
+  Optimistic prediction (UX-11): the client runs `decide` on its own view for each command it
+  sends and shows the events at once (`apps/web/src/game/predict.ts`), unless the outcome needs
+  randomness or a card the view doesn't know (a draw); the server's events replace the
+  prediction, by the response or by the push, which carries the `commandId`. A refusal puts the
+  view back. From Australia, us-east-1 is ~200ms away, so this is what makes play feel immediate.
 - **Drag and drop:** one pointer-event layer for mouse, pen and touch (`data-drop` targets), instead
   of dnd-kit. Drop targets are the zones, minions (to attach) and pools (to transfer blood).
 - **Zoom:** CSS `zoom` with Ctrl/⌘ + wheel and two-finger pinch, instead of `@use-gesture`.
@@ -844,6 +848,12 @@ torn-signpost/
 EMF metrics) with correlation fields `gameId`, `commandId` and `seq`. CloudWatch dashboard and
 alarms (5xx rate, Lambda errors, DynamoDB throttles, SQS DLQ depth, WebSocket errors, budget) go
 to SNS email. Log retention is 30 days, to keep costs down.
+
+Every API response has a `Server-Timing` header with the steps of the request (auth, profile,
+and for game commands dedupe, meta, load, append, publish, timers, notify), visible in the
+browser's dev tools; requests over 300ms are logged with their steps (`services/backend/src/timing.ts`).
+After a command is appended, the push, timer, queue and notification work runs in parallel.
+API Gateway answers CORS preflights itself, cached for two hours.
 
 **Testing (NFR-10)**:
 

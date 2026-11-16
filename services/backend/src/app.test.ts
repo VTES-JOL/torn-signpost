@@ -21,6 +21,19 @@ describe('api', () => {
     expect(other.headers.get('access-control-allow-origin')).toBeNull();
   });
 
+  it('says how long a request took, step by step (Server-Timing)', async () => {
+    const res = await app.request('/health');
+    expect(res.headers.get('server-timing')).toMatch(/(^|, )auth;dur=[\d.]+, .*total;dur=[\d.]+$/);
+  });
+
+  it('keeps preflights for two hours', async () => {
+    const res = await app.request('/games/g1/commands', {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://example.org', 'Access-Control-Request-Method': 'POST' },
+    });
+    expect(res.headers.get('access-control-max-age')).toBe('7200');
+  });
+
   it('returns JSON 404 for unknown routes', async () => {
     const res = await app.request('/nope');
     expect(res.status).toBe(404);

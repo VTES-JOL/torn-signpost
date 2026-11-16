@@ -29,6 +29,7 @@ import { ApiError } from './errors.ts';
 import type { GameService } from './games/service.ts';
 import type { NotificationService } from './notifications/service.ts';
 import type { ResultsService } from './stats/service.ts';
+import { serverTiming, timed, withTiming } from './timing.ts';
 import type { TournamentService } from './tournaments/service.ts';
 import type { ProfileService } from './users/service.ts';
 
@@ -53,18 +54,49 @@ export interface AppConfig {
 
 type Env = { Variables: { identity: Identity } };
 
+/** Requests slower than this are logged with their Server-Timing steps. */
+const SLOW_MS = 300;
+
 /** The HTTP API (architecture §5.1). Routes are added per milestone. */
 export function createApp(config: AppConfig): Hono<Env> {
   const app = new Hono<Env>();
 
-  app.use('*', cors({ origin: config.allowedOrigins, maxAge: 600 }));
+  // Browsers cap the preflight cache at two hours (Chrome) and cache it per URL; API Gateway
+  // answers preflights on the deployed API, so this one serves local development.
+  app.use('*', cors({ origin: config.allowedOrigins, maxAge: 7200 }));
+
+  // Server-Timing on every response (see timing.ts); slow requests are logged with their steps.
+  app.use('*', async (c, next) => {
+    const start = performance.now();
+    const { steps } = await withTiming(next);
+    const total = performance.now() - start;
+    c.res.headers.set('Server-Timing', serverTiming(steps, total));
+    c.res.headers.set('Timing-Allow-Origin', '*');
+    if (total > SLOW_MS) {
+      console.log('slow request', {
+        method: c.req.method,
+        route: c.req.routePath,
+        status: c.res.status,
+        ms: Math.round(total),
+        steps: steps.map(({ name, ms }) => `${name} ${Math.round(ms)}`),
+      });
+    }
+  });
 
   app.use('*', async (c, next) => {
-    const identity = config.auth ? await config.auth(bearer(c.req.header('Authorization'))) : GUEST;
-    c.set('identity', config.profiles ? await config.profiles.resolve(identity) : identity);
-    await config.email?.seen(identity);
-    // Changes count as using the site; reads don't (pages poll in the background).
-    if (c.req.method !== 'GET') await config.email?.active(identity);
+    const identity = await timed('auth', () =>
+      config.auth ? config.auth(bearer(c.req.header('Authorization'))) : GUEST,
+    );
+    // The profile read and the activity bookkeeping don't depend on each other.
+    const [resolved] = await timed('profile', () =>
+      Promise.all([
+        config.profiles ? config.profiles.resolve(identity) : identity,
+        config.email?.seen(identity),
+        // Changes count as using the site; reads don't (pages poll in the background).
+        c.req.method !== 'GET' ? config.email?.active(identity) : undefined,
+      ]),
+    );
+    c.set('identity', resolved);
     await next();
   });
 

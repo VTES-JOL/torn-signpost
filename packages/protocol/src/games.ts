@@ -344,7 +344,8 @@ export type ClientMessage = z.infer<typeof ClientMessage>;
 /** Server → client WebSocket messages. Clients detect `seq` gaps and catch up over HTTP. */
 export type ServerMessage =
   | { type: 'subscribed'; gameId: string; seq: number }
-  | { type: 'events'; gameId: string; events: GameEvent[] }
+  /** `commandId`: the command that caused them, so its sender can match them to its prediction. */
+  | { type: 'events'; gameId: string; events: GameEvent[]; commandId?: string }
   | { type: 'lobby'; game: GameSummary }
   | { type: 'chat'; gameId: string; message: ChatMessage }
   /** Who else is watching (TEMPO-06): signed-in users who aren't seated. Seated presence is in the game. */

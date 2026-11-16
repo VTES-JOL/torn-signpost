@@ -12,7 +12,7 @@ import {
   type Viewer,
 } from '@torn-signpost/engine';
 import testCards from '@torn-signpost/engine/test-catalog.json' with { type: 'json' };
-import type { PlayerCommand } from '@torn-signpost/protocol';
+import type { PlayerCommand, ServerMessage } from '@torn-signpost/protocol';
 import { describe, expect, it } from 'vitest';
 import type { Api } from '../api.ts';
 import { GameClient } from './client.ts';
@@ -208,5 +208,121 @@ describe('GameClient', () => {
     for (const change of pending) change();
     expect(c.getSnapshot().view).toEqual(project(s.state, viewer));
     expect(c.getSnapshot().log.at(-1)?.text).toContain('-1');
+  });
+});
+
+describe('GameClient predictions', () => {
+  /** The server's answer to commands waits until released, as over a slow connection. */
+  function slow(s: ReturnType<typeof server>, viewer: Viewer, user: string) {
+    const base = s.api(viewer, user);
+    /** How each waiting command is answered: by the server double, a refusal, or given events. */
+    type Answer = 'run' | 'refuse' | { events: GameEvent[] };
+    const waiting: ((answer: Answer) => void)[] = [];
+    const sent: string[] = [];
+    const api = (async (path: string, init?: { method?: string; body?: unknown }) => {
+      if (path !== '/games/g/commands') return base(path, init);
+      sent.push((init?.body as { commandId: string } | undefined)?.commandId ?? '');
+      const answer = await new Promise<Answer>((r) => waiting.push(r));
+      if (answer === 'refuse') throw new Error('refused');
+      if (answer === 'run') return base(path, init);
+      return { seq: s.state.seq, events: answer.events };
+    }) as Api;
+    return {
+      api,
+      sent,
+      async release(answer: Answer = 'run') {
+        waiting.shift()?.(answer);
+        for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+      },
+    };
+  }
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  it('shows a command at once, before the server answers, then the server’s events', async () => {
+    const s = server();
+    const viewer: Viewer = { kind: 'player', seat: '1' };
+    const net = slow(s, viewer, 'a');
+    const c = client(net.api, 'a');
+    await c.start();
+    const done = c.send({ type: 'AdjustPool', seat: '1', delta: -1 });
+    await tick();
+    expect(c.getSnapshot().view.seats[0]?.pool).toBe(29);
+    expect(c.getSnapshot().log.at(-1)?.text).toContain('-1');
+
+    await net.release();
+    await done;
+    expect(c.getSnapshot().view).toEqual(project(s.state, viewer));
+    expect(c.getSnapshot().log).toHaveLength(2);
+  });
+
+  it('goes back when the server refuses the command', async () => {
+    const s = server();
+    const viewer: Viewer = { kind: 'player', seat: '1' };
+    const net = slow(s, viewer, 'a');
+    const c = client(net.api, 'a');
+    await c.start();
+    const done = c.send({ type: 'AdjustPool', seat: '1', delta: -1 });
+    await tick();
+    expect(c.getSnapshot().view.seats[0]?.pool).toBe(29);
+    const refused = expect(done).rejects.toThrow('refused');
+    await net.release('refuse');
+    await refused;
+    expect(c.getSnapshot().view).toEqual(project(s.state, viewer));
+    expect(c.getSnapshot().view.seats[0]?.pool).toBe(30);
+  });
+
+  it('applies its own command once when the push beats the response', async () => {
+    const s = server();
+    const viewer: Viewer = { kind: 'player', seat: '1' };
+    const net = slow(s, viewer, 'a');
+    const c = client(net.api, 'a');
+    const receive = (c as unknown as { receive(m: ServerMessage): void }).receive.bind(c);
+    await c.start();
+    const done = c.send({ type: 'AdjustPool', seat: '1', delta: -1 });
+    await tick();
+    // The server decides; its push arrives first, the response later.
+    const before = s.state.seq;
+    s.run({ type: 'AdjustPool', seat: '1', delta: -1 }, { kind: 'player', user: 'a' });
+    const events = s.as(viewer, before);
+    receive({ type: 'events', gameId: 'g', events, commandId: net.sent[0] });
+    expect(c.getSnapshot().view).toEqual(project(s.state, viewer));
+    await net.release({ events });
+    await done;
+    expect(c.getSnapshot().view).toEqual(project(s.state, viewer));
+    expect(c.getSnapshot().view.seats[0]?.pool).toBe(29);
+    expect(c.getSnapshot().log).toHaveLength(2);
+  });
+
+  it('lays a prediction over another player’s event that lands first', async () => {
+    const s = server();
+    const viewer: Viewer = { kind: 'player', seat: '1' };
+    const net = slow(s, viewer, 'a');
+    const c = client(net.api, 'a');
+    const receive = (c as unknown as { receive(m: ServerMessage): void }).receive.bind(c);
+    await c.start();
+    const done = c.send({ type: 'AdjustPool', seat: '1', delta: -1 });
+    await tick();
+    const before = s.state.seq;
+    s.run({ type: 'AdjustPool', seat: '2', delta: -2 }, { kind: 'player', user: 'b' });
+    receive({ type: 'events', gameId: 'g', events: s.as(viewer, before) });
+    expect(c.getSnapshot().view.seats.map((x) => x.pool)).toEqual([29, 28, 30]);
+    await net.release();
+    await done;
+    expect(c.getSnapshot().view).toEqual(project(s.state, viewer));
+  });
+
+  it('waits for the server when only it knows the outcome (a draw)', async () => {
+    const s = server();
+    const viewer: Viewer = { kind: 'player', seat: '1' };
+    const net = slow(s, viewer, 'a');
+    const c = client(net.api, 'a');
+    await c.start();
+    const shown = c.getSnapshot().view;
+    const done = c.send({ type: 'Draw', seat: '1', count: 1 });
+    await tick();
+    expect(c.getSnapshot().view).toBe(shown);
+    await net.release();
+    await done;
+    expect(c.getSnapshot().view).toEqual(project(s.state, viewer));
   });
 });

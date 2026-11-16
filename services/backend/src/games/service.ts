@@ -49,6 +49,7 @@ import { ApiError } from '../errors.ts';
 import type { Notifier } from '../notifications/service.ts';
 import { ending } from '../stats/result.ts';
 import type { GameTimerCommand, Timers } from '../timers/timers.ts';
+import { timed } from '../timing.ts';
 
 /** Delivers a message, built per recipient, to everyone watching a game. */
 export interface Publisher {
@@ -528,17 +529,7 @@ export class GameService {
       });
       if (appended === 'ok') {
         this.remember(after);
-        await this.syncTimers(id, state, after);
-        await this.syncJudgeQueue(meta, state, after);
-        await this.syncEscalations(meta, state, result.events);
-        await this.afterEnd(meta, state, after, result.events);
-        await this.publishSteps(id, steps);
-        await this.deps.notifier?.afterCommand({
-          game: meta,
-          before: state,
-          after,
-          events: result.events,
-        });
+        await this.afterAppend(meta, state, steps, result.events);
         return;
       }
       this.cache.delete(id);
@@ -646,16 +637,16 @@ export class GameService {
   async command(identity: Identity, id: string, req: CommandRequest): Promise<CommandResponse> {
     const user = requireUser(identity);
     for (let attempt = 1; ; attempt++) {
-      const done = await this.deps.store.getCommand(id, req.commandId);
+      const done = await timed('dedupe', () => this.deps.store.getCommand(id, req.commandId));
       if (done) {
         if (done.user !== user.sub)
           throw new ApiError(409, 'duplicate_command', 'Command ID already used');
         return this.replay(identity, id, done.firstSeq, done.lastSeq);
       }
-      const meta = await this.meta(id, true);
+      const meta = await timed('meta', () => this.meta(id, true));
       if (meta.status !== 'active')
         throw new ApiError(409, 'not_active', 'The game is not in progress');
-      const state = await this.load(id, meta.seq, true);
+      const state = await timed('load', () => this.load(id, meta.seq, true));
       if (req.expectedSeq !== undefined && req.expectedSeq !== state.seq) {
         throw new ApiError(409, 'stale', `The game is at ${state.seq}; catch up and retry`);
       }
@@ -670,27 +661,22 @@ export class GameService {
       const steps = run(state, result.events);
       const after = steps.at(-1)?.after ?? state;
       const crosses = crossesSnapshot(state, after);
-      const appended = await this.deps.store.append({
-        id,
-        expectedSeq: state.seq,
-        events: result.events,
-        commandId: req.commandId,
-        user: user.sub,
-        ...(crosses || ended(state, after) ? { snapshot: after } : {}),
-        ...(await this.metaPatch(meta, state, after, result.events)),
-      });
+      const patch = await this.metaPatch(meta, state, after, result.events);
+      const appended = await timed('append', () =>
+        this.deps.store.append({
+          id,
+          expectedSeq: state.seq,
+          events: result.events,
+          commandId: req.commandId,
+          user: user.sub,
+          ...(crosses || ended(state, after) ? { snapshot: after } : {}),
+          ...patch,
+        }),
+      );
       if (appended === 'ok') {
         this.remember(after);
-        await this.syncTimers(id, state, after);
-        await this.syncJudgeQueue(meta, state, after);
-        await this.syncEscalations(meta, state, result.events);
-        await this.afterEnd(meta, state, after, result.events);
-        await this.publishSteps(id, steps);
-        await this.deps.notifier?.afterCommand({
-          game: meta,
-          before: state,
-          after,
-          events: result.events,
+        await this.afterAppend(meta, state, steps, result.events, {
+          id: req.commandId,
           actor: user.sub,
         });
         const viewer = viewerOf(identity, after);
@@ -720,7 +706,39 @@ export class GameService {
     };
   }
 
-  private async publishSteps(id: string, steps: Step[]): Promise<void> {
+  /**
+   * Everything that follows an append, together: the other players' update first in line, then
+   * the bookkeeping. Each part touches its own records, so none waits on another.
+   */
+  private async afterAppend(
+    meta: GameMeta,
+    before: GameState,
+    steps: Step[],
+    events: readonly GameEvent[],
+    command?: { id: string; actor: string },
+  ): Promise<void> {
+    const after = steps.at(-1)?.after ?? before;
+    await timed('after', () =>
+      Promise.all([
+        timed('publish', () => this.publishSteps(meta.id, steps, command?.id)),
+        timed('timers', () => this.syncTimers(meta.id, before, after)),
+        this.syncJudgeQueue(meta, before, after),
+        this.syncEscalations(meta, before, events),
+        this.afterEnd(meta, before, after, events),
+        timed('notify', () =>
+          this.deps.notifier?.afterCommand({
+            game: meta,
+            before,
+            after,
+            events,
+            ...(command ? { actor: command.actor } : {}),
+          }),
+        ),
+      ]),
+    );
+  }
+
+  private async publishSteps(id: string, steps: Step[], commandId?: string): Promise<void> {
     const after = steps.at(-1)?.after;
     if (!after) return;
     await this.deps.publisher.publish(id, (identity) => {
@@ -729,6 +747,7 @@ export class GameService {
         type: 'events',
         gameId: id,
         events: steps.map((s) => projectEvent(s.before, s.after, s.ev, viewer)),
+        ...(commandId ? { commandId } : {}),
       };
     });
   }

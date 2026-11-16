@@ -3,6 +3,10 @@
  * events through the engine's `evolve` and re-projecting, the same path the property tests check
  * against the server's projection. Live events arrive over the WebSocket; any `seq` gap is filled
  * from `GET /games/{id}/events`.
+ *
+ * The player's own commands show at once: while one is on its way, its predicted events
+ * (predict.ts) are laid over the confirmed view, and the server's events replace them when they
+ * arrive, by the command's response or its push, whichever comes first.
  */
 import {
   type CardCatalog,
@@ -26,6 +30,7 @@ import type {
 } from '@torn-signpost/protocol';
 import type { Api } from '../api.ts';
 import type { User } from '../auth.tsx';
+import { predict } from './predict.ts';
 
 export interface LogLine {
   seq: number;
@@ -120,6 +125,15 @@ export interface GameClientOptions {
 
 const BACKOFF = [500, 1000, 2000, 5000, 10000];
 
+type Confirmed = Pick<GameSnapshot, 'view' | 'viewer' | 'log'>;
+
+/** A command on its way to the server, and its predicted events (for the view at `seq`). */
+interface Pending {
+  command: PlayerCommand;
+  seq: number;
+  events: GameEvent[] | undefined;
+}
+
 export class GameClient implements TableClient {
   private snapshot: GameSnapshot;
   private readonly listeners = new Set<() => void>();
@@ -133,6 +147,10 @@ export class GameClient implements TableClient {
   private catchingUp: Promise<void> | undefined;
   /** Asked to catch up again while a catch-up was under way. */
   private catchUpAgain = false;
+  /** The view as the server has confirmed it; the snapshot adds the pending predictions. */
+  private confirmed: Confirmed;
+  /** Commands sent and not yet answered, in the order sent. */
+  private readonly pending = new Map<string, Pending>();
 
   constructor(private readonly opts: GameClientOptions) {
     this.snapshot = {
@@ -142,6 +160,7 @@ export class GameClient implements TableClient {
       log: [],
       chat: [],
     };
+    this.confirmed = this.snapshot;
   }
 
   subscribe = (listener: () => void) => {
@@ -172,13 +191,26 @@ export class GameClient implements TableClient {
     this.socket?.close();
   }
 
-  /** Send a command; the server's projected response is applied straight away. */
+  /**
+   * Send a command. Its predicted events show straight away, when it can be predicted; the
+   * server's projected response replaces them, or, if it's refused, the view goes back.
+   */
   async send(command: PlayerCommand): Promise<void> {
-    const res = await this.opts.api<CommandResponse>(`/games/${this.opts.gameId}/commands`, {
-      method: 'POST',
-      body: { commandId: crypto.randomUUID(), command },
-    });
-    this.apply(res.events, false);
+    const commandId = crypto.randomUUID();
+    this.pending.set(commandId, { command, seq: -1, events: undefined });
+    this.show(false);
+    let res: CommandResponse;
+    try {
+      res = await this.opts.api<CommandResponse>(`/games/${this.opts.gameId}/commands`, {
+        method: 'POST',
+        body: { commandId, command },
+      });
+    } catch (e) {
+      if (this.pending.delete(commandId)) this.show(false);
+      throw e;
+    }
+    this.pending.delete(commandId);
+    if (!this.apply(res.events, false)) this.show(false);
   }
 
   async say(text: string): Promise<void> {
@@ -224,7 +256,7 @@ export class GameClient implements TableClient {
           this.catchUpAgain = false;
           for (;;) {
             const page = await this.opts.api<EventsResponse>(
-              `/games/${this.opts.gameId}/events?after=${this.snapshot.view.seq}`,
+              `/games/${this.opts.gameId}/events?after=${this.confirmed.view.seq}`,
             );
             this.apply(page.events, false);
             if (!page.more || page.events.length === 0) break;
@@ -237,8 +269,9 @@ export class GameClient implements TableClient {
     return this.catchingUp;
   }
 
-  private apply(events: GameEvent[], animate: boolean) {
-    let { view, viewer, log } = this.snapshot;
+  /** Add confirmed events; true if the view moved on (and was shown). */
+  private apply(events: GameEvent[], animate: boolean): boolean {
+    let { view, viewer } = this.confirmed;
     let gap = false;
     const added: LogLine[] = [];
     for (const ev of events) {
@@ -247,27 +280,61 @@ export class GameClient implements TableClient {
         gap = true;
         break;
       }
-      const next = evolve(view, ev);
-      // Names come from the state after the event, so "Game started" can name its players.
-      const seatName = (seat: string) => this.nameIn(next, seat);
-      const text = describeEvent(ev, view, { catalog: this.opts.catalog, seatName });
-      // Bookkeeping events (automatic passes, for one) have nothing to show.
-      if (text) added.push(logLine(ev, text));
-      viewer = this.viewerFor(next);
-      view = project(next, viewer);
+      ({ view, viewer } = this.step(view, ev, added));
     }
-    if (view !== this.snapshot.view) {
-      log = [...log, ...added];
-      const seat = viewer.kind === 'player' ? viewer.seat : undefined;
-      const patch: Partial<GameSnapshot> = { view, viewer, log };
-      // The state moves on now; only the redraw waits for the animation. A browser runs a view
-      // transition's update later, after other work: had the state waited too, a newer push
-      // (or catch-up) applied meanwhile would be undone by it, and the table left behind.
-      const animated = animate && !!this.opts.animate;
-      this.update(seat ? { ...patch, seat } : patch, seat === undefined, !animated);
-      if (animated) this.opts.animate?.(() => this.notify());
+    const moved = view !== this.confirmed.view;
+    if (moved) {
+      this.confirmed = { view, viewer, log: [...this.confirmed.log, ...added] };
+      this.show(animate);
     }
     if (gap) void this.catchUp();
+    return moved;
+  }
+
+  /** One event on `view`, for the viewer it makes; its log line, if it has one, joins `log`. */
+  private step(view: GameState, ev: GameEvent, log: LogLine[]) {
+    const next = evolve(view, ev);
+    // Names come from the state after the event, so "Game started" can name its players.
+    const seatName = (seat: string) => this.nameIn(next, seat);
+    const text = describeEvent(ev, view, { catalog: this.opts.catalog, seatName });
+    // Bookkeeping events (automatic passes, for one) have nothing to show.
+    if (text) log.push(logLine(ev, text));
+    const viewer = this.viewerFor(next);
+    return { view: project(next, viewer), viewer };
+  }
+
+  /**
+   * Show the confirmed view with the pending commands' predictions on top, in the order sent. A
+   * command that can't be predicted stops the ones after it (they may depend on it).
+   */
+  private show(animate: boolean) {
+    let { view, viewer } = this.confirmed;
+    const added: LogLine[] = [];
+    const user = this.opts.user;
+    for (const p of this.pending.values()) {
+      if (!user) break;
+      if (p.seq !== view.seq) {
+        p.seq = view.seq;
+        p.events = predict(view, p.command, {
+          user,
+          viewer,
+          catalog: this.opts.catalog,
+          now: new Date(),
+        });
+      }
+      if (!p.events) break;
+      for (const ev of p.events) ({ view, viewer } = this.step(view, ev, added));
+    }
+    const log = added.length ? [...this.confirmed.log, ...added] : this.confirmed.log;
+    if (view === this.snapshot.view && log === this.snapshot.log) return;
+    const seat = viewer.kind === 'player' ? viewer.seat : undefined;
+    const patch: Partial<GameSnapshot> = { view, viewer, log };
+    // The state moves on now; only the redraw waits for the animation. A browser runs a view
+    // transition's update later, after other work: had the state waited too, a newer push
+    // (or catch-up) applied meanwhile would be undone by it, and the table left behind.
+    const animated = animate && !!this.opts.animate;
+    this.update(seat ? { ...patch, seat } : patch, seat === undefined, !animated);
+    if (animated) this.opts.animate?.(() => this.notify());
   }
 
   private viewerFor(state: GameState): Viewer {
@@ -294,30 +361,7 @@ export class GameClient implements TableClient {
     };
     socket.onmessage = (e) => {
       if (generation !== this.generation) return;
-      const msg = JSON.parse(String(e.data)) as ServerMessage;
-      switch (msg.type) {
-        case 'events':
-          this.apply(msg.events, true);
-          break;
-        case 'chat':
-          this.addChat(msg.message);
-          break;
-        case 'lobby': {
-          const wasOpen = this.snapshot.game?.status === 'open';
-          this.update({ game: msg.game });
-          if (wasOpen && msg.game.status === 'active') void this.catchUp();
-          break;
-        }
-        case 'audience':
-          this.update({ spectators: msg.spectators });
-          break;
-        case 'subscribed':
-          this.update({ status: 'live' });
-          if (msg.seq > this.snapshot.view.seq) void this.catchUp();
-          break;
-        default:
-          break;
-      }
+      this.receive(JSON.parse(String(e.data)) as ServerMessage);
     };
     socket.onclose = () => {
       if (generation !== this.generation) return;
@@ -325,6 +369,37 @@ export class GameClient implements TableClient {
       const delay = BACKOFF[Math.min(this.attempts++, BACKOFF.length - 1)];
       setTimeout(() => void this.connect(generation), delay);
     };
+  }
+
+  /** A message from the WebSocket. */
+  private receive(msg: ServerMessage) {
+    switch (msg.type) {
+      case 'events':
+        // Our own command: its prediction is already on the table, so no animation, and the
+        // prediction makes way for what the server decided.
+        if (msg.commandId && this.pending.delete(msg.commandId)) {
+          if (!this.apply(msg.events, false)) this.show(false);
+        } else this.apply(msg.events, true);
+        break;
+      case 'chat':
+        this.addChat(msg.message);
+        break;
+      case 'lobby': {
+        const wasOpen = this.snapshot.game?.status === 'open';
+        this.update({ game: msg.game });
+        if (wasOpen && msg.game.status === 'active') void this.catchUp();
+        break;
+      }
+      case 'audience':
+        this.update({ spectators: msg.spectators });
+        break;
+      case 'subscribed':
+        this.update({ status: 'live' });
+        if (msg.seq > this.confirmed.view.seq) void this.catchUp();
+        break;
+      default:
+        break;
+    }
   }
 
   private update(patch: Partial<GameSnapshot>, clearSeat = false, notify = true) {

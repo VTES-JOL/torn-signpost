@@ -211,9 +211,10 @@ export class ApiStack extends Stack {
       ),
     );
 
+    const origins = [`https://${h.web}`, 'http://localhost:5173'];
     // Commands schedule deadline, time-limit and pause checks (docs/m5b-plan.md increment 3).
     this.apiFunction = fn('Api', 'services/backend/src/lambda/api.ts', {
-      ALLOWED_ORIGINS: [`https://${h.web}`, 'http://localhost:5173'].join(','),
+      ALLOWED_ORIGINS: origins.join(','),
       WS_CALLBACK_URL: wsStage.callbackUrl,
       ...timerEnv,
     });
@@ -325,6 +326,22 @@ export class ApiStack extends Stack {
       defaultIntegration: new HttpLambdaIntegration('ApiIntegration', this.apiFunction),
       defaultDomainMapping: { domainName },
       disableExecuteApiEndpoint: true,
+      // API Gateway answers preflights itself, without running the Lambda; browsers keep the
+      // answer for up to two hours per URL (Chrome's cap).
+      corsPreflight: {
+        allowOrigins: origins,
+        allowMethods: [
+          apigw.CorsHttpMethod.GET,
+          apigw.CorsHttpMethod.HEAD,
+          apigw.CorsHttpMethod.POST,
+          apigw.CorsHttpMethod.PUT,
+          apigw.CorsHttpMethod.PATCH,
+          apigw.CorsHttpMethod.DELETE,
+        ],
+        allowHeaders: ['authorization', 'content-type'],
+        exposeHeaders: ['server-timing'],
+        maxAge: Duration.hours(2),
+      },
     });
 
     // Abuse limits (architecture §10); per-route limits are added with real routes.
