@@ -12,6 +12,7 @@ import {
   LinkTournamentRequest,
   LobbyStatus,
   MarkReadRequest,
+  RegisterRequest,
   ResolveEscalationRequest,
   SaveDeckRequest,
   UnsubscribeRequest,
@@ -218,7 +219,7 @@ export function createApp(config: AppConfig): Hono<Env> {
     c.json(await archon().complete(c.var.identity, await body(c.req, ArchonCallbackRequest))),
   );
   app.delete('/me/archon', async (c) => c.json(await archon().unlink(c.var.identity)));
-  // Tournaments linked to Archon (docs/m7-plan.md M7.2). Anyone sees the list and summaries;
+  // Tournaments linked to Archon (docs/m7-plan.md M7.2, M7.3). Anyone sees the list and summaries;
   // players, rounds and standings are for signed-in players.
   const tournaments = () => {
     if (!config.tournaments)
@@ -239,6 +240,22 @@ export function createApp(config: AppConfig): Hono<Env> {
     await tournaments().unlink(c.var.identity, c.req.param('id'));
     return c.body(null, 204);
   });
+  // Players register here (M7.3); each returns the tournament as read again from Archon.
+  app.put('/tournaments/:id/registration', async (c) =>
+    c.json(
+      await tournaments().register(
+        c.var.identity,
+        c.req.param('id'),
+        await body(c.req, RegisterRequest),
+      ),
+    ),
+  );
+  app.delete('/tournaments/:id/registration', async (c) =>
+    c.json(await tournaments().drop(c.var.identity, c.req.param('id'))),
+  );
+  app.post('/tournaments/:id/check-in', async (c) =>
+    c.json(await tournaments().checkIn(c.var.identity, c.req.param('id'))),
+  );
   app.put('/me', async (c) => {
     if (c.var.identity.kind !== 'user') throw new ApiError(401, 'sign_in', 'Sign in first');
     return c.json(await profiles().choose(c.var.identity, await body(c.req, UpdateProfileRequest)));

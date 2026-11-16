@@ -140,6 +140,7 @@ export function createServices(opts: {
       sealer: opts.archon.sealer,
       begin,
       nameOf: (sub) => profiles.nameOf(sub),
+      deckFor: (sub, id) => decks.ownLatest(sub, id),
     });
   }
   const services: Services = {

@@ -8,20 +8,23 @@
  * | Link | `TOURN#<archon uid>` | `META` (the summary, who linked it, how the last read went; GSI1 `TOURNS` / start or link time) |
  * | Grant | `TOURN#<archon uid>` | `GRANT` (sealed refresh and access tokens; a lease while one process refreshes) |
  * | State | `TOURN#<archon uid>` | `STATE` (Archon's state as we keep it, JSON) |
+ * | Registration | `TOURN#<archon uid>` | `REG#<sub>` (M7.3: their Archon account and a copy of the deck they registered) |
  */
 import {
   ConditionalCheckFailedException,
   TransactionCanceledException,
 } from '@aws-sdk/client-dynamodb';
 import {
+  DeleteCommand,
   type DynamoDBDocumentClient,
   GetCommand,
+  PutCommand,
   QueryCommand,
   TransactWriteCommand,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import type { Member, Tournament } from '@torn-signpost/archon';
-import type { TournamentState } from '@torn-signpost/protocol';
+import type { DeckCards, TournamentState } from '@torn-signpost/protocol';
 
 export interface TournamentMeta {
   id: string;
@@ -71,7 +74,22 @@ export interface CachedTournament {
   members: Member[];
 }
 
+/**
+ * A player registered here (M7.3). The deck is a copy of the version they chose, so editing the
+ * deck afterwards doesn't change what they play in the tournament.
+ */
+export interface Registration {
+  tournament: string;
+  sub: string;
+  archonUid: string;
+  deck: { id: string; version: number; name: string; cards: DeckCards };
+  registeredAt: string;
+  /** When they dropped out after registration closed (Archon keeps them, as Finished). */
+  droppedAt?: string;
+}
+
 const pk = (id: string) => `TOURN#${id}`;
+const regKey = (id: string, sub: string) => ({ PK: pk(id), SK: `REG#${sub}` });
 const LIST = 'TOURNS';
 
 export class TournamentStore {
@@ -270,6 +288,7 @@ export class TournamentStore {
     }
   }
 
+  /** Unlinking leaves the registrations: linking it again finds them. */
   async deleteLink(id: string): Promise<void> {
     await this.db.send(
       new TransactWriteCommand({
@@ -278,6 +297,45 @@ export class TournamentStore {
         })),
       }),
     );
+  }
+
+  async getRegistration(id: string, sub: string): Promise<Registration | undefined> {
+    const { Item } = await this.db.send(
+      new GetCommand({ TableName: this.table, Key: regKey(id, sub), ConsistentRead: true }),
+    );
+    return Item ? toRegistration(Item) : undefined;
+  }
+
+  /** Everyone registered here for the tournament. */
+  async registrations(id: string): Promise<Registration[]> {
+    const regs: Registration[] = [];
+    let start: Record<string, unknown> | undefined;
+    do {
+      const out = await this.db.send(
+        new QueryCommand({
+          TableName: this.table,
+          KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+          ExpressionAttributeValues: { ':pk': pk(id), ':sk': 'REG#' },
+          ...(start ? { ExclusiveStartKey: start } : {}),
+        }),
+      );
+      regs.push(...(out.Items ?? []).map(toRegistration));
+      start = out.LastEvaluatedKey;
+    } while (start);
+    return regs;
+  }
+
+  async putRegistration(reg: Registration): Promise<void> {
+    await this.db.send(
+      new PutCommand({
+        TableName: this.table,
+        Item: { ...regKey(reg.tournament, reg.sub), ...reg },
+      }),
+    );
+  }
+
+  async deleteRegistration(id: string, sub: string): Promise<void> {
+    await this.db.send(new DeleteCommand({ TableName: this.table, Key: regKey(id, sub) }));
   }
 
   private metaItem(meta: TournamentMeta) {
@@ -293,6 +351,11 @@ export class TournamentStore {
   private stateItem(id: string, state: CachedTournament) {
     return { PK: pk(id), SK: 'STATE', body: JSON.stringify(state) };
   }
+}
+
+function toRegistration(item: Record<string, unknown>): Registration {
+  const { PK: _p, SK: _s, ...reg } = item;
+  return reg as unknown as Registration;
 }
 
 function toMeta(item: Record<string, unknown>): TournamentMeta {

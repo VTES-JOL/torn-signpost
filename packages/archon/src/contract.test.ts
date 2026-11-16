@@ -1,8 +1,8 @@
 /**
  * Contract checks against a real Archon, so the fake doesn't drift from it. Skipped unless
  * `ARCHON_CONTRACT` names a JSON file `{baseUrl, tournament, accessToken}`: an `event:run` access
- * token for a test tournament (an hour's worth; see docs/testing.md). Reads, and one action Archon
- * refuses without changing anything.
+ * token for a test tournament (an hour's worth; see docs/testing.md). Reads, and actions Archon
+ * refuses without changing anything (an unknown action, or a player who isn't there).
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -64,6 +64,28 @@ describe.runIf(live)('the real Archon', () => {
       sub: expect.any(String),
       exp: expect.any(Number),
     });
+  });
+
+  it('understands the registration actions (refused for a player who isn’t there)', async () => {
+    const ghost = '00000000-0000-4000-8000-000000000000';
+    const send = (action: Parameters<typeof act>[3]) =>
+      act(config, live?.tournament ?? '', live?.accessToken ?? '', action).catch((x) => x);
+    expect(await send({ type: 'AddPlayer', user_uid: ghost })).toMatchObject({ status: 404 });
+    expect(
+      await send({
+        type: 'UpsertDeck',
+        player_uid: ghost,
+        deck: { name: 'x', comments: '', cards: { '100038': 1 } },
+      }),
+    ).toMatchObject({ status: 400, code: 'tournament.not_registered' });
+    expect(await send({ type: 'DropOut', player_uid: ghost })).toMatchObject({
+      status: 400,
+      code: 'tournament.player_not_found',
+    });
+    expect(await send({ type: 'CheckIn', player_uid: ghost })).toMatchObject({ status: 404 });
+    // Unregister names the member (`user_uid`), and only during registration.
+    const unregister = await send({ type: 'Unregister', user_uid: ghost });
+    expect(unregister.code).not.toBe('internal');
   });
 
   it('refuses an unknown action with its error shape', async () => {

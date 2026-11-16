@@ -1,13 +1,15 @@
 /**
  * Linking Archon tournaments (docs/m7-plan.md M7.2) through the API, against DynamoDB Local and
  * the fake Archon: an organiser's grant, the pages, polling, refreshing a rotated grant, and a
- * grant Archon stops honouring.
+ * grant Archon stops honouring. Registering, dropping and checking in (M7.3).
  */
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 import { FakeArchon } from '@torn-signpost/archon/fake';
 import type {
   ArchonCallbackResult,
   ArchonLinkStart,
+  DeckDetails,
+  SaveDeckRequest,
   TournamentDetails,
   TournamentList,
 } from '@torn-signpost/protocol';
@@ -17,7 +19,10 @@ import { localSealer } from '../archon/sealer.ts';
 import { ArchonService } from '../archon/service.ts';
 import { devAuthenticator } from '../auth.ts';
 import { ArchonStore } from '../db/archon.ts';
+import { DeckStore } from '../db/decks.ts';
 import { TournamentStore } from '../db/tournaments.ts';
+import { DeckService } from '../decks/service.ts';
+import { testContent, testDeck } from '../testing/content.ts';
 import { dynamoAvailable, testStore } from '../testing/dynamo.ts';
 import { TournamentService } from './service.ts';
 
@@ -33,6 +38,7 @@ describe.skipIf(!available)('tournaments linked to Archon (DynamoDB Local)', () 
   let fake: FakeArchon;
   let tournaments: TournamentService;
   let archonStore: ArchonStore;
+  let decks: DeckService;
   let raw: Awaited<ReturnType<typeof testStore>>;
   let now = new Date('2026-11-16T10:00:00Z');
   const later = (minutes: number) => {
@@ -51,6 +57,12 @@ describe.skipIf(!available)('tournaments linked to Archon (DynamoDB Local)', () 
       fetch: fake.fetch,
     });
     archonStore = new ArchonStore(raw.db, raw.tableName);
+    let deckIds = 0;
+    decks = new DeckService({
+      store: new DeckStore(raw.db, raw.tableName),
+      content: testContent,
+      newId: () => `deck${++deckIds}`,
+    });
     const archon: ArchonService = new ArchonService({
       store: archonStore,
       config,
@@ -64,6 +76,7 @@ describe.skipIf(!available)('tournaments linked to Archon (DynamoDB Local)', () 
       sealer: localSealer('test'),
       begin: (sub, purpose, t) => archon.begin(sub, purpose, t),
       nameOf: async (sub) => `@${sub}`,
+      deckFor: (sub, id) => decks.ownLatest(sub, id),
       now: () => now,
       sleep: (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 20))),
     });
@@ -74,6 +87,7 @@ describe.skipIf(!available)('tournaments linked to Archon (DynamoDB Local)', () 
       auth: devAuthenticator,
       archon,
       tournaments,
+      decks,
     });
   });
   afterAll(() => cleanup?.());
@@ -234,6 +248,17 @@ describe.skipIf(!available)('tournaments linked to Archon (DynamoDB Local)', () 
     page = await call<TournamentDetails>('GET', `/tournaments/${t.uid}`, 'zed');
     expect(page.body.state).toBe('Waiting');
 
+    // In registration a day before it starts, it's read every minute: check-in may open.
+    const soon = setUp('Soon');
+    const starts = new Date(now.getTime() + 20 * 3600_000).toISOString();
+    Object.assign(fake.tournaments.get(soon.t.uid) ?? {}, { start: starts });
+    await link(OLGA, soon.org.uid, soon.t.uid);
+    fake.act(soon.t.uid, { type: 'CloseRegistration' });
+    later(1);
+    await tournaments.poll();
+    const soonPage = await call<TournamentDetails>('GET', `/tournaments/${soon.t.uid}`, 'zed');
+    expect(soonPage.body.state).toBe('Waiting');
+
     // Under way, every poll reads it.
     fake.act(t.uid, { type: 'CheckInAll' });
     fake.act(t.uid, { type: 'StartRound' });
@@ -363,5 +388,211 @@ describe.skipIf(!available)('tournaments linked to Archon (DynamoDB Local)', () 
     expect((await call('GET', `/tournaments/${t.uid}`)).status).toBe(404);
     const list = await call<TournamentList>('GET', '/tournaments');
     expect(list.body.tournaments.map((x) => x.id)).not.toContain(t.uid);
+  });
+
+  /** A player here, with an Archon account linked (and a VEKN number, unless `vekn` is null). */
+  const player = async (
+    sub: string,
+    vekn: string | null = `40${sub.length}${sub.charCodeAt(0)}`,
+  ) => {
+    const m = fake.addMember({ name: `Member ${sub}`, vekn_id: vekn });
+    await archonStore.putLink(
+      sub,
+      { archonUid: m.uid, veknId: m.vekn_id, linkedAt: now.toISOString() },
+      undefined,
+    );
+    return m;
+  };
+  const deck = async (sub: string, extra: Partial<SaveDeckRequest> = {}) =>
+    (
+      await call<DeckDetails>('POST', '/decks', sub, {
+        name: `${sub}'s deck`,
+        format: 'standard',
+        visibility: 'private',
+        cards: testDeck,
+        ...extra,
+      })
+    ).body;
+  const page = (id: string, user: string) =>
+    call<TournamentDetails>('GET', `/tournaments/${id}`, user).then((r) => r.body);
+  const actions = (id: string) =>
+    fake.log.filter((l) => l.tournament === id).map((l) => l.action.type);
+
+  it('registers a player with a linked Archon account and a legal deck, copying the deck', async () => {
+    const { org, t } = setUp('Paris Open');
+    await link(OLGA, org.uid, t.uid);
+    const before = await page(t.uid, 'pat');
+    expect(before).toMatchObject({ deckFormat: 'standard', registrationOpen: true });
+    expect(before.me).toEqual({
+      archonLinked: false,
+      veknId: null,
+      archonState: null,
+      registration: null,
+    });
+
+    // Without an Archon account, or without a VEKN number, Archon would refuse them: we say so.
+    const patDeck = await deck('pat');
+    const register = (user: string, deckId: string) =>
+      call<TournamentDetails>('PUT', `/tournaments/${t.uid}/registration`, user, { deckId });
+    expect(await register('pat', patDeck.id)).toMatchObject({
+      status: 400,
+      body: { error: 'archon_account' },
+    });
+    await player('nov', null);
+    expect(await register('nov', (await deck('nov')).id)).toMatchObject({
+      status: 400,
+      body: { error: 'vekn_id' },
+    });
+    const pat = await player('pat');
+
+    // Their own deck, in the tournament's format, legal.
+    expect(await register('pat', (await deck('nov')).id)).toMatchObject({
+      status: 404,
+      body: { error: 'not_found' },
+    });
+    const duel = await deck('pat', { format: 'duel' });
+    expect(await register('pat', duel.id)).toMatchObject({
+      status: 400,
+      body: { error: 'deck_format' },
+    });
+    const short = await deck('pat', {
+      cards: { crypt: [{ id: 't-vera', count: 4 }], library: testDeck.library },
+    });
+    expect(await register('pat', short.id)).toMatchObject({
+      status: 400,
+      body: { error: 'deck_illegal' },
+    });
+    expect(actions(t.uid)).not.toContain('AddPlayer');
+
+    const done = await register('pat', patDeck.id);
+    expect(done.status).toBe(200);
+    expect(done.body.me).toMatchObject({
+      archonLinked: true,
+      veknId: pat.vekn_id,
+      archonState: 'Registered',
+      registration: { deckId: patDeck.id, deckName: "pat's deck", deckVersion: 1, dropped: false },
+    });
+    expect(done.body.detail?.players.find((p) => p.archonUid === pat.uid)).toMatchObject({
+      registered: true,
+      missingDecklist: false,
+      account: '@pat',
+    });
+    // The four registered in Archon have no account or deck here: the organiser sees it.
+    expect(done.body.detail?.players.filter((p) => !p.registered)).toHaveLength(4);
+    expect(actions(t.uid).slice(-2)).toEqual(['AddPlayer', 'UpsertDeck']);
+    expect(fake.decks.get(`${t.uid}/${pat.uid}`)).toEqual({
+      name: "pat's deck",
+      comments: '',
+      cards: { 't-vera': 12, 't-feed': 40, 't-ward': 20 },
+    });
+
+    // Editing the deck afterwards doesn't change what's registered; registering it again does.
+    await call('PUT', `/decks/${patDeck.id}`, 'pat', {
+      name: "pat's deck",
+      format: 'standard',
+      visibility: 'private',
+      cards: { ...testDeck, crypt: [{ id: 't-vera', count: 13 }] },
+    });
+    expect((await page(t.uid, 'pat')).me?.registration?.deckVersion).toBe(1);
+    const again = await register('pat', patDeck.id);
+    expect(again.body.me?.registration?.deckVersion).toBe(2);
+    expect(actions(t.uid).slice(-1)).toEqual(['UpsertDeck']);
+    expect(fake.decks.get(`${t.uid}/${pat.uid}`)?.cards).toMatchObject({ 't-vera': 13 });
+  });
+
+  it('drops out and checks in', async () => {
+    const { org, t } = setUp('Brest Open');
+    await link(OLGA, org.uid, t.uid);
+    const quinn = await player('quinn');
+    const deckId = (await deck('quinn')).id;
+    const register = () =>
+      call<TournamentDetails>('PUT', `/tournaments/${t.uid}/registration`, 'quinn', { deckId });
+    expect((await register()).status).toBe(200);
+
+    // While registration is open, dropping takes them off the list.
+    const off = await call<TournamentDetails>(
+      'DELETE',
+      `/tournaments/${t.uid}/registration`,
+      'quinn',
+    );
+    expect(off.status).toBe(200);
+    expect(off.body.me).toMatchObject({ archonState: null, registration: null });
+    expect(actions(t.uid).slice(-1)).toEqual(['Unregister']);
+    expect(off.body.players).toBe(4);
+
+    // Check-in opens when registration closes (Waiting).
+    expect((await register()).status).toBe(200);
+    const checkIn = () =>
+      call<TournamentDetails>('POST', `/tournaments/${t.uid}/check-in`, 'quinn');
+    expect(await checkIn()).toMatchObject({ status: 409, body: { error: 'checkin_closed' } });
+    // Closed in Archon since we last read it: checking in reads it again first.
+    fake.act(t.uid, { type: 'CloseRegistration' });
+    const inside = await checkIn();
+    expect(inside.status).toBe(200);
+    expect(inside.body.me?.archonState).toBe('Checked-in');
+    expect(actions(t.uid).slice(-1)).toEqual(['CheckIn']);
+    // Players not registered here can't check in.
+    await player('rex');
+    expect(await call('POST', `/tournaments/${t.uid}/check-in`, 'rex')).toMatchObject({
+      status: 404,
+      body: { error: 'not_registered' },
+    });
+
+    // Once registration has closed, dropping out leaves them in Archon's list, finished.
+    const out = await call<TournamentDetails>(
+      'DELETE',
+      `/tournaments/${t.uid}/registration`,
+      'quinn',
+    );
+    expect(out.body.me).toMatchObject({
+      archonState: 'Finished',
+      registration: { dropped: true },
+    });
+    expect(actions(t.uid).slice(-1)).toEqual(['DropOut']);
+    expect(out.body.detail?.players.find((p) => p.archonUid === quinn.uid)?.registered).toBe(false);
+    expect(await register()).toMatchObject({ status: 409, body: { error: 'dropped' } });
+    expect(await checkIn()).toMatchObject({ status: 404, body: { error: 'not_registered' } });
+  });
+
+  it('registers only while registration is open, in formats we support, and signed in', async () => {
+    const org = fake.addMember({ name: 'Planner', vekn_id: '3000500' });
+    const planned = fake.addTournament(org.uid, { name: 'Planned' });
+    const multi = fake.addTournament(org.uid, { name: 'Multi', multideck: true });
+    fake.act(multi.uid, { type: 'OpenRegistration' });
+    const limited = fake.addTournament(org.uid, { name: 'Limited', format: 'Limited' });
+    fake.act(limited.uid, { type: 'OpenRegistration' });
+    for (const t of [planned, multi, limited]) await link(OLGA, org.uid, t.uid);
+    await player('sam');
+    const deckId = (await deck('sam')).id;
+    const register = (id: string, user?: string) =>
+      call('PUT', `/tournaments/${id}/registration`, user, { deckId });
+
+    expect((await page(planned.uid, 'sam')).registrationOpen).toBe(false);
+    expect(await register(planned.uid, 'sam')).toMatchObject({
+      status: 409,
+      body: { error: 'registration_closed' },
+    });
+    for (const t of [multi, limited]) {
+      expect((await page(t.uid, 'sam')).deckFormat).toBeNull();
+      expect(await register(t.uid, 'sam')).toMatchObject({
+        status: 400,
+        body: { error: 'format_unsupported' },
+      });
+    }
+    expect((await register(multi.uid)).status).toBe(401);
+    for (const t of [planned, multi, limited]) expect(actions(t.uid)).not.toContain('AddPlayer');
+  });
+
+  it('tells the player when the organiser’s grant has lapsed', async () => {
+    const { org, t } = setUp('Lapsed');
+    await link(OLGA, org.uid, t.uid);
+    await player('uma');
+    const deckId = (await deck('uma')).id;
+    fake.revoke(t.uid);
+    fake.expireAccess();
+    expect(
+      await call('PUT', `/tournaments/${t.uid}/registration`, 'uma', { deckId }),
+    ).toMatchObject({ status: 409, body: { error: 'grant_lost' } });
+    expect((await page(t.uid, OLGA)).manage?.grant).toBe('lost');
   });
 });

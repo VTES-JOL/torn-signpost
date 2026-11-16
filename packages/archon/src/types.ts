@@ -127,7 +127,8 @@ export type Action =
   | { type: 'CloseRegistration' }
   | { type: 'AddPlayer'; user_uid: string }
   | { type: 'Register'; user_uid: string }
-  | { type: 'Unregister'; player_uid: string }
+  /** Only in Registration; afterwards a player drops out instead. */
+  | { type: 'Unregister'; user_uid: string }
   | { type: 'DropOut'; player_uid: string }
   | { type: 'CheckIn'; player_uid: string }
   | { type: 'CheckInAll' }

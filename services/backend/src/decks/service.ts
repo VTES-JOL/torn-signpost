@@ -107,6 +107,19 @@ export class DeckService {
     return (await this.version(identity, id, version ?? meta.version)).cards;
   }
 
+  /**
+   * One of the player's own decks, its latest version, checked again against today's card list
+   * (bans change): registering for a tournament (M7.3).
+   */
+  async ownLatest(sub: string, id: string): Promise<DeckDetails | undefined> {
+    const meta = await this.deps.store.get(id);
+    if (!meta || meta.owner !== sub) return undefined;
+    const latest = await this.deps.store.version(id, meta.version);
+    if (!latest) return undefined;
+    const { legal } = await this.check(latest.cards, meta.format);
+    return { ...meta, legal, cards: latest.cards };
+  }
+
   private async check(cards: DeckCards, format: DeckMeta['format']) {
     const { index } = await this.deps.content();
     for (const { id } of [...cards.crypt, ...cards.library]) {

@@ -340,7 +340,7 @@ projectEvent(before: GameState, after: GameState, ev: GameEvent, viewer: Viewer)
 | Games | `POST /games` · `GET /games?status=open\|active\|mine` · `GET /games/{id}` (projected view) · `POST /games/{id}/join` · `POST /games/{id}/commands` · `GET /games/{id}/events?after=` · `GET /games/{id}/actions` | View/list public games as a guest; everything else needs a player |
 | Chat | `POST /chat/{channel}` · `GET /chat/{channel}?before=` | Players (guests have no chat) |
 | Decks | `GET/POST/PUT/DELETE /decks` · `GET /decks/public?format=&clan=` · `POST /decks/import` · `GET /decks/{id}/versions` | Public listing open to guests |
-| Tournaments (through Archon, §5.7) | `GET /tournaments` · `GET /tournaments/{id}` (players, rounds and standings for players) · `POST /tournaments/link` · `POST /archon/callback` · `POST /tournaments/{id}/refresh` · `DELETE /tournaments/{id}` | List and summaries open to guests, details to players; linking, refresh and unlink `tournament_admin`, refresh and unlink only for its organisers in Archon |
+| Tournaments (through Archon, §5.7) | `GET /tournaments` · `GET /tournaments/{id}` (players, rounds and standings for players; the player's own entry) · `POST /tournaments/link` · `POST /archon/callback` · `POST /tournaments/{id}/refresh` · `DELETE /tournaments/{id}` · `PUT`/`DELETE /tournaments/{id}/registration` · `POST /tournaments/{id}/check-in` | List and summaries open to guests, details to players; registering, dropping and checking in for players (their own); linking, refresh and unlink `tournament_admin`, refresh and unlink only for its organisers in Archon |
 | Users | `GET/PUT /me` · `GET /users/{handle}` · `GET /users/{handle}/stats` · `GET /leaderboards` · `DELETE /me` · `GET /me/export` | — |
 | Notifications | `GET /me/notifications` · `PUT /me/notification-prefs` · `POST /me/push-subscriptions` | Player |
 | Admin | `GET /admin/reports` · `POST /admin/users/{id}/ban` · `POST /admin/content/ingest` | `admin` group |
@@ -425,7 +425,7 @@ sequenceDiagram
 | Stats | `USER#<sub>` | `STATS#<season>`, `STATS#all` | counters (STATS-02), flat attributes per format; the season item on GSI1 `STATS#<season>` / sub for the leaderboards (STATS-03) |
 | Result | `GAME#<id>` | `RESULT` | a counted game's result (STATS-01): casual games of 5 players and tournament games only |
 | Deck | `DECK#<id>` | `META`, `V#<n>` | versions immutable (DECK-07). GSI1 `OWNER#<sub>` for my decks; GSI4 `PUBLIC#<format>` / `<updatedAt>` for public listings |
-| Tournament (M7.2) | `TOURN#<archon uid>` | `META`, `GRANT`, `STATE` | a tournament linked to Archon: `META` the summary, who linked it and how the last read went (GSI1 `TOURNS` / start); `GRANT` the organiser's `event:run` tokens, sealed with KMS, and a lease while one process refreshes them; `STATE` our copy of Archon's state (JSON) |
+| Tournament (M7.2) | `TOURN#<archon uid>` | `META`, `GRANT`, `STATE` | a tournament linked to Archon: `META` the summary, who linked it and how the last read went (GSI1 `TOURNS` / start); `GRANT` the organiser's `event:run` tokens, sealed with KMS, and a lease while one process refreshes them; `STATE` our copy of Archon's state (JSON); `REG#<sub>` a player registered here (M7.3): their Archon uid and a copy of the deck they registered |
 | Global chat | `CHAT#<channel>#<yyyymmdd>` | `<ts>#<id>` | partitioned by day; TTL for chat retention (NFR-11) |
 | Push device | `USER#<sub>` | `PUSH#<deviceId>` | APNs token / Web Push subscription |
 | Report / audit | `REPORT#<id>` / `AUDIT#<yyyymm>` | … | GSI1 `REPORT#open` (LOBBY-05) |
@@ -541,14 +541,23 @@ players and plays the games. There is no seating solver or tournament scoring he
   `lost`, shown to tournament admins, who link it again.
 - **Following it** (decision 6): the timers Lambda reads every linked tournament that's under way
   (Waiting, Playing, Finals) every minute, from an EventBridge Scheduler `rate(1 minute)` schedule,
-  and ones not yet started every 15 minutes; finished ones aren't read again. A read is Archon's
+  and ones not yet started every 15 minutes, or every minute from a day before the start while
+  registration is open (check-in opens when it closes); finished ones aren't read again. A read is Archon's
   stream up to `sync_complete`, keeping the fields we show and members' uid, name and VEKN number.
   A tournament admin can also read it at once. A failed read keeps the last copy and says why.
 - **Pages**: `/tournaments` (under way, upcoming, finished) and `/tournaments/{id}`: anyone sees the
   summary; signed-in players see its players (with who has linked their Archon account here),
   rounds and tables, and standings. Behind the `archon` flag.
-- Next (M7.3–M7.6): registration sent to Archon, a game per table when a round starts, results
-  sent back with `SetScore`.
+- **Registration** (M7.3): a player registers here while Archon has registration or check-in open
+  (Registration, Waiting): a linked Archon account with a VEKN number (Archon refuses players
+  without one), and their own deck, legal in the tournament's format (Standard or V5; multi-deck
+  and Limited later), whose latest version is copied onto `REG#<sub>`. We send `AddPlayer` (unless
+  the organiser already added them in Archon) and `UpsertDeck` with the organiser's grant, then read
+  the tournament again. Dropping out is `Unregister {user_uid}` during registration (Archon allows
+  it only then) and `DropOut` after; checking in is `CheckIn`, read again first if we last saw
+  check-in closed. A grant Archon no longer accepts refuses these (`grant_lost`) and is marked
+  lost. The organiser sees which players haven't registered a deck here.
+- Next (M7.4–M7.6): a game per table when a round starts, results sent back with `SetScore`.
 
 ### 5.8 Stats (STATS-*)
 

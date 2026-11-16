@@ -1,10 +1,10 @@
 /**
  * Archon, against the fake Archon: linking a player's account from the account page (docs/m7-plan.md
  * M7.1), and an organiser linking a tournament they run (M7.2), each through Archon's consent and
- * back.
+ * back; a player registering with a deck, checking in and dropping out (M7.3).
  */
 import { expect, test } from '@playwright/test';
-import { signedIn, users } from './helpers.ts';
+import { api, DECK, signedIn, users } from './helpers.ts';
 
 const ARCHON = 'http://localhost:3103';
 
@@ -106,4 +106,76 @@ test('a tournament admin links a tournament they run in Archon, and follows its 
   await expect(other.getByRole('button', { name: 'Read from Archon now' })).toHaveCount(0);
   await other.goto('/tournaments');
   await expect(other.getByRole('region', { name: 'Link a tournament' })).toHaveCount(0);
+});
+
+/** Through Archon's consent without a browser: `user` approves as `member` (signed in there). */
+async function consent(user: string, member: string, start: string, body?: unknown) {
+  await fake('sign-in', { uid: member });
+  const { url } = await api<{ url: string }>(user, 'POST', start, body);
+  const res = await fetch(url, { redirect: 'manual' });
+  const back = Object.fromEntries(new URL(res.headers.get('location') ?? '').searchParams);
+  return api(user, 'POST', '/archon/callback', back);
+}
+
+test('a player registers with a deck, checks in and drops out; the organiser sees it', async ({
+  browser,
+}) => {
+  const [olga, pia] = users('olga', 'pia');
+  const org = await fake<{ uid: string }>('members', { name: `Org ${olga}`, vekn_id: '3200300' });
+  const t = await fake<{ uid: string }>('tournaments', {
+    organizer: org.uid,
+    tournament: { name: `Open ${olga}`, start: '2030-07-01T09:00:00Z' },
+  });
+  const act = (action: unknown) => fake('act', { tournament: t.uid, action });
+  await act({ type: 'OpenRegistration' });
+  const admin = `${olga}:tournament_admin`;
+  await consent(admin, org.uid, '/tournaments/link', { archon: t.uid });
+
+  // Pia has an Archon account with a VEKN number, linked here, and a legal deck.
+  const member = await fake<{ uid: string }>('members', { name: `Pia ${pia}`, vekn_id: '3200301' });
+  await consent(pia, member.uid, '/me/archon/link');
+  await api(pia, 'POST', '/decks', {
+    name: 'Vera Bleed',
+    format: 'standard',
+    visibility: 'private',
+    cards: DECK,
+  });
+
+  const page = await signedIn(browser, pia);
+  await page.goto(`/tournaments/${t.uid}`);
+  const entry = page.getByRole('region', { name: 'Your registration' });
+  await expect(entry.getByLabel('Deck')).toContainText('Vera Bleed');
+  await entry.getByRole('button', { name: 'Register', exact: true }).click();
+  await expect(entry).toContainText('You’re registered with Vera Bleed (version 1)');
+  await expect(entry).toContainText('Registered');
+  const roster = page.getByRole('region', { name: 'Players' });
+  await expect(roster).toContainText(`Pia ${pia}`);
+
+  // The organiser closes registration in Archon, opening check-in, and reads it here (or the next
+  // poll would); she checks in.
+  await act({ type: 'CloseRegistration' });
+  await api(admin, 'POST', `/tournaments/${t.uid}/refresh`);
+  await page.reload();
+  await entry.getByRole('button', { name: 'Check in for the next round' }).click();
+  await expect(entry).toContainText('Checked-in');
+
+  // Archon received her, her deck and her check-in, sent with the organiser's grant.
+  const log = await (await fetch(`${ARCHON}/_fake/log`, { method: 'POST' })).json();
+  expect(
+    (log as { tournament: string; action: { type: string } }[])
+      .filter((l) => l.tournament === t.uid)
+      .map((l) => l.action.type),
+  ).toEqual(['OpenRegistration', 'AddPlayer', 'UpsertDeck', 'CloseRegistration', 'CheckIn']);
+
+  // The organiser sees who's registered here.
+  const orgPage = await signedIn(browser, admin);
+  await orgPage.goto(`/tournaments/${t.uid}`);
+  const row = orgPage.getByRole('region', { name: 'Players' }).getByRole('row', { name: /Pia/ });
+  await expect(row).toContainText('Checked-in');
+  await expect(row).not.toContainText('No deck');
+
+  // Dropping out after registration closed: still in Archon's list, finished.
+  await entry.getByRole('button', { name: 'Drop out…' }).click();
+  await entry.getByRole('button', { name: 'Drop out', exact: true }).click();
+  await expect(entry).toContainText('You dropped out of this tournament.');
 });

@@ -1,16 +1,18 @@
 /**
  * Tournaments (docs/m7-plan.md M7.2): run in Archon, the VEKN's tournament manager, and linked
  * here by their organisers. These pages show Archon's state as we last read it (every minute
- * while a tournament is under way); the tournament itself is managed in Archon.
+ * while a tournament is under way); the tournament itself is managed in Archon. Players register
+ * here, with a deck of theirs (M7.3).
  */
 import type {
   ArchonLinkStart,
+  DeckSummary,
   TournamentDetails,
   TournamentList,
   TournamentState,
   TournamentSummary,
 } from '@torn-signpost/protocol';
-import { type FormEvent, useCallback, useEffect, useState } from 'react';
+import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { ApiError, useApi } from '../api.ts';
 import { useAuth } from '../auth.tsx';
@@ -294,7 +296,10 @@ export function TournamentPage() {
       )}
       {error && <p className="notice small">{error}</p>}
 
-      {!user && <p className="muted">Sign in to see its players, rounds and standings.</p>}
+      {!user && (
+        <p className="muted">Sign in to register, and to see its players, rounds and standings.</p>
+      )}
+      {t.me && <Entry t={t} onChange={setT} />}
       {t.detail && (
         <>
           {t.detail.standings.length > 0 && (
@@ -403,7 +408,12 @@ export function TournamentPage() {
                             <span className="badge warning">No deck list</span>
                           )}
                         </td>
-                        <td>{p.account ?? <span className="muted">Not linked</span>}</td>
+                        <td>
+                          {p.account ?? <span className="muted">Not linked</span>}
+                          {t.manage && p.account && !p.registered && (
+                            <span className="badge warning">No deck here</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -413,6 +423,178 @@ export function TournamentPage() {
           </section>
         </>
       )}
+    </section>
+  );
+}
+
+/**
+ * The signed-in player's registration: what registering needs (a linked Archon account with a
+ * VEKN number, a legal deck in the format), then their deck, check-in and dropping out.
+ */
+function Entry({
+  t,
+  onChange,
+}: {
+  t: TournamentDetails;
+  onChange: (t: TournamentDetails) => void;
+}) {
+  const api = useApi();
+  const me = t.me;
+  const reg = me?.registration;
+  const [decks, setDecks] = useState<DeckSummary[]>();
+  const [deckId, setDeckId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const [confirming, setConfirming] = useState(false);
+  const canPick = !!me?.veknId && t.registrationOpen && !!t.deckFormat && !reg?.dropped;
+  useEffect(() => {
+    if (!canPick) return;
+    api<DeckSummary[]>('/decks').then(
+      (all) => setDecks(all.filter((d) => d.format === t.deckFormat && d.legal)),
+      () => setDecks([]),
+    );
+  }, [api, canPick, t.deckFormat]);
+  useEffect(() => {
+    if (decks && !decks.some((d) => d.id === deckId)) {
+      setDeckId(decks.find((d) => d.id === reg?.deckId)?.id ?? decks[0]?.id ?? '');
+    }
+  }, [decks, deckId, reg?.deckId]);
+
+  if (!me) return null;
+  const send = async (path: string, method: string, body?: unknown) => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      onChange(await api<TournamentDetails>(path, { method, ...(body ? { body } : {}) }));
+      setConfirming(false);
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const base = `/tournaments/${t.id}`;
+  const register = (e: FormEvent) => {
+    e.preventDefault();
+    if (deckId) void send(`${base}/registration`, 'PUT', { deckId });
+  };
+
+  let body: ReactNode;
+  if (reg?.dropped) {
+    body = <p>You dropped out of this tournament.</p>;
+  } else if (!reg && !t.registrationOpen) {
+    if (t.state !== 'Planned') return null;
+    body = <p className="muted">Registration isn’t open yet.</p>;
+  } else if (!reg && !t.deckFormat) {
+    body = (
+      <p className="muted">
+        Registering here isn’t available for {t.multideck ? 'multi-deck ' : ''}
+        {t.format} tournaments yet: register in <a href={t.archonUrl}>Archon</a>.
+      </p>
+    );
+  } else if (!reg && !me.archonLinked) {
+    body = (
+      <p>
+        To register, first <Link to="/account">link your Archon account</Link>: the tournament runs
+        there.
+      </p>
+    );
+  } else if (!reg && !me.veknId) {
+    body = (
+      <p>
+        Archon registers only players with a VEKN number, and your Archon account has none yet. A
+        Prince of your area can sponsor you for one; then link your Archon account again on{' '}
+        <Link to="/account">Your account</Link>.
+      </p>
+    );
+  } else {
+    const picker =
+      canPick &&
+      (decks === undefined ? (
+        <p className="muted">Loading your decks…</p>
+      ) : decks.length === 0 ? (
+        <p>
+          You have no legal {t.deckFormat} decks. <Link to="/decks">Build one</Link>, then come
+          back.
+        </p>
+      ) : (
+        <form className="toolbar" onSubmit={register}>
+          <label>
+            {reg ? 'Change deck' : 'Deck'}{' '}
+            <select value={deckId} onChange={(e) => setDeckId(e.target.value)}>
+              {decks.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name} ({d.cryptCount} crypt, {d.libraryCount} library)
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" className="primary" disabled={busy || !deckId}>
+            {reg ? 'Register this deck' : 'Register'}
+          </button>
+        </form>
+      ));
+    body = (
+      <>
+        {reg ? (
+          <p>
+            You’re registered with <strong>{reg.deckName}</strong> (version {reg.deckVersion}).
+            {me.archonState && <span className="badge ok">{me.archonState}</span>}
+          </p>
+        ) : (
+          <p>
+            Register with one of your decks. It’s copied as it is now: changing the deck later
+            doesn’t change what you play here, unless you register it again.
+          </p>
+        )}
+        {picker}
+        {reg && (
+          <p className="toolbar">
+            {t.state === 'Waiting' && me.archonState === 'Registered' && (
+              <button
+                type="button"
+                className="primary"
+                disabled={busy}
+                onClick={() => void send(`${base}/check-in`, 'POST')}
+              >
+                Check in for the next round
+              </button>
+            )}
+            {t.state !== 'Finished' &&
+              (confirming ? (
+                <>
+                  <span>
+                    {t.state === 'Registration'
+                      ? 'Take yourself off the list?'
+                      : 'Drop out of the rounds to come?'}
+                  </span>
+                  <button
+                    type="button"
+                    className="danger"
+                    disabled={busy}
+                    onClick={() => void send(`${base}/registration`, 'DELETE')}
+                  >
+                    Drop out
+                  </button>
+                  <button type="button" onClick={() => setConfirming(false)}>
+                    Stay in
+                  </button>
+                </>
+              ) : (
+                <button type="button" onClick={() => setConfirming(true)}>
+                  Drop out…
+                </button>
+              ))}
+          </p>
+        )}
+      </>
+    );
+  }
+  return (
+    <section className="tournament-entry" aria-label="Your registration">
+      <h2>Your registration</h2>
+      {body}
+      {error && <p className="notice small">{error}</p>}
     </section>
   );
 }

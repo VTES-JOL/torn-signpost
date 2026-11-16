@@ -2558,6 +2558,26 @@ body.dragging {
   max-width: 60rem;
 }
 
+.tournament-entry {
+  max-width: 60rem;
+}
+
+/* The deck picker shrinks on phones instead of pushing the page wider. */
+.tournament-entry label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  flex: 1 1 18rem;
+}
+
+.tournament-entry select {
+  flex: 1 1 12rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .tournament details {
   margin-block: 0.5rem;
 }

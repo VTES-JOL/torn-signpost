@@ -293,12 +293,16 @@ function inState(t: Tournament, expected: Tournament['state']) {
   }
 }
 
-function player(t: Tournament, uid: string): Player {
-  return (
-    t.players.find((p) => p.user_uid === uid) ??
-    refuse('tournament.unknown_player', 'Player not found')
-  );
+/** A player of the tournament, or Archon's refusal for the action (each says it differently). */
+function player(t: Tournament, uid: string, refusal: () => never): Player {
+  return t.players.find((p) => p.user_uid === uid) ?? refusal();
 }
+const notFound = (): never => {
+  throw new Refusal(404, { status_code: 404, detail: 'User not found' });
+};
+const notRegistered = (): never =>
+  refuse('tournament.not_registered', 'Player is not registered in this tournament');
+const playerNotFound = (): never => refuse('tournament.player_not_found', 'Player not found');
 
 function apply(t: Tournament, a: Action, members: Map<string, Member>) {
   switch (a.type) {
@@ -328,14 +332,15 @@ function apply(t: Tournament, a: Action, members: Map<string, Member>) {
       return;
     }
     case 'Unregister':
-      t.players = t.players.filter((p) => p.user_uid !== a.player_uid);
+      inState(t, 'Registration');
+      t.players = t.players.filter((p) => p.user_uid !== a.user_uid);
       return;
     case 'DropOut':
-      player(t, a.player_uid).state = 'Finished';
+      player(t, a.player_uid, playerNotFound).state = 'Finished';
       return;
     case 'CheckIn': {
       inState(t, 'Waiting');
-      const p = player(t, a.player_uid);
+      const p = player(t, a.player_uid, notFound);
       const m = members.get(p.user_uid);
       if (!m?.vekn_id) refuse('tournament.vekn_id_required', 'Player must have a VEKN ID');
       p.state = 'Checked-in';
@@ -346,7 +351,7 @@ function apply(t: Tournament, a: Action, members: Map<string, Member>) {
       for (const p of t.players) if (p.state === 'Registered') p.state = 'Checked-in';
       return;
     case 'UpsertDeck':
-      player(t, a.player_uid).missing_decklist = false;
+      player(t, a.player_uid, notRegistered).missing_decklist = false;
       return;
     case 'StartRound': {
       inState(t, 'Waiting');

@@ -68,6 +68,12 @@ what the API or engine would refuse anyway).
 - **Tournaments** (docs/m7-plan.md M7.2): see a linked tournament's players (with their VEKN
   numbers, and who has linked their Archon account here), rounds and tables, and standings
   [API].
+- **Register for a linked tournament** (M7.3) while Archon has registration or check-in open, with
+  a linked Archon account that has a VEKN number and one of their own decks, legal in the
+  tournament's format (Standard or V5; not multi-deck yet). The deck is copied; registering again
+  changes it. Then **check in** when Archon opens check-in, and **drop out**: off the list during
+  registration, out of the rounds to come after [API]. We send these to Archon with the grant of
+  the tournament admin who linked it (Archon records them as theirs), after our own checks.
 - Not: linking or managing tournaments, which is for tournament admins.
 
 ## Tournament admins (`tournament_admin` group)

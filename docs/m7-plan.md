@@ -167,7 +167,24 @@ one for those of them who organise it in Archon (decided 2026-11-16; `docs/roles
 - `docs/roles.md`: what an organiser can do here. (The tournament's officials as judges in its
   games come with the games, M7.4.)
 
-### M7.3 Registration
+### M7.3 Registration: done
+
+Built: registering from the tournament's page (`PUT /tournaments/{id}/registration`): a linked
+Archon account with a VEKN number, and one of the player's decks, checked again for legality in
+the tournament's format (Standard or V5; multi-deck and Limited said to be unavailable) and copied
+(`TOURN#<uid>` / `REG#<sub>`); registering again changes the deck. Sent with the organiser's
+grant as `AddPlayer` (skipped if the organiser already added them) and `UpsertDeck`, then read
+again. Dropping out (`DELETE`): `Unregister` during registration, `DropOut` after; check-in
+(`POST …/check-in`) while Archon is in Waiting, read again first if we last saw it closed. The
+organiser's player list flags linked players with no deck here. Tournaments in registration are
+read every minute from a day before they start.
+
+Checked against archon.krcg.org (2026-11-16, refused actions for a player who isn't there, which
+change nothing): `AddPlayer {user_uid}` (404 for an unknown member), `UpsertDeck {player_uid,
+deck}` (`tournament.not_registered`), `DropOut {player_uid}` (`tournament.player_not_found`),
+`CheckIn {player_uid}` (404). **`Unregister` takes `user_uid`, not `player_uid`, and only in
+Registration** (`tournament.wrong_state` otherwise). In the contract tests now.
+
 
 - Register (TOURN-02): a linked account (decision 3), a deck from the player's decks checked legal
   for the format, copied and locked; sent as `Register` and `UpsertDeck`. Drop (`DropOut`);
