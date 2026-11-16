@@ -2,8 +2,8 @@
 # a Vampire in Torpor", "The Blood Hunt"; zero-vtes docs/rules-digest.md §11.6, §11.7, checked at
 # 1f33be5). A ready vampire acts on a vampire in torpor: directed at its controller when it's
 # another Methuselah's, undirected when it's your own (rules-qa 16.4). A rescue costs 2 blood as it
-# succeeds, shared as announced (48.8); a share its payer can't meet, or the vampire out of torpor,
-# fizzles it: successful, no effect (3.6, 28.7). A diablerie's blood hunt comes inside the action,
+# succeeds, shared as announced (48.8); a share its payer can't meet fizzles it, each paying its
+# share as far as it goes (3.6, 117.1, 117.5); the vampire out of torpor fizzles it unpaid (28.7). A diablerie's blood hunt comes inside the action,
 # its after-resolution window after (5.8); out of torpor by then, it fizzles with no blood hunt.
 # Alice plays first: her prey is Bob, her predator Carol.
 seed 28
@@ -53,14 +53,15 @@ A> pass
 expect action none
 
 # Rescuing Bob's vampire is directed at him: only Bob may block. Alice's second vampire, with 1
-# blood, would pay both: it can't, so the rescue fizzles (48.8, 3.6).
+# blood, would pay both: it can't, so the rescue fizzles, the rescuer paying the 1 blood it has
+# (48.8, 3.6, 117.1).
 A> rescue A:ready:2 B:torpor:1
 expect action rescue A blocks
 B> pass
 A> resolve success
 log public The action succeeded
 expect count B:torpor 1
-expect card A:ready:2 blood 1
+expect card A:ready:2 blood 0
 A> pass
 
 # Diablerizing Bob's vampire, also directed at him. It succeeds: its 2 blood go to the diablerist,

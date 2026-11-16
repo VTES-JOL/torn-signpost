@@ -1,0 +1,70 @@
+# When an oust happens (zero-vtes rules-qa batches 45, 88, 101 and 118): a Methuselah whose pool
+# reaches 0 or below is ousted then, as part of the effect that ran it out, with nothing played in
+# between (45.1, ANK 20220210): here, as the command that ran it out ends. A cost paid
+# out of turn may be a last pool: its payer is ousted at once, mid-action (101.3, 88.2). Pools run
+# out by separate triggers go one after the other, in the order the acting Methuselah sets (118.1,
+# 118.2, LSJ 20090208-2): each oust pays its predator before the next pool is judged.
+# Seating A B C D E: A's prey is B, B's C, C's D, D's E, E's A.
+seed 5
+seat A alice
+seat B bob
+seat C carol
+seat D dave
+seat E erin
+crypt A "Vera Nightfall" *12
+library A "Iron Ward" *40
+crypt B "Tomas Grey" *12
+library B "Quick Feed" *40
+crypt C "Ilse Várga" *12
+library C "Gate Hound" *40
+crypt D "Vera Nightfall" *12
+library D "Iron Ward" *40
+crypt E "Tomas Grey" *12
+library E "Quick Feed" *40
+start
+
+A> transfer +4 A:uncontrolled:1
+A> move A:uncontrolled:1 ready
+A> transfer +4 A:uncontrolled:1
+A> move A:uncontrolled:1 ready
+B> pool -28
+C> pool -29
+expect pool A 22
+expect pool B 2
+
+# 45.1: Alice bleeds Bob for 4 with 2 pool left. He is ousted as the bleed resolves, nothing played
+# in between; an ousted Methuselah keeps no pool. Alice gains the VP and 6 pool.
+A> next
+A> next
+A> bleed A:ready:1
+B> pass
+A> resolve success 4
+expect ousted B true
+expect pool B 0
+expect vp A 1
+expect pool A 28
+
+# 101.3, 88.2: Alice's other vampire bleeds Carol, her prey now. Carol pays her last pool as a cost
+# out of turn (a card canceling the bleed, say): she is ousted at once, before the bleed resolves,
+# and the bleed goes no further. Alice gains the VP and 6 pool.
+A> bleed A:ready:2
+expect action bleed A blocks
+C> pool -1
+expect ousted C true
+expect action none
+expect vp A 2
+expect pool A 34
+
+# 118.1, 118.2: one effect burns 4 pool from Dave (3 left) and from Erin, his prey (2 left), by
+# separate triggers (minions lost together). Alice, acting, sets the order: Erin's first. Erin is
+# ousted and Dave gains 6 pool before his own burn is judged, which then leaves him in the game.
+# (A pool is changed down to 0 at most: Erin burns the 2 she has.)
+D> pool -27
+E> pool -28
+E> pool -2
+expect ousted E true
+expect vp D 1
+expect pool D 9
+D> pool -4
+expect pool D 5
+expect ousted D false

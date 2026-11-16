@@ -286,13 +286,13 @@ Effect:
 - Successful hunt: the minion gains that much blood, capped at its capacity when the catalog
   knows it.
 - Successful leave-torpor action: the vampire moves to its ready region and pays `amount` blood (2
-  by default, the rulebook's cost; less for a card that reduces it). If it can't pay, or is out of
-  torpor already, the action fizzles: successful, nothing happens, nothing is paid (zero-vtes
-  rules-qa 3.6, 28.7). `combat` is refused: a vampire in torpor can't enter combat.
+  by default, the rulebook's cost; less for a card that reduces it). Out of torpor already, the
+  action fizzles (successful, nothing happens) and nothing is paid (zero-vtes rules-qa 28.7,
+  117.3); short of the cost, it fizzles paying the blood it has (3.6, 117.1). `combat` is refused: a vampire in torpor can't enter combat.
 - Successful rescue: `amount` blood in all (2 by default); the rescued vampire pays its share as
   announced, the rescuer the rest, and the rescued vampire moves to its controller's ready region.
-  A share its payer can't meet, or the vampire out of torpor, fizzles it (rules-qa 3.6, 28.7,
-  48.8).
+  The vampire out of torpor or gone fizzles it, nothing paid (rules-qa 28.7, 117.3); a share its
+  payer can't meet fizzles it, each paying its own share as far as it goes (3.6, 48.8, 117.5).
 - Successful diablerie: the diablerie (its blood to the diablerist, up to capacity; the victim
   burned with its cards), then the blood hunt at once, polled from the acting Methuselah; the
   action concludes successful when it's over (rules-qa 5.8). The victim out of torpor, or either

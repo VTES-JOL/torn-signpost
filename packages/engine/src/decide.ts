@@ -996,11 +996,16 @@ function bodiesFor(
       }
       if (cmd.outcome === 'success' && a.kind === 'leave-torpor') {
         // The vampire moves to the ready region and pays the cost: 2 blood by default, or what a
-        // card makes it (rulebook, "Leave Torpor"). Out of torpor already, or unable to pay, it
-        // fizzles: successful, nothing happens, nothing is paid (zero-vtes rules-qa 3.6, 28.7).
+        // card makes it (rulebook, "Leave Torpor"). It fizzles (successful, no effect) out of
+        // torpor already, paying nothing (zero-vtes rules-qa 28.7, 117.3), or short of the cost,
+        // paying the blood it has (3.6, 117.1: "as much as possible").
         const cost = cmd.amount ?? LEAVE_TORPOR_COST;
         const m = state.cards[a.minion];
-        if (m && parseZoneId(m.zone).name === 'torpor' && cost <= (m.counters.blood ?? 0)) {
+        const has = m?.counters.blood ?? 0;
+        if (m && parseZoneId(m.zone).name === 'torpor' && cost > has && has > 0) {
+          bodies.push({ type: 'CounterAdjusted', card: m.id, counter: 'blood', delta: -has });
+        }
+        if (m && parseZoneId(m.zone).name === 'torpor' && cost <= has) {
           if (cost > 0) {
             bodies.push({ type: 'CounterAdjusted', card: m.id, counter: 'blood', delta: -cost });
           }
@@ -1020,20 +1025,31 @@ function bodiesFor(
         }
       }
       if (cmd.outcome === 'success' && a.kind === 'rescue') {
-        // Paid as it resolves, split as announced; a share its payer can't meet, or the vampire
-        // out of torpor, fizzles it: successful, no effect (zero-vtes rules-qa 3.6, 28.7, 48.8).
+        // Paid as it resolves, split as announced (zero-vtes rules-qa 48.8). It fizzles
+        // (successful, no effect) with the vampire out of torpor or gone, nothing paid (28.7,
+        // 117.3), or with a share its payer can't meet, each paying its own share as far as it
+        // goes (3.6, 117.1, 117.5).
         const cost = cmd.amount ?? RESCUE_COST;
         const rescued = a.vampire === undefined ? undefined : state.cards[a.vampire];
         const rescuer = state.cards[a.minion];
         const fromRescued = Math.min(a.rescuedPays ?? 0, cost);
         const fromRescuer = cost - fromRescued;
-        if (
-          rescued &&
-          rescuer &&
-          parseZoneId(rescued.zone).name === 'torpor' &&
-          (rescued.counters.blood ?? 0) >= fromRescued &&
-          (rescuer.counters.blood ?? 0) >= fromRescuer
-        ) {
+        const inTorpor = rescued && parseZoneId(rescued.zone).name === 'torpor';
+        const short =
+          (rescued?.counters.blood ?? 0) < fromRescued ||
+          (rescuer?.counters.blood ?? 0) < fromRescuer;
+        if (rescued && rescuer && inTorpor && short) {
+          for (const [c, n] of [
+            [rescuer, fromRescuer],
+            [rescued, fromRescued],
+          ] as const) {
+            const paid = Math.min(n, c.counters.blood ?? 0);
+            if (paid > 0) {
+              bodies.push({ type: 'CounterAdjusted', card: c.id, counter: 'blood', delta: -paid });
+            }
+          }
+        }
+        if (rescued && rescuer && inTorpor && !short) {
           for (const [c, n] of [
             [rescuer, fromRescuer],
             [rescued, fromRescued],

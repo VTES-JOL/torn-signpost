@@ -1,0 +1,163 @@
+/**
+ * Writes docs/rules-coverage.md: each zero-vtes ruling the engine is answerable for (scope.ts),
+ * and the tests and code that cite it (`rules-qa N.M`). Run from the repo root with a checkout of
+ * zero-vtes (github.com/lionel-panhaleux/zero-vtes):
+ *
+ *   pnpm --filter @torn-signpost/rules-coverage start <path to zero-vtes>
+ *
+ * A ruling is **tested** when a test or scenario cites it, **cited** when only engine code does,
+ * and a **gap** when nothing does. The ledger quotes the start of each ruling (zero-vtes is MIT).
+ */
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { OUT, RULES_BATCHES } from './scope.ts';
+
+const zero = process.argv[2] ?? process.env.ZERO_VTES;
+if (!zero) {
+  console.error('usage: rules-coverage <path to a zero-vtes checkout> (or ZERO_VTES)');
+  process.exit(2);
+}
+const repo = resolve(import.meta.dirname, '../../..');
+// pnpm runs the script from its package: a relative path is the caller's.
+const zeroDir = resolve(process.env.INIT_CWD ?? process.cwd(), zero);
+const qaPath = join(zeroDir, 'docs/rules-qa.md');
+let commit = 'unknown';
+try {
+  commit = execFileSync('git', ['-C', zeroDir, 'rev-parse', '--short', 'HEAD'], {
+    encoding: 'utf8',
+  }).trim();
+} catch {}
+
+interface Ruling {
+  id: string;
+  batch: number;
+  text: string;
+}
+
+/** Every ruling, with its batch and its text's first line. */
+function rulings(md: string): Ruling[] {
+  const out: Ruling[] = [];
+  let batch = 0;
+  for (const line of md.split('\n')) {
+    const b = line.match(/^## Batch (\d+)/);
+    if (b) batch = Number(b[1]);
+    const r = line.match(/^\*\*(\d+\.\d+)\*\*\s*(.*)/);
+    if (r?.[1] && batch) out.push({ id: r[1], batch, text: r[2] ?? '' });
+  }
+  return out;
+}
+
+/**
+ * Who cites each ruling. A file that names rules-qa cites its rulings by number in its comments
+ * (`rules-qa 5.3`, then bare `(48.8, 3.6)`); numbers that are another document's (tournament
+ * rules 3.7.4, advanced rules §5.2, the digest), part of a longer one (3.7.2) or of a name
+ * (milestone M6.4), and scores (`A: 1.5`) aren't counted.
+ */
+function citations(known: Set<string>): Map<string, { tests: Set<string>; code: Set<string> }> {
+  // Uncommitted files too: a scenario counts as soon as it's written.
+  const files = execFileSync(
+    'git',
+    ['-C', repo, 'ls-files', '--cached', '--others', '--exclude-standard'],
+    { encoding: 'utf8' },
+  )
+    .split('\n')
+    .filter((f) => /\.(ts|tsx|scenario)$/.test(f) && !f.startsWith('tools/rules-coverage/'));
+  const found = new Map<string, { tests: Set<string>; code: Set<string> }>();
+  for (const file of files) {
+    const source = readFileSync(join(repo, file), 'utf8');
+    if (!source.includes('rules-qa')) continue;
+    const isTest = /\.(test|e2e)\.tsx?$|\.scenario$/.test(file);
+    for (const comment of comments(source, file.endsWith('.scenario'))) {
+      for (const m of comment.matchAll(/(?<![\w.§])(\d+\.\d+)(?![\d]|\.\d)/g)) {
+        const id = m[1] ?? '';
+        const before = comment.slice(Math.max(0, (m.index ?? 0) - 30), m.index);
+        if (!known.has(id) || OTHER_DOCUMENT.test(before) || SCORE.test(before)) continue;
+        const entry = found.get(id) ?? { tests: new Set(), code: new Set() };
+        (isTest ? entry.tests : entry.code).add(file.split('/').pop() ?? file);
+        found.set(id, entry);
+      }
+    }
+  }
+  return found;
+}
+
+/** A number just after these is another document's section, not a ruling. */
+const OTHER_DOCUMENT =
+  /\b(tournament rules|advanced rules|rulebook|digest|spec|judges'? guide|version)\s*[§(]?\s*(\d+(\.\d+)*[,; ]*(and )?)*$/i;
+
+/** A score, not a ruling: `A: 1.5, B and C 0.5`. */
+const SCORE = /\b[A-Z]:\s*$/;
+
+/** The comment text of a file: `#` lines in scenarios; `//` and block comments in code. */
+function comments(source: string, scenario: boolean): string[] {
+  if (scenario) {
+    return [
+      source
+        .split('\n')
+        .filter((l) => l.trimStart().startsWith('#'))
+        .map((l) => l.replace(/^\s*#/, ''))
+        .join(' '),
+    ];
+  }
+  return [...source.matchAll(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g)].map((m) =>
+    m[0].replace(/^\s*(\/\/|\/\*+|\*\/?)/gm, ' '),
+  );
+}
+
+const all = rulings(readFileSync(qaPath, 'utf8'));
+const cited = citations(new Set(all.map((r) => r.id)));
+const inScope = all.filter((r) => cited.has(r.id) || (r.batch in RULES_BATCHES && !(r.id in OUT)));
+const status = (r: Ruling) =>
+  cited.get(r.id)?.tests.size ? 'tested' : cited.get(r.id)?.code.size ? 'cited' : 'gap';
+const excerpt = (text: string) => {
+  const plain = text.replace(/\*\*|~~|`/g, '').replace(/\|/g, '/');
+  return plain.length > 110 ? `${plain.slice(0, 107).trimEnd()}…` : plain;
+};
+const count = (rs: Ruling[], s: string) => rs.filter((r) => status(r) === s).length;
+
+const lines: string[] = [
+  '# Rules coverage',
+  '',
+  '<!-- Generated by tools/rules-coverage: edit its scope.ts, not this file. -->',
+  '',
+  `Which of zero-vtes's rulings (\`docs/rules-qa.md\`, at ${commit}; MIT, quoted in part) the`,
+  'engine is answerable for, and the tests that check them (CLAUDE.md: rules tests are built from',
+  'real rulings and cite them). The engine plays the rules and leaves card effects and the stealth',
+  'and intercept count to players, so most rulings, being card by card, are out of scope',
+  '(`tools/rules-coverage/src/scope.ts` says which and why). **Tested**: a test or scenario cites it;',
+  '**cited**: only engine code does; **gap**: nothing does yet.',
+  '',
+  `${all.length} rulings in all; ${inScope.length} in scope: **${count(inScope, 'tested')} tested**, ${count(inScope, 'cited')} cited in code only, **${count(inScope, 'gap')} gaps**.`,
+  '',
+  '## By batch',
+  '',
+  '| Batch | | Tested | Cited | Gaps |',
+  '|---|---|---|---|---|',
+];
+const batches = [...new Set(inScope.map((r) => r.batch))].sort((a, b) => a - b);
+for (const b of batches) {
+  const rs = inScope.filter((r) => r.batch === b);
+  const name = RULES_BATCHES[b] ?? '(cards; cited rulings only)';
+  lines.push(
+    `| ${b} | ${name} | ${count(rs, 'tested')} | ${count(rs, 'cited')} | ${count(rs, 'gap')} |`,
+  );
+}
+lines.push(
+  '',
+  '## Rulings',
+  '',
+  '| Ruling | Status | Cited by | Ruling (start) |',
+  '|---|---|---|---|',
+);
+for (const r of inScope) {
+  const c = cited.get(r.id);
+  const by = c ? [...c.tests, ...c.code].sort().join(', ') : '';
+  const s = status(r);
+  lines.push(`| ${r.id} | ${s === 'gap' ? '**gap**' : s} | ${by} | ${excerpt(r.text)} |`);
+}
+lines.push('');
+writeFileSync(join(repo, 'docs/rules-coverage.md'), lines.join('\n'));
+console.log(
+  `docs/rules-coverage.md: ${inScope.length} in scope, ${count(inScope, 'tested')} tested, ${count(inScope, 'gap')} gaps`,
+);

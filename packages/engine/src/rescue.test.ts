@@ -114,6 +114,23 @@ describe('rescue and diablerie', () => {
     ).toMatch(/pays 0 to 2/);
   });
 
+  it('short of a share, fizzles with each paying as far as it goes (zero-vtes rules-qa 117.5)', () => {
+    // Bob's vampire was to pay 1 of the 2, then lost its blood: Alice's pays its 1, Bob's nothing.
+    const s = run(
+      `A> rescue A:ready:1 B:torpor:1 1\nB> pass\nB> blood -2 B:torpor:1\nA> resolve success\n`,
+    );
+    const torpid = s.cards[s.zones['B:torpor']?.[0] ?? ''];
+    expect(torpid?.counters.blood ?? 0).toBe(0);
+    expect(s.cards[s.zones['A:ready']?.[0] ?? '']?.counters.blood).toBe(2);
+  });
+
+  it('with the vampire out of torpor by then, fizzles and nothing is paid (rules-qa 117.3)', () => {
+    const s = run(
+      `A> rescue A:ready:1 B:torpor:1\nB> pass\nB> move B:torpor:1 ready\nA> resolve success\n`,
+    );
+    expect(s.cards[s.zones['A:ready']?.[0] ?? '']?.counters.blood).toBe(3);
+  });
+
   it('offers the resolution, and the console parses both', () => {
     const s = run(`A> rescue A:ready:1 B:torpor:1 1\nB> pass\n`);
     expect(s.action?.rescuedPays).toBe(1);

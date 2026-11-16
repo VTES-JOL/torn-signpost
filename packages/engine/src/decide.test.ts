@@ -346,6 +346,8 @@ describe('game end (GAME-08/09, docs/m6-plan.md M6.1)', () => {
     expect(s.result?.gameWin).toBeUndefined();
   });
 
+  // One effect running several pools out ousts them together (zero-vtes rules-qa 118.3): a
+  // predator ousted with their prey gains no pool for it.
   it('ousted with their prey: the VP, but not the 6 pool (rulebook, "Ending the Game")', () => {
     // A B C D clockwise: B's prey is C. C is at 0 pool as B goes out, so both go at once.
     const r = start({ seats: seats(4) });

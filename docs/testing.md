@@ -43,6 +43,17 @@ deploys only when they pass.
    command the state can be in between (an oust passes the turn in a later event), so rules that
    only hold once a command is done use `forEveryCommand`.
 
+## Rules coverage
+
+`docs/rules-coverage.md` is the ledger of zero-vtes's rulings the engine is answerable for, each
+marked tested (a test or scenario cites it), cited (only engine code does) or a gap. The engine
+plays the rules and leaves card effects and the stealth and intercept count to players, so card
+rulings are out of scope; `tools/rules-coverage/src/scope.ts` lists the rules batches and the
+rulings set aside in them, with why. Regenerate it after adding rules tests, with a checkout of
+zero-vtes: `pnpm --filter @torn-signpost/rules-coverage start <path to zero-vtes>`. Cite rulings
+by number in the test's comments (`rules-qa 45.1`, or bare `(118.1)` in a file that names
+rules-qa) so the ledger finds them.
+
 ## Coverage
 
 Engine coverage is enforced: `pnpm --filter @torn-signpost/engine test` fails below the floor in

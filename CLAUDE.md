@@ -14,4 +14,5 @@ Cite the source in the scenario's comments, use the example's numbers, and expec
 says, not what the engine does. A test that fails against a ruling is a finding: fix the engine,
 or report the difference if it's a design decision. Scenarios 19–21 in
 `packages/engine/scenarios/` show the pattern. See `docs/testing.md` for the rest of the testing
-rules.
+rules. `docs/rules-coverage.md` lists the rulings in scope and which are still gaps; regenerate it
+after adding rules tests (`docs/testing.md`, "Rules coverage").
