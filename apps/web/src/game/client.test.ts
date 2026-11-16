@@ -284,7 +284,7 @@ describe('GameClient predictions', () => {
     const before = s.state.seq;
     s.run({ type: 'AdjustPool', seat: '1', delta: -1 }, { kind: 'player', user: 'a' });
     const events = s.as(viewer, before);
-    receive({ type: 'events', gameId: 'g', events, commandId: net.sent[0] });
+    receive({ type: 'events', gameId: 'g', events, commandId: net.sent[0] ?? '' });
     expect(c.getSnapshot().view).toEqual(project(s.state, viewer));
     await net.release({ events });
     await done;
